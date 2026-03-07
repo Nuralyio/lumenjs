@@ -1,0 +1,24 @@
+{
+  "name": "@lumenjs/core",
+  "version": "0.1.0",
+  "description": "LumenJS — Vite-based framework for NuralyUI apps",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "lumenjs": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "vite": "^5.4.0",
+    "lit": "^3.1.0",
+    "@lit-labs/ssr": "^3.2.0",
+    "glob": "^10.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "@types/node": "^20.14.2"
+  }
+}
