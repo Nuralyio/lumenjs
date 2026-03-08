@@ -133,6 +133,17 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
         name: 'lumenjs-index-html',
         configureServer(server) {
           server.middlewares.use((req, res, next) => {
+            // Guard against malformed percent-encoded URLs that crash Vite's transformIndexHtml
+            if (req.url) {
+              try {
+                decodeURIComponent(req.url);
+              } catch {
+                res.statusCode = 400;
+                res.end('Bad Request');
+                return;
+              }
+            }
+
             if (req.url && !req.url.startsWith('/@') && !req.url.startsWith('/node_modules') &&
                 !req.url.startsWith('/api/') && !req.url.startsWith('/__nk_loader/') &&
                 !req.url.startsWith('/__nk_i18n/') &&
