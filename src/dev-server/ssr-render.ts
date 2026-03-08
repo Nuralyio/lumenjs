@@ -2,7 +2,7 @@ import { ViteDevServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import { resolvePageFile, extractRouteParams } from './plugins/vite-plugin-loaders.js';
-import { stripOuterLitMarkers, dirToLayoutTagName, findTagName } from '../shared/utils.js';
+import { stripOuterLitMarkers, dirToLayoutTagName, filePathToTagName } from '../shared/utils.js';
 import { installDomShims } from '../shared/dom-shims.js';
 
 export interface LayoutSSRData {
@@ -49,9 +49,9 @@ export async function ssrRenderPage(
       }
     }
 
-    // Determine the custom element tag name
-    const tagName = findTagName(mod);
-    if (!tagName) return null;
+    // Determine the custom element tag name from file path (matches client router)
+    const relPath = path.relative(pagesDir, filePath).replace(/\\/g, '/');
+    const tagName = filePathToTagName(relPath);
 
     // Discover layout chain for this page
     const layoutChain = discoverLayoutChain(pagesDir, filePath);

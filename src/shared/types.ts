@@ -8,6 +8,7 @@ export interface ManifestRoute {
   path: string;
   module: string;
   hasLoader: boolean;
+  tagName?: string;
   layouts?: string[];
 }
 

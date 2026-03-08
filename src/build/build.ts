@@ -5,6 +5,7 @@ import { getSharedViteConfig } from '../dev-server/server.js';
 import { readProjectConfig } from '../dev-server/config.js';
 import { generateIndexHtml } from '../dev-server/index-html.js';
 import type { BuildManifest } from '../shared/types.js';
+import { filePathToTagName } from '../shared/utils.js';
 import { scanPages, scanLayouts, scanApiRoutes, getLayoutDirsForPage } from './scan.js';
 
 export interface BuildOptions {
@@ -164,10 +165,12 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   const manifest: BuildManifest = {
     routes: pageEntries.map(e => {
       const routeLayouts = getLayoutDirsForPage(e.filePath, pagesDir, layoutEntries);
+      const relPath = path.relative(pagesDir, e.filePath).replace(/\\/g, '/');
       return {
         path: e.routePath,
         module: e.hasLoader ? `pages/${e.name}.js` : '',
         hasLoader: e.hasLoader,
+        tagName: filePathToTagName(relPath),
         ...(routeLayouts.length > 0 ? { layouts: routeLayouts } : {}),
       };
     }),

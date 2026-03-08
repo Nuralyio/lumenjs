@@ -2,7 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import type { BuildManifest } from '../shared/types.js';
-import { stripOuterLitMarkers, dirToLayoutTagName, findTagName, isRedirectResponse } from '../shared/utils.js';
+import { stripOuterLitMarkers, dirToLayoutTagName, isRedirectResponse } from '../shared/utils.js';
 import { matchRoute } from '../shared/route-matching.js';
 import { sendCompressed } from './serve-static.js';
 
@@ -41,8 +41,8 @@ export async function handlePageRoute(
           }
         }
 
-        // Find tag name from module
-        const tagName = findTagName(mod);
+        // Use tag name from route manifest (matches client router)
+        const tagName = matched.route.tagName;
 
         // Run layout loaders
         const layoutDirs = (allMatched || matched).route.layouts || [];

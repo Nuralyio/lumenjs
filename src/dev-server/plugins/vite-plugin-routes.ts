@@ -1,7 +1,7 @@
 import { Plugin } from 'vite';
 import fs from 'fs';
 import path from 'path';
-import { dirToLayoutTagName, fileHasLoader, filePathToRoute } from '../../shared/utils.js';
+import { dirToLayoutTagName, fileHasLoader, filePathToRoute, filePathToTagName } from '../../shared/utils.js';
 
 export interface RouteEntry {
   path: string;
@@ -84,17 +84,6 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
         routes.push({ path: routePath, componentPath, tagName });
       }
     }
-  }
-
-  function filePathToTagName(filePath: string): string {
-    const name = filePath
-      .replace(/\.(ts|js)$/, '')
-      .replace(/\\/g, '-')
-      .replace(/\//g, '-')
-      .replace(/\[\.\.\.([^\]]+)\]/g, '$1')
-      .replace(/\[([^\]]+)\]/g, '$1')
-      .toLowerCase();
-    return `page-${name}`;
   }
 
   /** Build the layout chain for a route based on its file path within pages/ */
