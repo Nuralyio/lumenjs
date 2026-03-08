@@ -11,7 +11,7 @@ function getArg(name: string): string | undefined {
 }
 
 const USAGE = `Usage:
-  lumenjs dev   [--project <dir>] [--port <port>] [--editor-mode]
+  lumenjs dev   [--project <dir>] [--port <port>] [--base <path>] [--editor-mode]
   lumenjs build [--project <dir>] [--out <dir>]
   lumenjs serve [--project <dir>] [--port <port>]
   lumenjs add   <integration>`;
@@ -28,13 +28,15 @@ async function main() {
     const { createDevServer } = await import('./dev-server/server.js');
     const port = parseInt(getArg('port') || '3000', 10);
     const editorMode = args.includes('--editor-mode');
+    const base = getArg('base') || '/';
 
     console.log(`[LumenJS] Starting dev server...`);
     console.log(`  Project: ${projectDir}`);
     console.log(`  Port: ${port}`);
+    if (base !== '/') console.log(`  Base: ${base}`);
     console.log(`  Editor mode: ${editorMode}`);
 
-    const server = await createDevServer({ projectDir, port, editorMode });
+    const server = await createDevServer({ projectDir, port, editorMode, base });
     await server.listen();
 
     const address = server.httpServer?.address();
