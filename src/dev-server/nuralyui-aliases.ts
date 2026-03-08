@@ -127,17 +127,19 @@ export function getNuralyUIAliases(nuralyUIPath: string, nuralyCommonPath: strin
 }
 
 /**
- * Resolves the NuralyUI source path. Checks:
- * 1. Sibling to the lumenjs lib (in-repo development)
- * 2. Under the studio service path (Docker context)
+ * Resolves the NuralyUI source path dynamically.
+ * Walks up from the project directory looking for the nuraly-ui package,
+ * then falls back to well-known paths and environment variable.
  */
 export function resolveNuralyUIPaths(projectDir: string): { componentsPath: string; commonPath: string } | null {
+  const nuralyUIRelPath = 'services/studio/src/features/runtime/components/ui/nuraly-ui';
+
   const candidates = [
-    // In-repo: libs/lumenjs → services/studio/...
-    path.resolve(__dirname, '../../..', 'services/studio/src/features/runtime/components/ui/nuraly-ui'),
-    // Docker: /home/node/app/libs/lumenjs → studio mounted
-    path.resolve('/home/node/app/services/studio/src/features/runtime/components/ui/nuraly-ui'),
-    // Fallback: check NURALYUI_PATH env
+    // Walk up from project dir to find the monorepo root containing services/
+    findMonorepoRoot(projectDir, nuralyUIRelPath),
+    // Relative to lumenjs lib (in-repo: libs/lumenjs → repo root)
+    path.resolve(__dirname, '../../..', nuralyUIRelPath),
+    // NURALYUI_PATH env override
     process.env.NURALYUI_PATH || '',
   ];
 
@@ -150,4 +152,21 @@ export function resolveNuralyUIPaths(projectDir: string): { componentsPath: stri
     }
   }
   return null;
+}
+
+/**
+ * Walk up from a directory looking for a monorepo root that contains the given relative path.
+ */
+function findMonorepoRoot(startDir: string, relPath: string): string {
+  let dir = path.resolve(startDir);
+  const root = path.parse(dir).root;
+
+  while (dir !== root) {
+    const candidate = path.join(dir, relPath);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+    dir = path.dirname(dir);
+  }
+  return '';
 }
