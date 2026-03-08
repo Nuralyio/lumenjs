@@ -1,0 +1,164 @@
+# LumenJS Framework Specification
+
+Full-stack Lit web component framework. File-based routing, server loaders, SSR, nested layouts, API routes, i18n. Vite-powered.
+
+## Project Structure
+
+```
+project/
+├── lumenjs.config.ts     # Config: { title, integrations?, i18n? }
+├── pages/                # File-based routes
+│   ├── _layout.ts        # Layout (wraps children, uses <slot>)
+│   ├── index.ts          # Route: /
+│   ├── about.ts          # Route: /about
+│   ├── blog/[slug].ts    # Route: /blog/:slug
+│   └── docs/[...path].ts # Route: /docs/* (catch-all)
+├── api/                  # API routes (export GET/POST/PUT/DELETE)
+├── locales/              # i18n: {locale}.json files
+├── public/               # Static assets
+└── styles/               # CSS files
+```
+
+## Routing
+
+### File Path → Route → Tag Name
+
+Conversion rule for routes: strip `.ts`/`.js`, `[param]` → `:param`, `[...param]` → `:...param`, `index` → `/`, prepend `/`.
+
+Conversion rule for tag names: strip extension, replace `/` and `\` with `-`, remove brackets, lowercase, prepend `page-` (pages) or `layout-` (layouts). Root layout dir `''` → `layout-root`.
+
+| File Path | Route | Tag Name |
+|-----------|-------|----------|
+| `index.ts` | `/` | `page-index` |
+| `about.ts` | `/about` | `page-about` |
+| `blog/index.ts` | `/blog` | `page-blog-index` |
+| `blog/[slug].ts` | `/blog/:slug` | `page-blog-slug` |
+| `docs/[...path].ts` | `/docs/:...path` | `page-docs-path` |
+| `_layout.ts` (root) | — | `layout-root` |
+| `dashboard/_layout.ts` | — | `layout-dashboard` |
+
+Priority: static > dynamic `[param]` > catch-all `[...param]`.
+
+Only `.ts` and `.js` files are scanned. Files starting with `_` are ignored (except `_layout`).
+
+## Pages
+
+Pages are exported classes extending `LitElement` in `pages/`. Tag name is derived from file path — **never use `@customElement()` decorator** (auto-define plugin handles it; decorator causes double-registration).
+
+Class must: extend `LitElement`, be exported. Class name is irrelevant to tag — only file path matters.
+
+## Loaders
+
+Named export `loader()` on any page or layout runs server-side, result injected as `loaderData` property.
+
+```
+export async function loader(ctx: { params, query, url, headers, locale }) → object
+```
+
+- Property name is exactly `loaderData` (declared as `@property({ type: Object }) loaderData: any = {}`)
+- Stripped from client bundles automatically
+- Runs on SSR and on client navigation via `/__nk_loader/<path>`
+- Must return serializable objects
+- Redirect: return `{ __nk_redirect: true, location: string, status: number }` or use `redirect(location, status?)` from `@lumenjs/response`
+
+## Layouts
+
+`_layout.ts` in any `pages/` subdirectory wraps all pages in that directory and children. **Must contain `<slot></slot>`** for child content.
+
+Layout chain nests root → deepest. Layouts persist across navigation — DOM reused when navigating between pages sharing same layout.
+
+Layouts support `loader()` with same rules as pages.
+
+## API Routes
+
+Files in `api/` export named functions per HTTP method: `GET`, `POST`, `PUT`, `DELETE`.
+
+```
+export async function GET(req: NkRequest) → object
+```
+
+Request shape: `{ method, url, query, params, body, files, headers, projectDir }`.
+File upload shape: `{ fieldName, fileName, contentType, data: Buffer, size }`.
+
+- Return plain object → auto-serialized as JSON with 200
+- Throw `{ status, message }` → error response
+- No `res` object — no `res.send()`, no `res.json()`
+- Multipart form data parsed automatically into `req.files`
+
+## i18n
+
+Config: `i18n: { locales: string[], defaultLocale: string, prefixDefault: boolean }`.
+Translations: `locales/{locale}.json` with flat `{ "key": "value" }` structure.
+
+URL routing: `/fr/about` → locale `fr`, page `about`. With `prefixDefault: false`, default locale has no prefix.
+
+Resolution order: URL prefix → `nk-locale` cookie → `Accept-Language` header → defaultLocale.
+
+Runtime API (import from `@lumenjs/i18n`):
+- `t(key)` → translated string or key if missing
+- `getLocale()` → current locale
+- `setLocale(locale)` → switches locale (sets cookie, navigates)
+- `getI18nConfig()` → config object or null
+
+## Virtual Modules
+
+These imports are resolved by Vite plugins. They do NOT exist on disk — never create files for them or use relative paths.
+
+| Import Path | Contents |
+|-------------|----------|
+| `@lumenjs/i18n` | t, getLocale, setLocale, initI18n, getI18nConfig |
+| `@lumenjs/response` | redirect(location, status?) |
+| `@lumenjs/app-shell` | Root `<nk-app>` component |
+| `@lumenjs/router` | SPA router |
+| `virtual:lumenjs-routes` | Generated route manifest array |
+
+## Integrations
+
+**Tailwind**: `integrations: ['tailwind']`. Components using Tailwind classes in light DOM need `createRenderRoot() { return this; }`.
+
+**NuralyUI**: `integrations: ['nuralyui']`. `<nr-*>` tags in `html` templates are auto-imported with implicit deps (e.g., `nr-button` auto-imports `nr-icon`).
+
+Available: nr-alert, nr-badge, nr-breadcrumb, nr-button, nr-canvas, nr-card, nr-chatbot, nr-checkbox, nr-collapse, nr-color-picker, nr-datepicker, nr-divider, nr-document, nr-dropdown, nr-file-upload, nr-flex, nr-form, nr-grid, nr-icon, nr-image, nr-input, nr-label, nr-layout, nr-menu, nr-modal, nr-panel, nr-popconfirm, nr-radio, nr-radio-group, nr-select, nr-skeleton, nr-slider-input, nr-table, nr-tabs, nr-tag, nr-textarea, nr-timeline, nr-toast, nr-video, nr-iconpicker, nr-container, nr-code-editor.
+
+## SSR
+
+Pages with loaders are server-rendered via `@lit-labs/ssr`. Loader data embedded as `<script type="application/json" id="__nk_ssr_data__">`. Client hydrates without re-render. Fallback to CSR on SSR failure.
+
+## Config Reference
+
+```typescript
+// lumenjs.config.ts
+export default {
+  title: string,                    // HTML <title>
+  integrations?: string[],          // 'tailwind' | 'nuralyui'
+  i18n?: {
+    locales: string[],              // ['en', 'fr']
+    defaultLocale: string,          // 'en'
+    prefixDefault: boolean,         // prefix default locale in URLs
+  },
+};
+```
+
+## CLI
+
+```
+lumenjs dev    [--project <dir>] [--port <n>] [--editor-mode]
+lumenjs build  [--project <dir>] [--out <dir>]
+lumenjs serve  [--project <dir>] [--port <n>]
+lumenjs add    <integration>
+```
+
+Build output: `.lumenjs/{client/, server/, locales/, manifest.json}`.
+
+## Constraints
+
+1. No `@customElement()` — auto-define handles it; decorator causes double-registration
+2. No `res.send()`/`res.json()` in API routes — return objects
+3. Property name is `loaderData` exactly
+4. Layouts require `<slot></slot>`
+5. `@lumenjs/*` are virtual modules — no files, no relative imports
+6. `loader` must be named export function (not default, not arrow const)
+7. `_`-prefixed files (except `_layout`) are skipped by scanner
+8. Only `.ts`/`.js` scanned — no `.tsx`/`.jsx`
+9. Class must `extends LitElement` (auto-define checks source text)
+10. Use `loader()` for data — not `connectedCallback` fetch
