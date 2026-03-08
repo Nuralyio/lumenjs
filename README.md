@@ -1,6 +1,6 @@
 # LumenJS
 
-A full-stack web framework for [Lit](https://lit.dev/) web components. File-based routing, server loaders, SSR with hydration, nested layouts, API routes, and a Vite-powered dev server.
+A full-stack web framework for [Lit](https://lit.dev/) web components. File-based routing, server loaders, real-time subscriptions (SSE), SSR with hydration, nested layouts, API routes, and a Vite-powered dev server.
 
 ## Quick Start
 
@@ -49,9 +49,7 @@ Pages are Lit components in the `pages/` directory. The file path determines the
 ```typescript
 // pages/index.ts
 import { LitElement, html, css } from 'lit';
-import { customElement } from 'lit/decorators.js';
 
-@customElement('page-index')
 export class PageIndex extends LitElement {
   static styles = css`:host { display: block; }`;
 
@@ -60,6 +58,8 @@ export class PageIndex extends LitElement {
   }
 }
 ```
+
+The custom element tag name is derived automatically from the file path — no `@customElement` decorator needed.
 
 ### Routing
 
@@ -85,7 +85,6 @@ export async function loader({ params, headers, query, url }) {
   return { post };
 }
 
-@customElement('page-blog-slug')
 export class BlogPost extends LitElement {
   @property({ type: Object }) loaderData: any = {};
 
@@ -117,13 +116,74 @@ export async function loader({ headers }) {
 }
 ```
 
+## Live Data (subscribe)
+
+Export a `subscribe()` function from any page or layout to push real-time data to the client over Server-Sent Events (SSE).
+
+```typescript
+// pages/dashboard.ts
+export async function loader() {
+  return { orders: await db.orders.findAll() };
+}
+
+export function subscribe({ push }) {
+  const stream = db.orders.watch();
+  stream.on('change', (change) => push({ type: 'order-update', data: change }));
+  return () => stream.close();
+}
+
+export class PageDashboard extends LitElement {
+  @property({ type: Object }) loaderData: any = {};
+  @property({ type: Object }) liveData: any = null;
+
+  render() {
+    return html`
+      <h1>Orders (${this.loaderData.orders?.length})</h1>
+      ${this.liveData ? html`<p>Update: ${this.liveData.type}</p>` : ''}
+    `;
+  }
+}
+```
+
+The `subscribe()` function is a persistent server-side process tied to the page lifecycle:
+
+1. User opens page → framework opens SSE connection to `/__nk_subscribe/<path>`
+2. Server calls `subscribe()` — function keeps running (DB watchers, intervals, etc.)
+3. Call `push(data)` whenever you want → delivered to client → updates `liveData` property
+4. User navigates away → connection closes → cleanup function runs
+
+Like `loader()`, `subscribe()` is stripped from client bundles automatically.
+
+### Subscribe Context
+
+| Property | Type | Description |
+|---|---|---|
+| `params` | `Record<string, string>` | Dynamic route parameters |
+| `headers` | `Record<string, any>` | Request headers |
+| `locale` | `string` | Current locale (when i18n is configured) |
+| `push` | `(data: any) => void` | Send SSE event to client (JSON-serialized) |
+
+Return a cleanup function that is called when the client disconnects.
+
+### Layout Subscribe
+
+Layouts can also export `subscribe()` for global live data (notifications, presence, etc.):
+
+```typescript
+// pages/_layout.ts
+export function subscribe({ push }) {
+  const ws = new WebSocket('wss://notifications.example.com');
+  ws.on('message', (msg) => push(JSON.parse(msg)));
+  return () => ws.close();
+}
+```
+
 ## Nested Layouts
 
 Create `_layout.ts` in any directory to wrap all pages in that directory and its subdirectories.
 
 ```typescript
 // pages/_layout.ts
-@customElement('layout-root')
 export class RootLayout extends LitElement {
   render() {
     return html`
@@ -147,7 +207,6 @@ export async function loader({ headers }) {
   return { user };
 }
 
-@customElement('layout-dashboard')
 export class DashboardLayout extends LitElement {
   @property({ type: Object }) loaderData: any = {};
 
@@ -259,7 +318,6 @@ my-app/
 ```typescript
 import { t, getLocale, setLocale } from '@lumenjs/i18n';
 
-@customElement('page-index')
 export class PageIndex extends LitElement {
   render() {
     return html`<h1>${t('home.title')}</h1>`;
