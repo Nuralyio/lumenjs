@@ -69,6 +69,39 @@ Layout chain nests root → deepest. Layouts persist across navigation — DOM r
 
 Layouts support `loader()` with same rules as pages.
 
+## Subscribe (Live Data)
+
+Named export `subscribe()` on any page or layout enables persistent server-side connections via SSE. Co-located with the page (like `loader()`).
+
+```
+export function subscribe(ctx: { params, push, headers, locale }) → () => void
+```
+
+- `push(data)` sends an SSE event to the client — data is JSON-serialized
+- Return a cleanup function — called when client navigates away or disconnects
+- Property name on the component is exactly `liveData` (declared as `@property({ type: Object }) liveData: any = null`)
+- Stripped from client bundles automatically (like `loader()`)
+- Transport: SSE via `/__nk_subscribe/<path>` (pages) or `/__nk_subscribe/__layout/?__dir=<dir>` (layouts)
+- `subscribe` must be named export function (not default, not arrow const)
+- The function is a persistent process — can open DB watchers, intervals, socket listeners
+- Runs for entire duration user is on the page; cleanup runs on disconnect
+
+```typescript
+// Example: pages/dashboard.ts
+export function subscribe({ push }) {
+  const interval = setInterval(() => push({ time: Date.now() }), 1000);
+  return () => clearInterval(interval);
+}
+
+export class PageDashboard extends LitElement {
+  @property({ type: Object }) loaderData: any = {};
+  @property({ type: Object }) liveData: any = null;
+  render() {
+    return html`<p>Live: ${this.liveData?.time}</p>`;
+  }
+}
+```
+
 ## API Routes
 
 Files in `api/` export named functions per HTTP method: `GET`, `POST`, `PUT`, `DELETE`.
@@ -162,3 +195,5 @@ Build output: `.lumenjs/{client/, server/, locales/, manifest.json}`.
 8. Only `.ts`/`.js` scanned — no `.tsx`/`.jsx`
 9. Class must `extends LitElement` (auto-define checks source text)
 10. Use `loader()` for data — not `connectedCallback` fetch
+11. `subscribe` must be named export function (not default, not arrow const) — same rule as `loader`
+12. Property name for live data is `liveData` exactly

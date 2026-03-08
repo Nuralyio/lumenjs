@@ -2,12 +2,14 @@ export interface ManifestLayout {
   dir: string;
   module: string;
   hasLoader: boolean;
+  hasSubscribe: boolean;
 }
 
 export interface ManifestRoute {
   path: string;
   module: string;
   hasLoader: boolean;
+  hasSubscribe: boolean;
   tagName?: string;
   layouts?: string[];
 }

@@ -1,7 +1,7 @@
 import { Plugin } from 'vite';
 import fs from 'fs';
 import path from 'path';
-import { dirToLayoutTagName, fileHasLoader, filePathToRoute, filePathToTagName } from '../../shared/utils.js';
+import { dirToLayoutTagName, fileHasLoader, fileHasSubscribe, filePathToRoute, filePathToTagName } from '../../shared/utils.js';
 
 export interface RouteEntry {
   path: string;
@@ -118,6 +118,7 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
         const routeArray = routes
           .map(r => {
             const hasLoader = fileHasLoader(r.componentPath);
+            const hasSubscribe = fileHasSubscribe(r.componentPath);
             const componentPath = r.componentPath.replace(/\\/g, '/');
             const chain = getLayoutChain(r.componentPath, layouts);
 
@@ -125,13 +126,14 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
             if (chain.length > 0) {
               const items = chain.map(l => {
                 const lHasLoader = fileHasLoader(l.filePath);
+                const lHasSubscribe = fileHasSubscribe(l.filePath);
                 const lPath = l.filePath.replace(/\\/g, '/');
-                return `{ tagName: ${JSON.stringify(l.tagName)}, loaderPath: ${JSON.stringify(l.dir)}${lHasLoader ? ', hasLoader: true' : ''}, load: () => import('${lPath}') }`;
+                return `{ tagName: ${JSON.stringify(l.tagName)}, loaderPath: ${JSON.stringify(l.dir)}${lHasLoader ? ', hasLoader: true' : ''}${lHasSubscribe ? ', hasSubscribe: true' : ''}, load: () => import('${lPath}') }`;
               });
               layoutsStr = `, layouts: [${items.join(', ')}]`;
             }
 
-            return `  { path: ${JSON.stringify(r.path)}, tagName: ${JSON.stringify(r.tagName)}${hasLoader ? ', hasLoader: true' : ''}, load: () => import('${componentPath}')${layoutsStr} }`;
+            return `  { path: ${JSON.stringify(r.path)}, tagName: ${JSON.stringify(r.tagName)}${hasLoader ? ', hasLoader: true' : ''}${hasSubscribe ? ', hasSubscribe: true' : ''}, load: () => import('${componentPath}')${layoutsStr} }`;
           })
           .join(',\n');
 

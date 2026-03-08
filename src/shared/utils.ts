@@ -31,7 +31,7 @@ export function dirToLayoutTagName(dir: string): string {
 
 /**
  * Find the custom element tag name from a page module.
- * Pages use @customElement('page-xxx') which registers the element.
+ * Pages are auto-registered by the auto-define plugin based on file path.
  */
 export function findTagName(mod: Record<string, any>): string | null {
   for (const key of Object.keys(mod)) {
@@ -107,6 +107,16 @@ export function fileHasLoader(filePath: string): boolean {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
     return /export\s+(async\s+)?function\s+loader\s*\(/.test(content);
+  } catch { return false; }
+}
+
+/**
+ * Check if a page/layout file exports a subscribe() function.
+ */
+export function fileHasSubscribe(filePath: string): boolean {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return /export\s+(async\s+)?function\s+subscribe\s*\(/.test(content);
   } catch { return false; }
 }
 

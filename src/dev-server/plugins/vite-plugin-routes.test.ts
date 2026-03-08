@@ -102,4 +102,27 @@ describe('lumenRoutesPlugin', () => {
 
     expect(code).toContain('hasLoader: true');
   });
+
+  it('detects hasSubscribe in route manifest', () => {
+    const dir = createTmpDir();
+    fs.writeFileSync(path.join(dir, 'index.ts'), 'export function subscribe({ push }) { return () => {}; }\nexport class Page extends LitElement {}');
+
+    const plugin = lumenRoutesPlugin(dir);
+    const load = plugin.load as (id: string) => string | undefined;
+    const code = load('\0virtual:lumenjs-routes')!;
+
+    expect(code).toContain('hasSubscribe: true');
+  });
+
+  it('detects hasSubscribe on layout in route manifest', () => {
+    const dir = createTmpDir();
+    fs.writeFileSync(path.join(dir, '_layout.ts'), 'export function subscribe({ push }) { return () => {}; }\nexport class Layout extends LitElement {}');
+    fs.writeFileSync(path.join(dir, 'index.ts'), 'export class Page extends LitElement {}');
+
+    const plugin = lumenRoutesPlugin(dir);
+    const load = plugin.load as (id: string) => string | undefined;
+    const code = load('\0virtual:lumenjs-routes')!;
+
+    expect(code).toContain('hasSubscribe: true');
+  });
 });

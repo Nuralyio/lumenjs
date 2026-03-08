@@ -71,6 +71,139 @@ export async function handleLayoutLoaderRequest(
   }
 }
 
+export async function handleLayoutSubscribeRequest(
+  manifest: BuildManifest,
+  serverDir: string,
+  queryString: string | undefined,
+  headers: http.IncomingHttpHeaders,
+  res: http.ServerResponse
+): Promise<void> {
+  const query: Record<string, string> = {};
+  if (queryString) {
+    for (const pair of queryString.split('&')) {
+      const [key, val] = pair.split('=');
+      query[decodeURIComponent(key)] = decodeURIComponent(val || '');
+    }
+  }
+
+  const dir = query.__dir || '';
+  const layout = (manifest.layouts || []).find(l => l.dir === dir);
+  if (!layout || !layout.hasSubscribe || !layout.module) {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  const modulePath = path.join(serverDir, layout.module);
+  if (!fs.existsSync(modulePath)) {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  try {
+    const mod = await import(modulePath);
+    if (!mod.subscribe || typeof mod.subscribe !== 'function') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+
+    const locale = query.__locale;
+    const push = (data: any) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    const cleanup = mod.subscribe({ params: {}, push, headers, locale });
+    res.on('close', () => {
+      if (typeof cleanup === 'function') cleanup();
+    });
+  } catch (err: any) {
+    console.error(`[LumenJS] Layout subscribe error for dir=${dir}:`, err);
+    if (!res.headersSent) {
+      res.writeHead(500);
+      res.end();
+    }
+  }
+}
+
+export async function handleSubscribeRequest(
+  manifest: BuildManifest,
+  serverDir: string,
+  pagesDir: string,
+  pathname: string,
+  queryString: string | undefined,
+  headers: http.IncomingHttpHeaders,
+  res: http.ServerResponse
+): Promise<void> {
+  const pagePath = pathname.replace('/__nk_subscribe', '') || '/';
+
+  const query: Record<string, string> = {};
+  if (queryString) {
+    for (const pair of queryString.split('&')) {
+      const [key, val] = pair.split('=');
+      query[decodeURIComponent(key)] = decodeURIComponent(val || '');
+    }
+  }
+
+  let params: Record<string, string> = {};
+  if (query.__params) {
+    try { params = JSON.parse(query.__params); } catch { /* ignore */ }
+    delete query.__params;
+  }
+
+  const matched = matchRoute(manifest.routes.filter(r => r.hasSubscribe), pagePath);
+  if (!matched || !matched.route.module) {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  const modulePath = path.join(serverDir, matched.route.module);
+  if (!fs.existsSync(modulePath)) {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  try {
+    const mod = await import(modulePath);
+    if (!mod.subscribe || typeof mod.subscribe !== 'function') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+
+    const locale = query.__locale;
+    const push = (data: any) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    const cleanup = mod.subscribe({ params: matched.params, push, headers, locale });
+    res.on('close', () => {
+      if (typeof cleanup === 'function') cleanup();
+    });
+  } catch (err: any) {
+    console.error(`[LumenJS] Subscribe error for ${pagePath}:`, err);
+    if (!res.headersSent) {
+      res.writeHead(500);
+      res.end();
+    }
+  }
+}
+
 export async function handleLoaderRequest(
   manifest: BuildManifest,
   serverDir: string,

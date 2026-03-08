@@ -144,4 +144,29 @@ describe('lumenLoadersPlugin transform', () => {
     const result = transform(code, '/other/dir/file.ts');
     expect(result).toBeUndefined();
   });
+
+  it('strips subscribe from client code', () => {
+    const dir = createTmpDir();
+    const plugin = lumenLoadersPlugin(dir);
+    const transform = plugin.transform as (code: string, id: string, options?: { ssr?: boolean }) => { code: string; map: null } | undefined;
+    const code = `export function subscribe({ push }) {\n  const id = setInterval(() => push({ t: 1 }), 1000);\n  return () => clearInterval(id);\n}\nexport class Page extends LitElement {}`;
+    const result = transform(code, path.join(dir, 'index.ts'));
+    expect(result).toBeDefined();
+    expect(result!.code).not.toContain('function subscribe');
+    expect(result!.code).toContain('__nk_has_subscribe');
+    expect(result!.code).toContain('subscribe() — runs server-side only');
+  });
+
+  it('strips both loader and subscribe', () => {
+    const dir = createTmpDir();
+    const plugin = lumenLoadersPlugin(dir);
+    const transform = plugin.transform as (code: string, id: string, options?: { ssr?: boolean }) => { code: string; map: null } | undefined;
+    const code = `export function loader({ params }) {\n  return { x: 1 };\n}\nexport function subscribe({ push }) {\n  return () => {};\n}\nexport class Page extends LitElement {}`;
+    const result = transform(code, path.join(dir, 'index.ts'));
+    expect(result).toBeDefined();
+    expect(result!.code).not.toContain('function loader');
+    expect(result!.code).not.toContain('function subscribe');
+    expect(result!.code).toContain('__nk_has_loader');
+    expect(result!.code).toContain('__nk_has_subscribe');
+  });
 });

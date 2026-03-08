@@ -34,6 +34,28 @@ export async function fetchLayoutLoaderData(dir: string): Promise<any> {
   return data;
 }
 
+export function connectSubscribe(pathname: string, params: Record<string, string>): EventSource {
+  const url = new URL(`/__nk_subscribe${pathname}`, location.origin);
+  if (Object.keys(params).length > 0) {
+    url.searchParams.set('__params', JSON.stringify(params));
+  }
+  const config = getI18nConfig();
+  if (config) {
+    url.searchParams.set('__locale', getLocale());
+  }
+  return new EventSource(url.toString());
+}
+
+export function connectLayoutSubscribe(dir: string): EventSource {
+  const url = new URL('/__nk_subscribe/__layout/', location.origin);
+  url.searchParams.set('__dir', dir);
+  const config = getI18nConfig();
+  if (config) {
+    url.searchParams.set('__locale', getLocale());
+  }
+  return new EventSource(url.toString());
+}
+
 export function render404(pathname: string): string {
   return `<div style="display:flex;align-items:center;justify-content:center;min-height:80vh;font-family:system-ui,-apple-system,sans-serif;padding:2rem">
   <div style="text-align:center;max-width:400px">

@@ -17,7 +17,6 @@ import { installDomShims } from '../../shared/dom-shims.js';
  *     return { item: data, timestamp: Date.now() };
  *   }
  *
- *   @customElement('page-item')
  *   export class PageItem extends LitElement {
  *     @property({ type: Object }) loaderData = {};
  *     render() {
@@ -33,6 +32,87 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
   return {
     name: 'lumenjs-loaders',
     configureServer(server: ViteDevServer) {
+      // SSE subscribe middleware
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url?.startsWith('/__nk_subscribe/')) {
+          return next();
+        }
+
+        const [pathname, queryString] = req.url.split('?');
+
+        // Parse query params
+        const query: Record<string, string> = {};
+        if (queryString) {
+          for (const pair of queryString.split('&')) {
+            const [key, val] = pair.split('=');
+            query[decodeURIComponent(key)] = decodeURIComponent(val || '');
+          }
+        }
+
+        // Handle layout subscribe: /__nk_subscribe/__layout/?__dir=<dir>
+        if (pathname === '/__nk_subscribe/__layout/' || pathname === '/__nk_subscribe/__layout') {
+          const dir = query.__dir || '';
+          await handleLayoutSubscribe(server, pagesDir, dir, query, req, res);
+          return;
+        }
+
+        const pagePath = pathname.replace('/__nk_subscribe', '') || '/';
+
+        // Parse URL params
+        let params: Record<string, string> = {};
+        if (query.__params) {
+          try { params = JSON.parse(query.__params); } catch { /* ignore */ }
+          delete query.__params;
+        }
+
+        const filePath = resolvePageFile(pagesDir, pagePath);
+        if (!filePath) {
+          res.statusCode = 404;
+          res.end();
+          return;
+        }
+
+        if (Object.keys(params).length === 0) {
+          Object.assign(params, extractRouteParams(pagesDir, pagePath, filePath));
+        }
+
+        try {
+          installDomShims();
+          const mod = await server.ssrLoadModule(filePath);
+
+          if (!mod.subscribe || typeof mod.subscribe !== 'function') {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+
+          // Set SSE headers
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          });
+
+          const locale = query.__locale;
+          const push = (data: any) => {
+            res.write(`data: ${JSON.stringify(data)}\n\n`);
+          };
+
+          const cleanup = mod.subscribe({ params, push, headers: req.headers, locale });
+
+          res.on('close', () => {
+            if (typeof cleanup === 'function') cleanup();
+          });
+        } catch (err: any) {
+          console.error(`[LumenJS] Subscribe error for ${pagePath}:`, err);
+          if (!res.headersSent) {
+            res.statusCode = 500;
+            res.end();
+          }
+        }
+      });
+
+      // Loader middleware
       server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith('/__nk_loader/')) {
           return next();
@@ -139,43 +219,32 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
       if (options?.ssr) return;
       // Apply to page files and layout files within the pages directory
       if (!id.startsWith(pagesDir) || !id.endsWith('.ts')) return;
-      if (!code.includes('export') || !code.includes('loader')) return;
 
-      const hasLoader = /export\s+(async\s+)?function\s+loader\s*\(/.test(code);
-      if (!hasLoader) return;
+      const hasLoader = code.includes('export') && code.includes('loader') && /export\s+(async\s+)?function\s+loader\s*\(/.test(code);
+      const hasSubscribe = code.includes('export') && code.includes('subscribe') && /export\s+(async\s+)?function\s+subscribe\s*\(/.test(code);
 
-      // Find the loader function by tracking brace depth
-      const match = code.match(/export\s+(async\s+)?function\s+loader\s*\(/);
-      if (!match) return;
+      if (!hasLoader && !hasSubscribe) return;
 
-      const startIdx = match.index!;
-      // Skip past the function signature's closing parenthesis (handles nested braces in type annotations)
-      let parenDepth = 1;
-      let sigIdx = startIdx + match[0].length;
-      while (sigIdx < code.length && parenDepth > 0) {
-        if (code[sigIdx] === '(') parenDepth++;
-        else if (code[sigIdx] === ')') parenDepth--;
-        sigIdx++;
-      }
-      // Find the opening brace of the function body (after the closing paren and optional return type)
-      let braceStart = code.indexOf('{', sigIdx);
-      if (braceStart === -1) return;
+      let result = code;
 
-      let depth = 1;
-      let i = braceStart + 1;
-      while (i < code.length && depth > 0) {
-        if (code[i] === '{') depth++;
-        else if (code[i] === '}') depth--;
-        i++;
+      // Strip loader function
+      if (hasLoader) {
+        result = stripServerFunction(result, 'loader');
       }
 
-      // Replace the entire loader function
-      const transformed = code.substring(0, startIdx)
-        + '// loader() — runs server-side only'
-        + code.substring(i);
+      // Strip subscribe function
+      if (hasSubscribe) {
+        result = stripServerFunction(result, 'subscribe');
+      }
 
-      const withFlag = transformed + '\nexport const __nk_has_loader = true;\n';
-      return { code: withFlag, map: null };
+      if (hasLoader) {
+        result += '\nexport const __nk_has_loader = true;\n';
+      }
+      if (hasSubscribe) {
+        result += '\nexport const __nk_has_subscribe = true;\n';
+      }
+
+      return { code: result, map: null };
     },
   };
 }
@@ -338,6 +407,102 @@ function findDynamicPage(baseDir: string, segments: string[]): string | null {
   }
 
   return null;
+}
+
+/**
+ * Strip a named server-side function (loader/subscribe) from client code using brace-depth tracking.
+ */
+function stripServerFunction(code: string, fnName: string): string {
+  const regex = new RegExp(`export\\s+(async\\s+)?function\\s+${fnName}\\s*\\(`);
+  const match = code.match(regex);
+  if (!match) return code;
+
+  const startIdx = match.index!;
+  let parenDepth = 1;
+  let sigIdx = startIdx + match[0].length;
+  while (sigIdx < code.length && parenDepth > 0) {
+    if (code[sigIdx] === '(') parenDepth++;
+    else if (code[sigIdx] === ')') parenDepth--;
+    sigIdx++;
+  }
+  let braceStart = code.indexOf('{', sigIdx);
+  if (braceStart === -1) return code;
+
+  let depth = 1;
+  let i = braceStart + 1;
+  while (i < code.length && depth > 0) {
+    if (code[i] === '{') depth++;
+    else if (code[i] === '}') depth--;
+    i++;
+  }
+
+  return code.substring(0, startIdx)
+    + `// ${fnName}() — runs server-side only`
+    + code.substring(i);
+}
+
+/**
+ * Handle layout subscribe requests in dev mode.
+ * GET /__nk_subscribe/__layout/?__dir=<dir>
+ */
+async function handleLayoutSubscribe(
+  server: ViteDevServer,
+  pagesDir: string,
+  dir: string,
+  query: Record<string, string>,
+  req: any,
+  res: any
+): Promise<void> {
+  const layoutDir = path.join(pagesDir, dir);
+  let layoutFile: string | null = null;
+
+  for (const ext of ['.ts', '.js']) {
+    const p = path.join(layoutDir, `_layout${ext}`);
+    if (fs.existsSync(p)) {
+      layoutFile = p;
+      break;
+    }
+  }
+
+  if (!layoutFile) {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+
+  try {
+    installDomShims();
+    const mod = await server.ssrLoadModule(layoutFile);
+
+    if (!mod.subscribe || typeof mod.subscribe !== 'function') {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+
+    const locale = query.__locale;
+    const push = (data: any) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    const cleanup = mod.subscribe({ params: {}, push, headers: req.headers, locale });
+
+    res.on('close', () => {
+      if (typeof cleanup === 'function') cleanup();
+    });
+  } catch (err: any) {
+    console.error(`[LumenJS] Layout subscribe error for dir=${dir}:`, err);
+    if (!res.headersSent) {
+      res.statusCode = 500;
+      res.end();
+    }
+  }
 }
 
 /**
