@@ -45,7 +45,11 @@ export async function handleLayoutLoaderRequest(
       return;
     }
 
-    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers });
+    // Parse locale from query for layout loader
+    const locale = query.__locale;
+    delete query.__locale;
+
+    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers, locale });
     if (isRedirectResponse(result)) {
       res.writeHead(result.status || 302, { Location: result.location });
       res.end();
@@ -116,7 +120,10 @@ export async function handleLoaderRequest(
       return;
     }
 
-    const result = await mod.loader({ params: matched.params, query, url: pagePath, headers });
+    const locale = query.__locale;
+    delete query.__locale;
+
+    const result = await mod.loader({ params: matched.params, query, url: pagePath, headers, locale });
     if (isRedirectResponse(result)) {
       res.writeHead(result.status || 302, { Location: result.location });
       res.end();

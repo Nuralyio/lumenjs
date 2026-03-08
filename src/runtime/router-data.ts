@@ -1,7 +1,13 @@
+import { getI18nConfig, getLocale } from './i18n.js';
+
 export async function fetchLoaderData(pathname: string, params: Record<string, string>): Promise<any> {
   const url = new URL(`/__nk_loader${pathname}`, location.origin);
   if (Object.keys(params).length > 0) {
     url.searchParams.set('__params', JSON.stringify(params));
+  }
+  const config = getI18nConfig();
+  if (config) {
+    url.searchParams.set('__locale', getLocale());
   }
   const res = await fetch(url.toString());
   if (!res.ok) {
@@ -15,6 +21,10 @@ export async function fetchLoaderData(pathname: string, params: Record<string, s
 export async function fetchLayoutLoaderData(dir: string): Promise<any> {
   const url = new URL(`/__nk_loader/__layout/`, location.origin);
   url.searchParams.set('__dir', dir);
+  const config = getI18nConfig();
+  if (config) {
+    url.searchParams.set('__locale', getLocale());
+  }
   const res = await fetch(url.toString());
   if (!res.ok) {
     throw new Error(`Layout loader returned ${res.status}`);

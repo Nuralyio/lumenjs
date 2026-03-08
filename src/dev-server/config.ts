@@ -5,9 +5,16 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+export interface I18nConfig {
+  locales: string[];
+  defaultLocale: string;
+  prefixDefault: boolean;
+}
+
 export interface ProjectConfig {
   title: string;
   integrations: string[];
+  i18n?: I18nConfig;
 }
 
 /**
@@ -31,7 +38,34 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
       }
     } catch { /* use defaults */ }
   }
-  return { title, integrations };
+
+  // Parse i18n config (reuse the same file read)
+  let i18n: I18nConfig | undefined;
+  if (fs.existsSync(configPath)) {
+    try {
+      const configContent = fs.readFileSync(configPath, 'utf-8');
+      const i18nMatch = configContent.match(/i18n\s*:\s*\{([\s\S]*?)\}/);
+      if (i18nMatch) {
+        const block = i18nMatch[1];
+        const localesMatch = block.match(/locales\s*:\s*\[([^\]]*)\]/);
+        const defaultMatch = block.match(/defaultLocale\s*:\s*['"]([^'"]+)['"]/);
+        const prefixMatch = block.match(/prefixDefault\s*:\s*(true|false)/);
+        if (localesMatch && defaultMatch) {
+          const locales = localesMatch[1]
+            .split(',')
+            .map(s => s.trim().replace(/^['"]|['"]$/g, ''))
+            .filter(Boolean);
+          i18n = {
+            locales,
+            defaultLocale: defaultMatch[1],
+            prefixDefault: prefixMatch ? prefixMatch[1] === 'true' : false,
+          };
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  return { title, integrations, ...(i18n ? { i18n } : {}) };
 }
 
 /**

@@ -9,6 +9,8 @@ import { handleApiRoute } from './serve-api.js';
 import { handleLoaderRequest, handleLayoutLoaderRequest } from './serve-loaders.js';
 import { handlePageRoute } from './serve-ssr.js';
 import { renderErrorPage } from './error-page.js';
+import { handleI18nRequest } from './serve-i18n.js';
+import { resolveLocale } from '../dev-server/middleware/locale.js';
 
 export interface ServeOptions {
   projectDir: string;
@@ -30,6 +32,7 @@ export async function serveProject(options: ServeOptions): Promise<void> {
 
   const manifest: BuildManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
   const { title } = readProjectConfig(projectDir);
+  const localesDir = path.join(outDir, 'locales');
 
   // Read the built index.html shell
   const indexHtmlPath = path.join(clientDir, 'index.html');
@@ -70,20 +73,35 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         if (served) return;
       }
 
-      // 3. Layout loader endpoint
+      // 3. i18n translation endpoint
+      if (pathname.startsWith('/__nk_i18n/') && manifest.i18n) {
+        handleI18nRequest(localesDir, manifest.i18n.locales, pathname, req, res);
+        return;
+      }
+
+      // 4. Layout loader endpoint
       if (pathname === '/__nk_loader/__layout/' || pathname === '/__nk_loader/__layout') {
         await handleLayoutLoaderRequest(manifest, serverDir, queryString, req.headers, res);
         return;
       }
 
-      // 4. Loader endpoint for client-side navigation
+      // 5. Loader endpoint for client-side navigation
       if (pathname.startsWith('/__nk_loader/')) {
         await handleLoaderRequest(manifest, serverDir, pagesDir, pathname, queryString, req.headers, res);
         return;
       }
 
-      // 5. Page routes — SSR render
-      await handlePageRoute(manifest, serverDir, pagesDir, pathname, queryString, indexHtmlShell, title, ssrRuntime, req, res);
+      // 6. Resolve locale and strip prefix for page routing
+      let resolvedPathname = pathname;
+      let locale: string | undefined;
+      if (manifest.i18n) {
+        const result = resolveLocale(pathname, manifest.i18n, req.headers as any);
+        resolvedPathname = result.pathname;
+        locale = result.locale;
+      }
+
+      // 7. Page routes — SSR render
+      await handlePageRoute(manifest, serverDir, pagesDir, resolvedPathname, queryString, indexHtmlShell, title, ssrRuntime, req, res);
     } catch (err: any) {
       console.error('[LumenJS] Request error:', err);
       const html = renderErrorPage(

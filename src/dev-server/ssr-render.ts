@@ -4,6 +4,7 @@ import fs from 'fs';
 import { resolvePageFile, extractRouteParams } from './plugins/vite-plugin-loaders.js';
 import { stripOuterLitMarkers, dirToLayoutTagName, filePathToTagName } from '../shared/utils.js';
 import { installDomShims } from '../shared/dom-shims.js';
+import { loadTranslationsFromDisk } from './plugins/vite-plugin-i18n.js';
 
 export interface LayoutSSRData {
   loaderPath: string;
@@ -17,7 +18,7 @@ export interface LayoutSSRData {
  * Returns pre-rendered HTML and loader data, or null on failure (falls back to CSR).
  */
 export async function ssrRenderPage(
-  server: ViteDevServer, pagesDir: string, pathname: string, headers?: Record<string, string | string[] | undefined>
+  server: ViteDevServer, pagesDir: string, pathname: string, headers?: Record<string, string | string[] | undefined>, locale?: string
 ): Promise<{ html: string; loaderData: any; layoutsData?: LayoutSSRData[]; redirect?: { location: string; status: number } } | null> {
   try {
     const filePath = resolvePageFile(pagesDir, pathname);
@@ -31,6 +32,21 @@ export async function ssrRenderPage(
     // Patch missing DOM APIs that NuralyUI components may use during SSR
     installDomShims();
 
+    // Initialize i18n in the SSR context so t() works during render
+    if (locale) {
+      const projectDir = path.resolve(pagesDir, '..');
+      const translations = loadTranslationsFromDisk(projectDir, locale);
+      try {
+        // Load the same i18n module the page will import (via resolve.alias)
+        const i18nMod = await server.ssrLoadModule('@lumenjs/i18n');
+        if (i18nMod?.initI18n) {
+          i18nMod.initI18n({ locales: [], defaultLocale: locale, prefixDefault: false }, locale, translations);
+        }
+      } catch {
+        // i18n module not available — translations will show keys
+      }
+    }
+
     // Invalidate SSR module cache so we always get fresh content after file edits.
     // Also clear the custom element from the SSR registry so the new class is used.
     const g = globalThis as any;
@@ -43,7 +59,7 @@ export async function ssrRenderPage(
     // Run loader if present
     let loaderData: any = undefined;
     if (mod.loader && typeof mod.loader === 'function') {
-      loaderData = await mod.loader({ params, query: {}, url: pathname, headers: headers || {} });
+      loaderData = await mod.loader({ params, query: {}, url: pathname, headers: headers || {}, locale });
       if (loaderData && typeof loaderData === 'object' && loaderData.__nk_redirect) {
         return { html: '', loaderData: null, redirect: { location: loaderData.location, status: loaderData.status || 302 } };
       }
@@ -68,7 +84,7 @@ export async function ssrRenderPage(
       let layoutLoaderData: any = undefined;
 
       if (layoutMod.loader && typeof layoutMod.loader === 'function') {
-        layoutLoaderData = await layoutMod.loader({ params: {}, query: {}, url: pathname, headers: headers || {} });
+        layoutLoaderData = await layoutMod.loader({ params: {}, query: {}, url: pathname, headers: headers || {}, locale });
         if (layoutLoaderData && typeof layoutLoaderData === 'object' && layoutLoaderData.__nk_redirect) {
           return { html: '', loaderData: null, redirect: { location: layoutLoaderData.location, status: layoutLoaderData.status || 302 } };
         }

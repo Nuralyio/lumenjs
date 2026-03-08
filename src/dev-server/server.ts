@@ -15,10 +15,12 @@ import { autoImportPlugin } from './plugins/vite-plugin-auto-import.js';
 import { litHmrPlugin } from './plugins/vite-plugin-lit-hmr.js';
 import { sourceAnnotatorPlugin } from './plugins/vite-plugin-source-annotator.js';
 import { virtualModulesPlugin } from './plugins/vite-plugin-virtual-modules.js';
+import { i18nPlugin, loadTranslationsFromDisk } from './plugins/vite-plugin-i18n.js';
+import { resolveLocale } from './middleware/locale.js';
 
 // Re-export for backwards compatibility
 export { readProjectConfig, readProjectTitle, getLumenJSNodeModules, getLumenJSDirs } from './config.js';
-export type { ProjectConfig } from './config.js';
+export type { ProjectConfig, I18nConfig } from './config.js';
 export { getNuralyUIAliases, resolveNuralyUIPaths } from './nuralyui-aliases.js';
 
 export interface DevServerOptions {
@@ -43,15 +45,22 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
   const lumenNodeModules = getLumenJSNodeModules();
   const { runtimeDir, editorDir } = getLumenJSDirs();
 
-  // Resolve NuralyUI paths for aliases
-  const nuralyUIPaths = resolveNuralyUIPaths(projectDir);
+  // Resolve NuralyUI paths for aliases (only when nuralyui integration is enabled)
   const aliases: Record<string, string> = {};
-  if (nuralyUIPaths) {
-    Object.assign(aliases, getNuralyUIAliases(nuralyUIPaths.componentsPath, nuralyUIPaths.commonPath));
+  if (options?.integrations?.includes('nuralyui')) {
+    const nuralyUIPaths = resolveNuralyUIPaths(projectDir);
+    if (nuralyUIPaths) {
+      Object.assign(aliases, getNuralyUIAliases(nuralyUIPaths.componentsPath, nuralyUIPaths.commonPath));
+    }
   }
 
   const resolve: UserConfig['resolve'] = {
-    alias: { ...aliases },
+    alias: {
+      ...aliases,
+      // Map @lumenjs/i18n to the physical dist file so Vite resolves it
+      // without going through node_modules (it's not an npm package).
+      '@lumenjs/i18n': path.join(runtimeDir, 'i18n.js'),
+    },
     conditions: isDev ? ['development', 'browser'] : ['browser'],
     dedupe: ['lit', 'lit-html', 'lit-element', '@lit/reactive-element'],
   };
@@ -69,9 +78,13 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
     lumenRoutesPlugin(pagesDir),
     lumenLoadersPlugin(pagesDir),
     litDedupPlugin(lumenNodeModules, isDev),
-    autoImportPlugin(projectDir),
     virtualModulesPlugin(runtimeDir, editorDir),
   ];
+
+  // Conditionally add NuralyUI auto-import plugin
+  if (options?.integrations?.includes('nuralyui')) {
+    plugins.push(autoImportPlugin(projectDir));
+  }
 
   // Conditionally add Tailwind plugin from the project's node_modules
   if (options?.integrations?.includes('tailwind')) {
@@ -95,7 +108,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
   const publicDir = path.join(projectDir, 'public');
 
   const config = readProjectConfig(projectDir);
-  const { title, integrations } = config;
+  const { title, integrations, i18n: i18nConfig } = config;
   const shared = getSharedViteConfig(projectDir, { integrations });
 
   const server = await createViteServer({
@@ -114,6 +127,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       ...shared.plugins,
       lumenApiRoutesPlugin(apiDir, projectDir),
       litHmrPlugin(projectDir),
+      ...(i18nConfig ? [i18nPlugin(projectDir, i18nConfig)] : []),
       ...(editorMode ? [sourceAnnotatorPlugin(projectDir)] : []),
       {
         name: 'lumenjs-index-html',
@@ -121,10 +135,22 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
           server.middlewares.use((req, res, next) => {
             if (req.url && !req.url.startsWith('/@') && !req.url.startsWith('/node_modules') &&
                 !req.url.startsWith('/api/') && !req.url.startsWith('/__nk_loader/') &&
+                !req.url.startsWith('/__nk_i18n/') &&
                 !req.url.includes('.') && req.method === 'GET') {
-              const pathname = req.url.split('?')[0];
+              let pathname = req.url.split('?')[0];
+
+              // Resolve locale from URL/cookie/header
+              let locale: string | undefined;
+              let translations: Record<string, string> | undefined;
+              if (i18nConfig) {
+                const localeResult = resolveLocale(pathname, i18nConfig, req.headers as Record<string, string | string[] | undefined>);
+                locale = localeResult.locale;
+                pathname = localeResult.pathname;
+                translations = loadTranslationsFromDisk(projectDir, locale);
+              }
+
               const SSR_PLACEHOLDER = '<!--__NK_SSR_CONTENT__-->';
-              ssrRenderPage(server, pagesDir, pathname, req.headers as Record<string, string | string[] | undefined>).then(async ssrResult => {
+              ssrRenderPage(server, pagesDir, pathname, req.headers as Record<string, string | string[] | undefined>, locale).then(async ssrResult => {
                 if (ssrResult?.redirect) {
                   res.writeHead(ssrResult.redirect.status, { Location: ssrResult.redirect.location });
                   res.end();
@@ -137,6 +163,9 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                   loaderData: ssrResult?.loaderData,
                   layoutsData: ssrResult?.layoutsData,
                   integrations,
+                  locale,
+                  i18nConfig: i18nConfig || undefined,
+                  translations,
                 });
                 const transformed = await server.transformIndexHtml(req.url!, shellHtml);
                 const finalHtml = ssrResult
@@ -147,7 +176,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                 res.end(finalHtml);
               }).catch(err => {
                 console.error('[LumenJS] SSR/HTML generation error:', err);
-                const html = generateIndexHtml({ title, editorMode, integrations });
+                const html = generateIndexHtml({ title, editorMode, integrations, locale, i18nConfig: i18nConfig || undefined, translations });
                 server.transformIndexHtml(req.url!, html).then(transformed => {
                   res.setHeader('Content-Type', 'text/html');
                   res.setHeader('Cache-Control', 'no-store');
@@ -164,6 +193,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     esbuild: shared.esbuild,
     optimizeDeps: {
       include: ['lit', 'lit/decorators.js', 'lit/directive.js', 'lit/directive-helpers.js', 'lit/async-directive.js', 'lit-html', 'lit-element', '@lit/reactive-element'],
+      exclude: ['@lumenjs/i18n'],
     },
     ssr: {
       noExternal: true,

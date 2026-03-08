@@ -102,10 +102,20 @@ export function setupInlineTextEdit() {
       editingEl = null;
 
       if (newText !== originalText) {
-        sendToHost({
-          type: 'NK_TEXT_CHANGED',
-          payload: { sourceFile, line, originalText, newText }
-        });
+        // Check if this element has an i18n key — if so, send a translation change
+        const i18nKey = textEl.getAttribute('data-nk-i18n-key');
+        if (i18nKey) {
+          const locale = document.documentElement.lang || 'en';
+          sendToHost({
+            type: 'NK_TRANSLATION_CHANGED',
+            payload: { key: i18nKey, locale, originalText, newText }
+          });
+        } else {
+          sendToHost({
+            type: 'NK_TEXT_CHANGED',
+            payload: { sourceFile, line, originalText, newText }
+          });
+        }
       }
     };
 

@@ -1,4 +1,5 @@
 import type { Route, LayoutInfo } from './router.js';
+import { initI18n, stripLocalePrefix, getI18nConfig } from './i18n.js';
 
 /**
  * Hydrate the initial SSR-rendered route.
@@ -11,7 +12,21 @@ export async function hydrateInitialRoute(
   matchRoute: (pathname: string) => { route: Route; params: Record<string, string> } | null,
   onHydrated: (tag: string, layoutTags: string[], params: Record<string, string>) => void
 ): Promise<void> {
-  const match = matchRoute(location.pathname);
+  // Read i18n data and init before anything else
+  const i18nScript = document.getElementById('__nk_i18n__');
+  if (i18nScript) {
+    try {
+      const i18nData = JSON.parse(i18nScript.textContent || '');
+      initI18n(i18nData.config, i18nData.locale, i18nData.translations);
+    } catch { /* ignore */ }
+    i18nScript.remove();
+  }
+
+  // Strip locale prefix for route matching (routes are locale-agnostic)
+  const config = getI18nConfig();
+  const matchPath = config ? stripLocalePrefix(location.pathname) : location.pathname;
+
+  const match = matchRoute(matchPath);
   if (!match) return;
 
   const layouts = match.route.layouts || [];

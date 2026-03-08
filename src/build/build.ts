@@ -28,7 +28,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   }
   fs.mkdirSync(outDir, { recursive: true });
 
-  const { title, integrations } = readProjectConfig(projectDir);
+  const { title, integrations, i18n: i18nConfig } = readProjectConfig(projectDir);
   const shared = getSharedViteConfig(projectDir, { mode: 'production', integrations });
 
   // Scan pages, layouts, and API routes for the manifest
@@ -161,6 +161,21 @@ export async function buildProject(options: BuildOptions): Promise<void> {
     }
   }
 
+  // --- Copy locales ---
+  if (i18nConfig) {
+    const localesDir = path.join(projectDir, 'locales');
+    const outLocalesDir = path.join(outDir, 'locales');
+    if (fs.existsSync(localesDir)) {
+      fs.mkdirSync(outLocalesDir, { recursive: true });
+      for (const file of fs.readdirSync(localesDir)) {
+        if (file.endsWith('.json')) {
+          fs.copyFileSync(path.join(localesDir, file), path.join(outLocalesDir, file));
+        }
+      }
+      console.log(`[LumenJS] Copied ${i18nConfig.locales.length} locale(s) to output.`);
+    }
+  }
+
   // --- Write manifest ---
   const manifest: BuildManifest = {
     routes: pageEntries.map(e => {
@@ -184,6 +199,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
       module: e.hasLoader ? (e.dir ? `layouts/${e.dir}/_layout.js` : 'layouts/_layout.js') : '',
       hasLoader: e.hasLoader,
     })),
+    ...(i18nConfig ? { i18n: i18nConfig } : {}),
   };
 
   fs.writeFileSync(

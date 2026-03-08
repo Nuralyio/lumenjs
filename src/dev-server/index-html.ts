@@ -7,6 +7,9 @@ export interface IndexHtmlOptions {
   loaderData?: any;
   layoutsData?: Array<{ loaderPath: string; data: any }>;
   integrations?: string[];
+  locale?: string;
+  i18nConfig?: { locales: string[]; defaultLocale: string; prefixDefault: boolean };
+  translations?: Record<string, string>;
 }
 
 /**
@@ -32,17 +35,32 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
     loaderDataScript = `<script type="application/json" id="__nk_ssr_data__">${JSON.stringify(ssrData).replace(/</g, '\\u003c')}</script>`;
   }
 
+  // i18n: inline translations and config for client hydration
+  let i18nScript = '';
+  if (options.i18nConfig && options.locale && options.translations) {
+    const i18nData = {
+      config: options.i18nConfig,
+      locale: options.locale,
+      translations: options.translations,
+    };
+    i18nScript = `<script type="application/json" id="__nk_i18n__">${JSON.stringify(i18nData).replace(/</g, '\\u003c')}</script>`;
+  }
+
+  // i18n module is loaded via imports from router-hydration, no separate script needed
+
   const hydrateScript = isSSR
     ? `<script type="module">import '@lit-labs/ssr-client/lit-element-hydrate-support.js';</script>`
     : '';
 
+  const htmlLang = options.locale || 'en';
+
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${htmlLang}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(options.title)}</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@nuralyui/themes@latest/dist/default.css">${options.integrations?.includes('tailwind') ? '\n  <link rel="stylesheet" href="/styles/tailwind.css">' : ''}
+  ${options.integrations?.includes('nuralyui') ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@nuralyui/themes@latest/dist/default.css">' : ''}${options.integrations?.includes('tailwind') ? '\n  <script type="module">import "/styles/tailwind.css";</script>' : ''}
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; }
@@ -50,6 +68,7 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
   </style>
 </head>
 <body>
+  ${i18nScript}
   ${loaderDataScript}
   ${appTag}
   ${hydrateScript}
