@@ -51,6 +51,23 @@ export function findTagName(mod: Record<string, any>): string | null {
 }
 
 /**
+ * Convert a relative file path within pages/ to a page tag name.
+ *   'index.ts'           → 'page-index'
+ *   'docs/api-routes.ts' → 'page-docs-api-routes'
+ *   'blog/[slug].ts'     → 'page-blog-slug'
+ */
+export function filePathToTagName(filePath: string): string {
+  const name = filePath
+    .replace(/\.(ts|js)$/, '')
+    .replace(/\\/g, '-')
+    .replace(/\//g, '-')
+    .replace(/\[\.\.\.([^\]]+)\]/g, '$1')
+    .replace(/\[([^\]]+)\]/g, '$1')
+    .toLowerCase();
+  return `page-${name}`;
+}
+
+/**
  * Check if a redirect response was returned from a loader.
  */
 export function isRedirectResponse(value: any): value is { location: string; status?: number } {
