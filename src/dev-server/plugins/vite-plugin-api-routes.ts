@@ -1,6 +1,7 @@
 import { Plugin, ViteDevServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
+import { readBody } from '../../shared/utils.js';
 
 /**
  * LumenJS API Routes plugin.
@@ -180,22 +181,6 @@ function extractParams(apiDir: string, routePath: string, filePath: string): Rec
   }
 
   return params;
-}
-
-function readBody(req: any): Promise<any> {
-  return new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', (chunk: Buffer) => { data += chunk.toString(); });
-    req.on('end', () => {
-      if (!data) return resolve(undefined);
-      try {
-        resolve(JSON.parse(data));
-      } catch {
-        resolve(data);
-      }
-    });
-    req.on('error', reject);
-  });
 }
 
 interface NkUploadedFile {

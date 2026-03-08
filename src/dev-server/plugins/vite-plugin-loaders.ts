@@ -1,10 +1,8 @@
 import { Plugin, ViteDevServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
-
-function isRedirectResponse(value: any): value is { location: string; status?: number } {
-  return value && typeof value === 'object' && typeof value.location === 'string' && value.__nk_redirect === true;
-}
+import { isRedirectResponse } from '../../shared/utils.js';
+import { installDomShims } from '../../shared/dom-shims.js';
 
 /**
  * LumenJS Server Loaders plugin.
@@ -28,6 +26,7 @@ function isRedirectResponse(value: any): value is { location: string; status?: n
  *   }
  *
  * The loader runs server-side via /__nk_loader/<page-path>
+ * Layout loaders run via /__nk_loader/__layout/?__dir=<dir>
  * The router auto-fetches and passes the result as `loaderData` property.
  */
 export function lumenLoadersPlugin(pagesDir: string): Plugin {
@@ -40,7 +39,6 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
         }
 
         const [pathname, queryString] = req.url.split('?');
-        const pagePath = pathname.replace('/__nk_loader', '') || '/';
 
         // Parse query params
         const query: Record<string, string> = {};
@@ -50,6 +48,15 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
             query[decodeURIComponent(key)] = decodeURIComponent(val || '');
           }
         }
+
+        // Handle layout loader requests: /__nk_loader/__layout/?__dir=<dir>
+        if (pathname === '/__nk_loader/__layout/' || pathname === '/__nk_loader/__layout') {
+          const dir = query.__dir || '';
+          await handleLayoutLoader(server, pagesDir, dir, req, res);
+          return;
+        }
+
+        const pagePath = pathname.replace('/__nk_loader', '') || '/';
 
         // Parse URL params passed as __params query
         let params: Record<string, string> = {};
@@ -76,15 +83,7 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
 
         try {
           // Provide minimal DOM shims for SSR so Lit class definitions don't crash
-          const g = globalThis as any;
-          if (!g.HTMLElement) {
-            g.HTMLElement = class HTMLElement {};
-            g.customElements = { get: () => undefined, define: () => {} };
-            g.document = { createTreeWalker: () => ({ nextNode: () => null }), body: {}, querySelectorAll: () => [], querySelector: () => null, addEventListener: () => {} };
-            g.window = g;
-            g.CSSStyleSheet = class CSSStyleSheet {};
-            g.MutationObserver = class MutationObserver { observe() {} disconnect() {} };
-          }
+          installDomShims();
 
           const mod = await server.ssrLoadModule(filePath);
 
@@ -129,10 +128,12 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
      * Strip the loader() export from client bundles.
      * Runs before esbuild (enforce: 'pre') so we operate on raw TypeScript source.
      * Skip for SSR so ssrLoadModule can access the loader.
+     * Applies to both page files and _layout files.
      */
     enforce: 'pre' as const,
     transform(code: string, id: string, options?: { ssr?: boolean }) {
       if (options?.ssr) return;
+      // Apply to page files and layout files within the pages directory
       if (!id.startsWith(pagesDir) || !id.endsWith('.ts')) return;
       if (!code.includes('export') || !code.includes('loader')) return;
 
@@ -173,6 +174,76 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
       return { code: withFlag, map: null };
     },
   };
+}
+
+/**
+ * Handle layout loader requests.
+ * GET /__nk_loader/__layout/?__dir=dashboard
+ */
+async function handleLayoutLoader(
+  server: ViteDevServer,
+  pagesDir: string,
+  dir: string,
+  req: any,
+  res: any
+): Promise<void> {
+  // Resolve the layout file from the directory
+  const layoutDir = path.join(pagesDir, dir);
+  let layoutFile: string | null = null;
+
+  for (const ext of ['.ts', '.js']) {
+    const p = path.join(layoutDir, `_layout${ext}`);
+    if (fs.existsSync(p)) {
+      layoutFile = p;
+      break;
+    }
+  }
+
+  if (!layoutFile) {
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ __nk_no_loader: true }));
+    return;
+  }
+
+  try {
+    installDomShims();
+
+    const mod = await server.ssrLoadModule(layoutFile);
+
+    if (!mod.loader || typeof mod.loader !== 'function') {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ __nk_no_loader: true }));
+      return;
+    }
+
+    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers: req.headers });
+
+    if (isRedirectResponse(result)) {
+      res.statusCode = result.status || 302;
+      res.setHeader('Location', result.location);
+      res.end();
+      return;
+    }
+
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(result ?? null));
+  } catch (err: any) {
+    if (isRedirectResponse(err)) {
+      res.statusCode = err.status || 302;
+      res.setHeader('Location', err.location);
+      res.end();
+      return;
+    }
+    console.error(`[LumenJS] Layout loader error for dir=${dir}:`, err);
+    const status = err?.status || 500;
+    const message = err?.message || 'Layout loader failed';
+    res.statusCode = status;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: message }));
+  }
 }
 
 /**
