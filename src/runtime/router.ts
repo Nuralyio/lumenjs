@@ -1,8 +1,19 @@
+import { fetchLoaderData, fetchLayoutLoaderData, render404 } from './router-data.js';
+import { hydrateInitialRoute } from './router-hydration.js';
+
+export interface LayoutInfo {
+  tagName: string;
+  hasLoader?: boolean;
+  load?: () => Promise<any>;
+  loaderPath?: string;
+}
+
 export interface Route {
   path: string;
   tagName: string;
   hasLoader?: boolean;
   load?: () => Promise<any>;
+  layouts?: LayoutInfo[];
   pattern?: RegExp;
   paramNames?: string[];
 }
@@ -10,12 +21,13 @@ export interface Route {
 /**
  * Simple client-side router for LumenJS pages.
  * Handles popstate and link clicks for SPA navigation.
- * Supports server loaders — fetches data before rendering.
+ * Supports server loaders and nested layouts with persistence.
  */
 export class NkRouter {
   private routes: Route[] = [];
   private outlet: HTMLElement | null = null;
   private currentTag: string | null = null;
+  private currentLayoutTags: string[] = [];
   public params: Record<string, string> = {};
 
   constructor(routes: Route[], outlet: HTMLElement, hydrate = false) {
@@ -29,7 +41,16 @@ export class NkRouter {
     document.addEventListener('click', (e) => this.handleLinkClick(e));
 
     if (hydrate) {
-      this.hydrateInitialRoute();
+      hydrateInitialRoute(
+        this.routes,
+        this.outlet,
+        (p) => this.matchRoute(p),
+        (tag, layoutTags, params) => {
+          this.currentTag = tag;
+          this.currentLayoutTags = layoutTags;
+          this.params = params;
+        }
+      );
     } else {
       this.navigate(location.pathname, false);
     }
@@ -39,7 +60,6 @@ export class NkRouter {
     const paramNames: string[] = [];
     const pattern = path.replace(/:(?:\.\.\.)?([^/]+)/g, (match, name) => {
       paramNames.push(name);
-      // Catch-all :...name matches one or more segments
       return match.startsWith(':...') ? '(.+)' : '([^/]+)';
     });
     return { pattern: new RegExp(`^${pattern}$`), paramNames };
@@ -48,7 +68,9 @@ export class NkRouter {
   async navigate(pathname: string, pushState = true) {
     const match = this.matchRoute(pathname);
     if (!match) {
-      if (this.outlet) this.outlet.innerHTML = this.render404(pathname);
+      if (this.outlet) this.outlet.innerHTML = render404(pathname);
+      this.currentLayoutTags = [];
+      this.currentTag = null;
       return;
     }
 
@@ -63,48 +85,41 @@ export class NkRouter {
       await match.route.load();
     }
 
-    // Fetch loader data if the route has a server loader
+    // Load layout components
+    const layouts = match.route.layouts || [];
+    for (const layout of layouts) {
+      if (layout.load && !customElements.get(layout.tagName)) {
+        await layout.load();
+      }
+    }
+
+    // Fetch loader data for page
     let loaderData: any = undefined;
     if (match.route.hasLoader) {
       try {
-        loaderData = await this.fetchLoaderData(pathname, match.params);
+        loaderData = await fetchLoaderData(pathname, match.params);
       } catch (err) {
         console.error('[NkRouter] Loader fetch failed:', err);
       }
     }
 
-    this.renderRoute(match.route, loaderData);
-  }
-
-  private async hydrateInitialRoute() {
-    const match = this.matchRoute(location.pathname);
-    if (!match) return;
-
-    // Load the page module so the custom element class is registered for hydration
-    if (match.route.load && !customElements.get(match.route.tagName)) {
-      await match.route.load();
-    }
-
-    this.currentTag = match.route.tagName;
-    this.params = match.params;
-
-    // Find the existing SSR-rendered element in the outlet
-    const existing = this.outlet?.querySelector(match.route.tagName);
-    if (existing) {
-      // Read loader data from the SSR data script tag
-      const dataScript = document.getElementById('__nk_ssr_data__');
-      if (dataScript) {
+    // Fetch loader data for layouts
+    const layoutDataList: any[] = [];
+    for (const layout of layouts) {
+      if (layout.hasLoader) {
         try {
-          const loaderData = JSON.parse(dataScript.textContent || '');
-          (existing as any).loaderData = loaderData;
-        } catch { /* ignore parse errors */ }
-        dataScript.remove();
-      }
-      // Set route params as attributes
-      for (const [key, value] of Object.entries(this.params)) {
-        existing.setAttribute(key, value);
+          const data = await fetchLayoutLoaderData(layout.loaderPath || '');
+          layoutDataList.push(data);
+        } catch (err) {
+          console.error('[NkRouter] Layout loader fetch failed:', err);
+          layoutDataList.push(undefined);
+        }
+      } else {
+        layoutDataList.push(undefined);
       }
     }
+
+    this.renderRoute(match.route, loaderData, layouts, layoutDataList);
   }
 
   private matchRoute(pathname: string): { route: Route; params: Record<string, string> } | null {
@@ -122,55 +137,101 @@ export class NkRouter {
     return null;
   }
 
-  private renderRoute(route: Route, loaderData?: any) {
+  private renderRoute(route: Route, loaderData?: any, layouts?: LayoutInfo[], layoutDataList?: any[]): void {
     if (!this.outlet) return;
-    if (this.currentTag === route.tagName && !loaderData) return;
+
+    const newLayoutTags = (layouts || []).map(l => l.tagName);
+
+    // Find the first layout that differs from the current chain
+    let divergeIndex = 0;
+    while (
+      divergeIndex < this.currentLayoutTags.length &&
+      divergeIndex < newLayoutTags.length &&
+      this.currentLayoutTags[divergeIndex] === newLayoutTags[divergeIndex]
+    ) {
+      divergeIndex++;
+    }
+
+    const canReuse = this.currentLayoutTags.length > 0 && divergeIndex > 0;
+
+    if (!canReuse || divergeIndex === 0) {
+      // Full re-render: no layouts to reuse
+      this.outlet.innerHTML = '';
+
+      if (newLayoutTags.length === 0) {
+        const pageEl = this.createPageElement(route, loaderData);
+        this.outlet.appendChild(pageEl);
+      } else {
+        const tree = this.buildLayoutTree(layouts!, layoutDataList || [], route, loaderData);
+        this.outlet.appendChild(tree);
+      }
+    } else {
+      // Reuse layouts up to divergeIndex, rebuild from there
+      let parentEl: Element | null = this.outlet;
+      for (let i = 0; i < divergeIndex; i++) {
+        const layoutEl: Element | null = parentEl?.querySelector(`:scope > ${this.currentLayoutTags[i]}`) ?? null;
+        if (!layoutEl) {
+          return this.renderRoute(route, loaderData, [], []);
+        }
+        if (layoutDataList && layoutDataList[i] !== undefined) {
+          (layoutEl as any).loaderData = layoutDataList[i];
+        }
+        parentEl = layoutEl;
+      }
+
+      if (!parentEl) return;
+
+      parentEl.innerHTML = '';
+
+      if (divergeIndex >= newLayoutTags.length) {
+        const pageEl = this.createPageElement(route, loaderData);
+        parentEl.appendChild(pageEl);
+      } else {
+        const remainingLayouts = layouts!.slice(divergeIndex);
+        const remainingData = (layoutDataList || []).slice(divergeIndex);
+        const tree = this.buildLayoutTree(remainingLayouts, remainingData, route, loaderData);
+        parentEl.appendChild(tree);
+      }
+    }
 
     this.currentTag = route.tagName;
-    this.outlet.innerHTML = '';
+    this.currentLayoutTags = newLayoutTags;
+  }
+
+  private buildLayoutTree(layouts: LayoutInfo[], layoutDataList: any[], route: Route, loaderData?: any): HTMLElement {
+    const outerLayout = document.createElement(layouts[0].tagName);
+    if (layoutDataList[0] !== undefined) {
+      (outerLayout as any).loaderData = layoutDataList[0];
+    }
+
+    let current = outerLayout;
+    for (let i = 1; i < layouts.length; i++) {
+      const inner = document.createElement(layouts[i].tagName);
+      if (layoutDataList[i] !== undefined) {
+        (inner as any).loaderData = layoutDataList[i];
+      }
+      current.appendChild(inner);
+      current = inner;
+    }
+
+    const pageEl = this.createPageElement(route, loaderData);
+    current.appendChild(pageEl);
+
+    return outerLayout;
+  }
+
+  private createPageElement(route: Route, loaderData?: any): HTMLElement {
     const el = document.createElement(route.tagName);
-    // Pass route params as attributes
     for (const [key, value] of Object.entries(this.params)) {
       el.setAttribute(key, value);
     }
-    // Pass loader data as a property
     if (loaderData !== undefined) {
       (el as any).loaderData = loaderData;
     }
-    this.outlet.appendChild(el);
-  }
-
-  private async fetchLoaderData(pathname: string, params: Record<string, string>): Promise<any> {
-    const url = new URL(`/__nk_loader${pathname}`, location.origin);
-    if (Object.keys(params).length > 0) {
-      url.searchParams.set('__params', JSON.stringify(params));
-    }
-    const res = await fetch(url.toString());
-    if (!res.ok) {
-      throw new Error(`Loader returned ${res.status}`);
-    }
-    const data = await res.json();
-    if (data?.__nk_no_loader) return undefined;
-    return data;
-  }
-
-  private render404(pathname: string): string {
-    return `<div style="display:flex;align-items:center;justify-content:center;min-height:80vh;font-family:system-ui,-apple-system,sans-serif;padding:2rem">
-  <div style="text-align:center;max-width:400px">
-    <div style="font-size:5rem;font-weight:200;letter-spacing:-2px;color:#cbd5e1;line-height:1">404</div>
-    <div style="width:32px;height:2px;background:#e2e8f0;border-radius:1px;margin:1.25rem auto"></div>
-    <h1 style="font-size:1rem;font-weight:500;color:#334155;margin:1.25rem 0 .5rem">Page not found</h1>
-    <p style="color:#94a3b8;font-size:.8125rem;line-height:1.5;margin:0 0 2rem"><code style="background:#f8fafc;padding:.125rem .375rem;border-radius:3px;font-size:.75rem;color:#64748b;border:1px solid #f1f5f9">${pathname}</code> doesn't exist</p>
-    <a href="/" style="display:inline-flex;align-items:center;gap:.375rem;padding:.4375rem 1rem;background:#f8fafc;color:#475569;border:1px solid #e2e8f0;border-radius:6px;font-size:.8125rem;font-weight:400;text-decoration:none;transition:all .15s">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-      Back to home
-    </a>
-  </div>
-</div>`;
+    return el;
   }
 
   private handleLinkClick(event: MouseEvent) {
-    // Use composedPath to find <a> inside Shadow DOM
     const path = event.composedPath();
     const anchor = path.find(
       (el) => el instanceof HTMLElement && el.tagName === 'A'

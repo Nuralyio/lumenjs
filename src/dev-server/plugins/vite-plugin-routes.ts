@@ -1,10 +1,18 @@
 import { Plugin } from 'vite';
 import fs from 'fs';
 import path from 'path';
+import { dirToLayoutTagName, fileHasLoader, filePathToRoute } from '../../shared/utils.js';
 
 export interface RouteEntry {
   path: string;
   componentPath: string;
+  tagName: string;
+}
+
+export interface LayoutEntry {
+  /** Relative directory within pages/ ('' for root) */
+  dir: string;
+  filePath: string;
   tagName: string;
 }
 
@@ -17,8 +25,32 @@ const RESOLVED_VIRTUAL_MODULE_ID = '\0' + VIRTUAL_MODULE_ID;
  *   pages/index.ts       → /
  *   pages/about.ts       → /about
  *   pages/blog/[slug].ts → /blog/:slug
+ *   pages/_layout.ts     → layout wrapping all pages in directory + subdirectories
  */
 export function lumenRoutesPlugin(pagesDir: string): Plugin {
+  function scanLayouts(): LayoutEntry[] {
+    if (!fs.existsSync(pagesDir)) return [];
+    const layouts: LayoutEntry[] = [];
+    walkForLayouts(pagesDir, '', layouts);
+    return layouts;
+  }
+
+  function walkForLayouts(baseDir: string, relativePath: string, layouts: LayoutEntry[]) {
+    const fullDir = path.join(baseDir, relativePath);
+    const entries = fs.readdirSync(fullDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (entry.isFile() && /^_layout\.(ts|js)$/.test(entry.name)) {
+        const filePath = path.join(fullDir, entry.name);
+        const tagName = dirToLayoutTagName(relativePath);
+        layouts.push({ dir: relativePath.replace(/\\/g, '/'), filePath, tagName });
+      }
+      if (entry.isDirectory()) {
+        walkForLayouts(baseDir, path.join(relativePath, entry.name), layouts);
+      }
+    }
+  }
+
   function scanPages(): RouteEntry[] {
     if (!fs.existsSync(pagesDir)) return [];
 
@@ -54,20 +86,6 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
     }
   }
 
-  function filePathToRoute(filePath: string): string {
-    let route = filePath
-      .replace(/\.(ts|js)$/, '')
-      .replace(/\\/g, '/')
-      .replace(/\[\.\.\.([^\]]+)\]/g, ':...$1') // [...slug] → :...slug (catch-all)
-      .replace(/\[([^\]]+)\]/g, ':$1');          // [slug] → :slug
-
-    if (route === 'index' || route.endsWith('/index')) {
-      route = route.slice(0, -5).replace(/\/$/, '') || '/';
-    }
-
-    return route.startsWith('/') ? route : '/' + route;
-  }
-
   function filePathToTagName(filePath: string): string {
     const name = filePath
       .replace(/\.(ts|js)$/, '')
@@ -79,11 +97,23 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
     return `page-${name}`;
   }
 
-  function fileHasLoader(filePath: string): boolean {
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      return /export\s+(async\s+)?function\s+loader\s*\(/.test(content);
-    } catch { return false; }
+  /** Build the layout chain for a route based on its file path within pages/ */
+  function getLayoutChain(componentPath: string, layouts: LayoutEntry[]): LayoutEntry[] {
+    const relativeToPages = path.relative(pagesDir, componentPath).replace(/\\/g, '/');
+    const dirParts = path.dirname(relativeToPages).split('/').filter(p => p && p !== '.');
+
+    const chain: LayoutEntry[] = [];
+    const rootLayout = layouts.find(l => l.dir === '');
+    if (rootLayout) chain.push(rootLayout);
+
+    let currentDir = '';
+    for (const part of dirParts) {
+      currentDir = currentDir ? `${currentDir}/${part}` : part;
+      const layout = layouts.find(l => l.dir === currentDir);
+      if (layout) chain.push(layout);
+    }
+
+    return chain;
   }
 
   return {
@@ -94,11 +124,25 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
     load(id) {
       if (id === RESOLVED_VIRTUAL_MODULE_ID) {
         const routes = scanPages();
+        const layouts = scanLayouts();
+
         const routeArray = routes
           .map(r => {
             const hasLoader = fileHasLoader(r.componentPath);
             const componentPath = r.componentPath.replace(/\\/g, '/');
-            return `  { path: ${JSON.stringify(r.path)}, tagName: ${JSON.stringify(r.tagName)}${hasLoader ? ', hasLoader: true' : ''}, load: () => import('${componentPath}') }`;
+            const chain = getLayoutChain(r.componentPath, layouts);
+
+            let layoutsStr = '';
+            if (chain.length > 0) {
+              const items = chain.map(l => {
+                const lHasLoader = fileHasLoader(l.filePath);
+                const lPath = l.filePath.replace(/\\/g, '/');
+                return `{ tagName: ${JSON.stringify(l.tagName)}, loaderPath: ${JSON.stringify(l.dir)}${lHasLoader ? ', hasLoader: true' : ''}, load: () => import('${lPath}') }`;
+              });
+              layoutsStr = `, layouts: [${items.join(', ')}]`;
+            }
+
+            return `  { path: ${JSON.stringify(r.path)}, tagName: ${JSON.stringify(r.tagName)}${hasLoader ? ', hasLoader: true' : ''}, load: () => import('${componentPath}')${layoutsStr} }`;
           })
           .join(',\n');
 
@@ -106,33 +150,32 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
       }
     },
     configureServer(server) {
-      // Only full-reload when route structure changes (file added/removed), not on content edits
+      // Full-reload when route structure changes (file added/removed)
       let lastRoutes = JSON.stringify(scanPages().map(r => r.path));
+      let lastLayouts = JSON.stringify(scanLayouts().map(l => l.dir));
 
-      server.watcher.on('add', (file) => {
-        if (!file.startsWith(pagesDir)) return;
+      const checkReload = () => {
         const newRoutes = JSON.stringify(scanPages().map(r => r.path));
-        if (newRoutes !== lastRoutes) {
+        const newLayouts = JSON.stringify(scanLayouts().map(l => l.dir));
+        if (newRoutes !== lastRoutes || newLayouts !== lastLayouts) {
           lastRoutes = newRoutes;
+          lastLayouts = newLayouts;
           const mod = server.moduleGraph.getModuleById(RESOLVED_VIRTUAL_MODULE_ID);
           if (mod) {
             server.moduleGraph.invalidateModule(mod);
             server.ws.send({ type: 'full-reload' });
           }
         }
+      };
+
+      server.watcher.on('add', (file) => {
+        if (!file.startsWith(pagesDir)) return;
+        checkReload();
       });
 
       server.watcher.on('unlink', (file) => {
         if (!file.startsWith(pagesDir)) return;
-        const newRoutes = JSON.stringify(scanPages().map(r => r.path));
-        if (newRoutes !== lastRoutes) {
-          lastRoutes = newRoutes;
-          const mod = server.moduleGraph.getModuleById(RESOLVED_VIRTUAL_MODULE_ID);
-          if (mod) {
-            server.moduleGraph.invalidateModule(mod);
-            server.ws.send({ type: 'full-reload' });
-          }
-        }
+        checkReload();
       });
     }
   };
