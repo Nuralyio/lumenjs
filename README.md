@@ -86,7 +86,8 @@ export async function loader({ params, headers, query, url }) {
 }
 
 export class BlogPost extends LitElement {
-  @property({ type: Object }) loaderData: any = {};
+  static properties = { loaderData: { type: Object } };
+  loaderData: any = {};
 
   render() {
     return html`<h1>${this.loaderData.post?.title}</h1>`;
@@ -133,8 +134,9 @@ export function subscribe({ push }) {
 }
 
 export class PageDashboard extends LitElement {
-  @property({ type: Object }) loaderData: any = {};
-  @property({ type: Object }) liveData: any = null;
+  static properties = { loaderData: { type: Object }, liveData: { type: Object } };
+  loaderData: any = {};
+  liveData: any = null;
 
   render() {
     return html`
@@ -208,7 +210,8 @@ export async function loader({ headers }) {
 }
 
 export class DashboardLayout extends LitElement {
-  @property({ type: Object }) loaderData: any = {};
+  static properties = { loaderData: { type: Object } };
+  loaderData: any = {};
 
   render() {
     return html`

@@ -55,7 +55,7 @@ Named export `loader()` on any page or layout runs server-side, result injected 
 export async function loader(ctx: { params, query, url, headers, locale }) → object
 ```
 
-- Property name is exactly `loaderData` (declared as `@property({ type: Object }) loaderData: any = {}`)
+- Property name is exactly `loaderData` (declared as `static properties = { loaderData: { type: Object } }; loaderData: any = {}`)
 - Stripped from client bundles automatically
 - Runs on SSR and on client navigation via `/__nk_loader/<path>`
 - Must return serializable objects
@@ -79,7 +79,7 @@ export function subscribe(ctx: { params, push, headers, locale }) → () => void
 
 - `push(data)` sends an SSE event to the client — data is JSON-serialized
 - Return a cleanup function — called when client navigates away or disconnects
-- Property name on the component is exactly `liveData` (declared as `@property({ type: Object }) liveData: any = null`)
+- Property name on the component is exactly `liveData` (declared as `static properties = { liveData: { type: Object } }; liveData: any = null`)
 - Stripped from client bundles automatically (like `loader()`)
 - Transport: SSE via `/__nk_subscribe/<path>` (pages) or `/__nk_subscribe/__layout/?__dir=<dir>` (layouts)
 - `subscribe` must be named export function (not default, not arrow const)
@@ -94,8 +94,8 @@ export function subscribe({ push }) {
 }
 
 export class PageDashboard extends LitElement {
-  @property({ type: Object }) loaderData: any = {};
-  @property({ type: Object }) liveData: any = null;
+  static properties = { loaderData: { type: Object } }; loaderData: any = {};
+  static properties = { liveData: { type: Object } }; liveData: any = null;
   render() {
     return html`<p>Live: ${this.liveData?.time}</p>`;
   }
