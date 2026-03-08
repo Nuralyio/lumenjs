@@ -4,32 +4,71 @@ import { Plugin } from 'vite';
 
 /**
  * Virtual module plugin — serves compiled LumenJS runtime and editor modules.
+ * Rewrites relative imports between split sub-modules to virtual module paths.
+ *
+ * i18n is resolved via resolve.alias (physical file) rather than as a virtual
+ * module, because Vite's import-analysis rejects bare @-prefixed specifiers
+ * that go through the virtual module path.
  */
 export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plugin {
+  const runtimeModules: Record<string, string> = {
+    'app-shell': 'app-shell.js',
+    'router': 'router.js',
+    'router-data': 'router-data.js',
+    'router-hydration': 'router-hydration.js',
+    'i18n': 'i18n.js',
+  };
+
+  // Modules resolved via resolve.alias instead of virtual module.
+  // They still appear in the map so relative import rewrites work.
+  const aliasedModules = new Set(['i18n']);
+
+  const editorModules: Record<string, string> = {
+    'editor-bridge': 'editor-bridge.js',
+    'element-annotator': 'element-annotator.js',
+    'click-select': 'click-select.js',
+    'hover-detect': 'hover-detect.js',
+    'inline-text-edit': 'inline-text-edit.js',
+  };
+
+  function rewriteRelativeImports(code: string, modules: Record<string, string>): string {
+    for (const name of Object.keys(modules)) {
+      const file = modules[name];
+      // Aliased modules use @lumenjs/name (resolved by Vite alias).
+      // Virtual modules use /@lumenjs/name (resolved by this plugin).
+      const prefix = aliasedModules.has(name) ? '@lumenjs' : '/@lumenjs';
+      code = code.replace(
+        new RegExp(`from\\s+['"]\\.\\/${file.replace('.', '\\.')}['"]`, 'g'),
+        `from '${prefix}/${name}'`
+      );
+    }
+    return code;
+  }
+
   return {
     name: 'lumenjs-virtual-modules',
+    enforce: 'pre' as const,
     resolveId(id) {
-      if (id === '/@lumenjs/app-shell') return '\0lumenjs:app-shell';
-      if (id === '/@lumenjs/router') return '\0lumenjs:router';
-      if (id === '/@lumenjs/editor-bridge') return '\0lumenjs:editor-bridge';
-      if (id === '/@lumenjs/element-annotator') return '\0lumenjs:element-annotator';
+      const match = id.match(/^\/@lumenjs\/(.+)$/);
+      if (!match) return;
+      const name = match[1];
+      // Skip aliased modules — they're resolved via resolve.alias
+      if (aliasedModules.has(name)) return;
+      if (runtimeModules[name] || editorModules[name]) {
+        return `\0lumenjs:${name}`;
+      }
     },
     load(id) {
-      if (id === '\0lumenjs:app-shell') {
-        let code = fs.readFileSync(path.join(runtimeDir, 'app-shell.js'), 'utf-8');
-        code = code.replace(/from\s+['"]\.\/router\.js['"]/g, "from '/@lumenjs/router'");
-        return code;
+      if (!id.startsWith('\0lumenjs:')) return;
+      const name = id.slice('\0lumenjs:'.length);
+
+      if (runtimeModules[name]) {
+        const code = fs.readFileSync(path.join(runtimeDir, runtimeModules[name]), 'utf-8');
+        return rewriteRelativeImports(code, runtimeModules);
       }
-      if (id === '\0lumenjs:router') {
-        return fs.readFileSync(path.join(runtimeDir, 'router.js'), 'utf-8');
-      }
-      if (id === '\0lumenjs:editor-bridge') {
-        let code = fs.readFileSync(path.join(editorDir, 'editor-bridge.js'), 'utf-8');
-        code = code.replace(/from\s+['"]\.\/element-annotator\.js['"]/g, "from '/@lumenjs/element-annotator'");
-        return code;
-      }
-      if (id === '\0lumenjs:element-annotator') {
-        return fs.readFileSync(path.join(editorDir, 'element-annotator.js'), 'utf-8');
+      if (editorModules[name]) {
+        const code = fs.readFileSync(path.join(editorDir, editorModules[name]), 'utf-8');
+        return rewriteRelativeImports(code, editorModules);
       }
     }
   };

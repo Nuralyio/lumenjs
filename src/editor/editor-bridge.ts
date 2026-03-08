@@ -14,7 +14,7 @@ let previewMode = false;
 export interface NkEditorMessage {
   type: 'NK_READY' | 'NK_ELEMENT_CLICKED' | 'NK_ELEMENT_HOVERED' |
         'NK_SELECT_ELEMENT' | 'NK_HIGHLIGHT_ELEMENT' | 'NK_TEXT_CHANGED' |
-        'NK_SET_PREVIEW_MODE';
+        'NK_TRANSLATION_CHANGED' | 'NK_SET_PREVIEW_MODE';
   payload?: any;
 }
 

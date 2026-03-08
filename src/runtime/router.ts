@@ -1,5 +1,6 @@
 import { fetchLoaderData, fetchLayoutLoaderData, render404 } from './router-data.js';
 import { hydrateInitialRoute } from './router-hydration.js';
+import { getI18nConfig, getLocale, stripLocalePrefix, buildLocalePath } from './i18n.js';
 
 export interface LayoutInfo {
   tagName: string;
@@ -37,7 +38,10 @@ export class NkRouter {
       ...this.compilePattern(r.path),
     }));
 
-    window.addEventListener('popstate', () => this.navigate(location.pathname, false));
+    window.addEventListener('popstate', () => {
+      const path = this.stripLocale(location.pathname);
+      this.navigate(path, false);
+    });
     document.addEventListener('click', (e) => this.handleLinkClick(e));
 
     if (hydrate) {
@@ -52,7 +56,8 @@ export class NkRouter {
         }
       );
     } else {
-      this.navigate(location.pathname, false);
+      const path = this.stripLocale(location.pathname);
+      this.navigate(path, false);
     }
   }
 
@@ -75,7 +80,8 @@ export class NkRouter {
     }
 
     if (pushState) {
-      history.pushState(null, '', pathname);
+      const localePath = this.withLocale(pathname);
+      history.pushState(null, '', localePath);
     }
 
     this.params = match.params;
@@ -242,6 +248,18 @@ export class NkRouter {
     if (!href || href.startsWith('http') || href.startsWith('#') || anchor.hasAttribute('target')) return;
 
     event.preventDefault();
-    this.navigate(href);
+    this.navigate(this.stripLocale(href));
+  }
+
+  /** Strip locale prefix from a path for internal route matching. */
+  private stripLocale(path: string): string {
+    const config = getI18nConfig();
+    return config ? stripLocalePrefix(path) : path;
+  }
+
+  /** Prepend locale prefix for browser-facing URLs. */
+  private withLocale(path: string): string {
+    const config = getI18nConfig();
+    return config ? buildLocalePath(getLocale(), path) : path;
   }
 }

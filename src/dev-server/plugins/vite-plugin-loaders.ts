@@ -95,7 +95,11 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
             return;
           }
 
-          const result = await mod.loader({ params, query, url: pagePath, headers: req.headers });
+          // Extract locale from query if provided by the client router
+          const locale = query.__locale;
+          delete query.__locale;
+
+          const result = await mod.loader({ params, query, url: pagePath, headers: req.headers, locale });
 
           if (isRedirectResponse(result)) {
             res.statusCode = result.status || 302;
@@ -218,7 +222,19 @@ async function handleLayoutLoader(
       return;
     }
 
-    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers: req.headers });
+    // Parse locale from query for layout loader requests
+    const query: Record<string, string> = {};
+    const reqUrl = req.url || '';
+    const qs = reqUrl.split('?')[1];
+    if (qs) {
+      for (const pair of qs.split('&')) {
+        const [key, val] = pair.split('=');
+        query[decodeURIComponent(key)] = decodeURIComponent(val || '');
+      }
+    }
+    const locale = query.__locale;
+
+    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers: req.headers, locale });
 
     if (isRedirectResponse(result)) {
       res.statusCode = result.status || 302;

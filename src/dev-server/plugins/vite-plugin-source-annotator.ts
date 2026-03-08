@@ -33,7 +33,16 @@ export function sourceAnnotatorPlugin(projectDir: string): Plugin {
             return `<${tag}${attrStr} data-nk-dynamic="${escaped}">${content}</`;
           }
         );
-        return 'html`' + dynamicAnnotated + '`';
+        // Detect t('key') calls inside template expressions and add data-nk-i18n-key
+        const i18nAnnotated = dynamicAnnotated.replace(
+          /<(h[1-6]|p|span|a|label|li|button|div)(\s[^>]*)?>([^<]*\$\{t\(['"]([^'"]+)['"]\)\}[^<]*)<\//gi,
+          (m, tag, attrs, content, key) => {
+            const attrStr = attrs || '';
+            if (attrStr.includes('data-nk-i18n-key')) return m;
+            return `<${tag}${attrStr} data-nk-i18n-key="${key}">${content}</`;
+          }
+        );
+        return 'html`' + i18nAnnotated + '`';
       });
       if (transformed !== code) {
         return { code: transformed, map: null };
