@@ -1,16 +1,42 @@
 {
   "name": "@lumenjs/core",
   "version": "0.1.0",
-  "description": "LumenJS — Vite-based framework for NuralyUI apps",
+  "description": "Full-stack Lit web component framework with file-based routing, server loaders, SSR, and API routes",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
     "lumenjs": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "prepublishOnly": "tsc"
   },
+  "keywords": [
+    "lit",
+    "web-components",
+    "ssr",
+    "vite",
+    "framework",
+    "file-based-routing",
+    "loaders",
+    "api-routes",
+    "hydration"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nuralyio/lumenjs.git"
+  },
+  "homepage": "https://github.com/nuralyio/lumenjs",
+  "bugs": {
+    "url": "https://github.com/nuralyio/lumenjs/issues"
+  },
+  "author": "labidiaymen <labidi@aymen.co>",
+  "license": "MIT",
   "dependencies": {
     "vite": "^5.4.0",
     "lit": "^3.1.0",
@@ -20,5 +46,8 @@
   "devDependencies": {
     "typescript": "^5.4.5",
     "@types/node": "^20.14.2"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
