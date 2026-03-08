@@ -2,13 +2,9 @@ name: Publish to npm
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to publish (e.g. 0.1.0, 0.2.0-beta.1)'
-        required: false
 
 jobs:
   publish:
@@ -30,16 +26,27 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Set version from tag or input
+      - name: Check if version already published
+        id: check
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            npm version "${{ github.event.inputs.version }}" --no-git-tag-version
-          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/v}"
-            npm version "$VERSION" --no-git-tag-version
+          LOCAL=$(node -p "require('./package.json').version")
+          REMOTE=$(npm view @lumenjs/core version 2>/dev/null || echo "none")
+          echo "local=$LOCAL" >> "$GITHUB_OUTPUT"
+          echo "remote=$REMOTE" >> "$GITHUB_OUTPUT"
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
           fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to npm
+        if: steps.check.outputs.publish == 'true'
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Skip publish
+        if: steps.check.outputs.publish == 'false'
+        run: echo "Version ${{ steps.check.outputs.local }} already published, skipping."
