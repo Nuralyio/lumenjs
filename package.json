@@ -1,5 +1,5 @@
 {
-  "name": "@labidiaymen/lumenjs",
+  "name": "@nuraly/lumenjs",
   "version": "0.1.0",
   "description": "Full-stack Lit web component framework with file-based routing, server loaders, SSR, and API routes",
   "type": "module",

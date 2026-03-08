@@ -30,7 +30,7 @@ jobs:
         id: check
         run: |
           LOCAL=$(node -p "require('./package.json').version")
-          REMOTE=$(npm view @labidiaymen/lumenjs version 2>/dev/null || echo "none")
+          REMOTE=$(npm view @nuraly/lumenjs version 2>/dev/null || echo "none")
           echo "local=$LOCAL" >> "$GITHUB_OUTPUT"
           echo "remote=$REMOTE" >> "$GITHUB_OUTPUT"
           if [ "$LOCAL" != "$REMOTE" ]; then
