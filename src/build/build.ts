@@ -1,23 +1,15 @@
 import { build as viteBuild } from 'vite';
 import path from 'path';
 import fs from 'fs';
-import { getSharedViteConfig, readProjectConfig } from '../dev-server/server.js';
+import { getSharedViteConfig } from '../dev-server/server.js';
+import { readProjectConfig } from '../dev-server/config.js';
 import { generateIndexHtml } from '../dev-server/index-html.js';
+import type { BuildManifest } from '../shared/types.js';
+import { scanPages, scanLayouts, scanApiRoutes, getLayoutDirsForPage } from './scan.js';
 
 export interface BuildOptions {
   projectDir: string;
   outDir?: string;
-}
-
-interface ManifestRoute {
-  path: string;
-  module: string;
-  hasLoader: boolean;
-}
-
-interface BuildManifest {
-  routes: ManifestRoute[];
-  apiRoutes: ManifestRoute[];
 }
 
 export async function buildProject(options: BuildOptions): Promise<void> {
@@ -38,8 +30,9 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   const { title, integrations } = readProjectConfig(projectDir);
   const shared = getSharedViteConfig(projectDir, { mode: 'production', integrations });
 
-  // Scan pages and API routes for the manifest
+  // Scan pages, layouts, and API routes for the manifest
   const pageEntries = scanPages(pagesDir);
+  const layoutEntries = scanLayouts(pagesDir);
   const apiEntries = scanApiRoutes(apiDir);
 
   // --- Client build ---
@@ -83,12 +76,19 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   // --- Server build ---
   console.log('[LumenJS] Building server bundle...');
 
-  // Collect server entry points (pages with loaders + API routes)
+  // Collect server entry points (pages with loaders + layouts with loaders + API routes)
   const serverEntries: Record<string, string> = {};
 
   for (const entry of pageEntries) {
     if (entry.hasLoader) {
       serverEntries[`pages/${entry.name}`] = entry.filePath;
+    }
+  }
+
+  for (const entry of layoutEntries) {
+    if (entry.hasLoader) {
+      const entryName = entry.dir ? `layouts/${entry.dir}/_layout` : 'layouts/_layout';
+      serverEntries[entryName] = entry.filePath;
     }
   }
 
@@ -100,7 +100,8 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   // server modules share one Lit instance (avoids _$EM mismatches).
   const ssrEntryPath = path.join(projectDir, '__nk_ssr_entry.js');
   const hasPageLoaders = pageEntries.some(e => e.hasLoader);
-  if (hasPageLoaders) {
+  const hasLayoutLoaders = layoutEntries.some(e => e.hasLoader);
+  if (hasPageLoaders || hasLayoutLoaders) {
     fs.writeFileSync(ssrEntryPath, [
       "import '@lit-labs/ssr/lib/install-global-dom-shim.js';",
       "export { render } from '@lit-labs/ssr';",
@@ -161,15 +162,24 @@ export async function buildProject(options: BuildOptions): Promise<void> {
 
   // --- Write manifest ---
   const manifest: BuildManifest = {
-    routes: pageEntries.map(e => ({
-      path: e.routePath,
-      module: e.hasLoader ? `pages/${e.name}.js` : '',
-      hasLoader: e.hasLoader,
-    })),
+    routes: pageEntries.map(e => {
+      const routeLayouts = getLayoutDirsForPage(e.filePath, pagesDir, layoutEntries);
+      return {
+        path: e.routePath,
+        module: e.hasLoader ? `pages/${e.name}.js` : '',
+        hasLoader: e.hasLoader,
+        ...(routeLayouts.length > 0 ? { layouts: routeLayouts } : {}),
+      };
+    }),
     apiRoutes: apiEntries.map(e => ({
       path: `/api/${e.routePath}`,
       module: `api/${e.name}.js`,
       hasLoader: false,
+    })),
+    layouts: layoutEntries.map(e => ({
+      dir: e.dir,
+      module: e.hasLoader ? (e.dir ? `layouts/${e.dir}/_layout.js` : 'layouts/_layout.js') : '',
+      hasLoader: e.hasLoader,
     })),
   };
 
@@ -182,91 +192,5 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   console.log(`  Output: ${outDir}`);
   console.log(`  Client assets: ${clientDir}`);
   console.log(`  Server modules: ${serverDir}`);
-  console.log(`  Routes: ${pageEntries.length} pages, ${apiEntries.length} API routes`);
-}
-
-interface PageEntry {
-  name: string;
-  filePath: string;
-  routePath: string;
-  hasLoader: boolean;
-}
-
-function scanPages(pagesDir: string): PageEntry[] {
-  if (!fs.existsSync(pagesDir)) return [];
-  const entries: PageEntry[] = [];
-  walkDir(pagesDir, '', entries, pagesDir);
-  return entries;
-}
-
-function walkDir(baseDir: string, relativePath: string, entries: PageEntry[], pagesDir: string) {
-  const fullDir = path.join(baseDir, relativePath);
-  const dirEntries = fs.readdirSync(fullDir, { withFileTypes: true });
-
-  for (const entry of dirEntries) {
-    const entryRelative = path.join(relativePath, entry.name);
-    if (entry.isDirectory()) {
-      walkDir(baseDir, entryRelative, entries, pagesDir);
-    } else if (entry.isFile() && /\.(ts|js)$/.test(entry.name) && !entry.name.startsWith('_')) {
-      const filePath = path.join(pagesDir, entryRelative);
-      const name = entryRelative.replace(/\.(ts|js)$/, '').replace(/\\/g, '/');
-      const routePath = filePathToRoute(entryRelative);
-      const hasLoader = fileHasLoader(filePath);
-      entries.push({ name, filePath, routePath, hasLoader });
-    }
-  }
-}
-
-function filePathToRoute(filePath: string): string {
-  let route = filePath
-    .replace(/\.(ts|js)$/, '')
-    .replace(/\\/g, '/')
-    .replace(/\[\.\.\.([^\]]+)\]/g, ':...$1') // [...slug] → :...slug (catch-all)
-    .replace(/\[([^\]]+)\]/g, ':$1');
-
-  if (route === 'index' || route.endsWith('/index')) {
-    route = route.slice(0, -5).replace(/\/$/, '') || '/';
-  }
-
-  return route.startsWith('/') ? route : '/' + route;
-}
-
-function fileHasLoader(filePath: string): boolean {
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return /export\s+(async\s+)?function\s+loader\s*\(/.test(content);
-  } catch { return false; }
-}
-
-interface ApiEntry {
-  name: string;
-  filePath: string;
-  routePath: string;
-}
-
-function scanApiRoutes(apiDir: string): ApiEntry[] {
-  if (!fs.existsSync(apiDir)) return [];
-  const entries: ApiEntry[] = [];
-  walkApiDir(apiDir, '', entries, apiDir);
-  return entries;
-}
-
-function walkApiDir(baseDir: string, relativePath: string, entries: ApiEntry[], apiDir: string) {
-  const fullDir = path.join(baseDir, relativePath);
-  const dirEntries = fs.readdirSync(fullDir, { withFileTypes: true });
-
-  for (const entry of dirEntries) {
-    const entryRelative = path.join(relativePath, entry.name);
-    if (entry.isDirectory()) {
-      walkApiDir(baseDir, entryRelative, entries, apiDir);
-    } else if (entry.isFile() && /\.(ts|js)$/.test(entry.name) && !entry.name.startsWith('_')) {
-      const filePath = path.join(apiDir, entryRelative);
-      const name = entryRelative.replace(/\.(ts|js)$/, '').replace(/\\/g, '/');
-      const routePath = entryRelative
-        .replace(/\.(ts|js)$/, '')
-        .replace(/\\/g, '/')
-        .replace(/\[([^\]]+)\]/g, ':$1');
-      entries.push({ name, filePath, routePath });
-    }
-  }
+  console.log(`  Routes: ${pageEntries.length} pages, ${apiEntries.length} API routes, ${layoutEntries.length} layouts`);
 }

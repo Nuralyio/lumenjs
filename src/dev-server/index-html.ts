@@ -1,8 +1,11 @@
+import { escapeHtml } from '../shared/utils.js';
+
 export interface IndexHtmlOptions {
   title: string;
   editorMode: boolean;
   ssrContent?: string;
   loaderData?: any;
+  layoutsData?: Array<{ loaderPath: string; data: any }>;
   integrations?: string[];
 }
 
@@ -20,9 +23,14 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
     ? `<nk-app data-nk-ssr><div id="nk-router-outlet">${options.ssrContent}</div></nk-app>`
     : '<nk-app></nk-app>';
 
-  const loaderDataScript = isSSR && options.loaderData !== undefined
-    ? `<script type="application/json" id="__nk_ssr_data__">${JSON.stringify(options.loaderData).replace(/</g, '\\u003c')}</script>`
-    : '';
+  // Build SSR data: if layouts are present, use structured format { page, layouts }
+  let loaderDataScript = '';
+  if (isSSR && (options.loaderData !== undefined || options.layoutsData)) {
+    const ssrData = options.layoutsData
+      ? { page: options.loaderData, layouts: options.layoutsData }
+      : options.loaderData;
+    loaderDataScript = `<script type="application/json" id="__nk_ssr_data__">${JSON.stringify(ssrData).replace(/</g, '\\u003c')}</script>`;
+  }
 
   const hydrateScript = isSSR
     ? `<script type="module">import '@lit-labs/ssr-client/lit-element-hydrate-support.js';</script>`
@@ -49,8 +57,4 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
   ${editorScript}
 </body>
 </html>`;
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
