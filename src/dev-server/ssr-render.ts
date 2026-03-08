@@ -43,6 +43,14 @@ export async function ssrRenderPage(
       g.window.matchMedia = () => ({ matches: false, addEventListener: noop, removeEventListener: noop });
     }
 
+    // Invalidate SSR module cache so we always get fresh content after file edits
+    const existingMods = server.moduleGraph.getModulesByFile(filePath);
+    if (existingMods) {
+      for (const m of existingMods) {
+        server.moduleGraph.invalidateModule(m, undefined, undefined, true);
+      }
+    }
+
     // Load the page module via Vite (registers the custom element, applies transforms)
     const mod = await server.ssrLoadModule(filePath);
 

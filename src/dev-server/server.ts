@@ -16,6 +16,7 @@ export interface DevServerOptions {
   projectDir: string;
   port: number;
   editorMode?: boolean;
+  base?: string;
 }
 
 /**
@@ -358,7 +359,7 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
 }
 
 export async function createDevServer(options: DevServerOptions): Promise<ViteDevServer> {
-  const { projectDir, port, editorMode = false } = options;
+  const { projectDir, port, editorMode = false, base = '/' } = options;
   const pagesDir = path.join(projectDir, 'pages');
   const apiDir = path.join(projectDir, 'api');
   const publicDir = path.join(projectDir, 'public');
@@ -376,6 +377,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       strictPort: false,
       allowedHosts: true,
       cors: true,
+      hmr: true,
     },
     resolve: shared.resolve,
     plugins: [
@@ -487,12 +489,14 @@ if (import.meta.hot) {
                   ? transformed.replace(SSR_PLACEHOLDER, ssrResult.html)
                   : transformed;
                 res.setHeader('Content-Type', 'text/html');
+                res.setHeader('Cache-Control', 'no-store');
                 res.end(finalHtml);
               }).catch(err => {
                 console.error('[LumenJS] SSR/HTML generation error:', err);
                 const html = generateIndexHtml({ title, editorMode, integrations });
                 server.transformIndexHtml(req.url!, html).then(transformed => {
                   res.setHeader('Content-Type', 'text/html');
+                  res.setHeader('Cache-Control', 'no-store');
                   res.end(transformed);
                 }).catch(next);
               });
