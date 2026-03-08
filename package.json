@@ -29,11 +29,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/nuralyio/lumenjs.git"
+    "url": "https://github.com/Nuralyio/lumenjs.git"
   },
-  "homepage": "https://github.com/nuralyio/lumenjs",
+  "homepage": "https://github.com/Nuralyio/lumenjs",
   "bugs": {
-    "url": "https://github.com/nuralyio/lumenjs/issues"
+    "url": "https://github.com/Nuralyio/lumenjs/issues"
   },
   "author": "labidiaymen <labidi@aymen.co>",
   "license": "MIT",
