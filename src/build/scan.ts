@@ -1,18 +1,20 @@
 import fs from 'fs';
 import path from 'path';
-import { fileHasLoader, filePathToRoute } from '../shared/utils.js';
+import { fileHasLoader, fileHasSubscribe, filePathToRoute } from '../shared/utils.js';
 
 export interface PageEntry {
   name: string;
   filePath: string;
   routePath: string;
   hasLoader: boolean;
+  hasSubscribe: boolean;
 }
 
 export interface LayoutEntry {
   dir: string;
   filePath: string;
   hasLoader: boolean;
+  hasSubscribe: boolean;
 }
 
 export interface ApiEntry {
@@ -79,7 +81,8 @@ function walkDir(baseDir: string, relativePath: string, entries: PageEntry[], pa
       const name = entryRelative.replace(/\.(ts|js)$/, '').replace(/\\/g, '/');
       const routePath = filePathToRoute(entryRelative);
       const hasLoader = fileHasLoader(filePath);
-      entries.push({ name, filePath, routePath, hasLoader });
+      const hasSubscribe = fileHasSubscribe(filePath);
+      entries.push({ name, filePath, routePath, hasLoader, hasSubscribe });
     }
   }
 }
@@ -92,7 +95,7 @@ function walkForLayouts(baseDir: string, relativePath: string, entries: LayoutEn
     if (entry.isFile() && /^_layout\.(ts|js)$/.test(entry.name)) {
       const filePath = path.join(fullDir, entry.name);
       const dir = relativePath.replace(/\\/g, '/');
-      entries.push({ dir, filePath, hasLoader: fileHasLoader(filePath) });
+      entries.push({ dir, filePath, hasLoader: fileHasLoader(filePath), hasSubscribe: fileHasSubscribe(filePath) });
     }
     if (entry.isDirectory()) {
       walkForLayouts(baseDir, path.join(relativePath, entry.name), entries);

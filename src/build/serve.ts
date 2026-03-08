@@ -6,7 +6,7 @@ import type { BuildManifest } from '../shared/types.js';
 import { installDomShims } from '../shared/dom-shims.js';
 import { serveStaticFile, sendCompressed } from './serve-static.js';
 import { handleApiRoute } from './serve-api.js';
-import { handleLoaderRequest, handleLayoutLoaderRequest } from './serve-loaders.js';
+import { handleLoaderRequest, handleLayoutLoaderRequest, handleSubscribeRequest, handleLayoutSubscribeRequest } from './serve-loaders.js';
 import { handlePageRoute } from './serve-ssr.js';
 import { renderErrorPage } from './error-page.js';
 import { handleI18nRequest } from './serve-i18n.js';
@@ -79,13 +79,25 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         return;
       }
 
-      // 4. Layout loader endpoint
+      // 4. Layout subscribe endpoint (SSE)
+      if (pathname === '/__nk_subscribe/__layout/' || pathname === '/__nk_subscribe/__layout') {
+        await handleLayoutSubscribeRequest(manifest, serverDir, queryString, req.headers, res);
+        return;
+      }
+
+      // 5. Subscribe endpoint (SSE)
+      if (pathname.startsWith('/__nk_subscribe/')) {
+        await handleSubscribeRequest(manifest, serverDir, pagesDir, pathname, queryString, req.headers, res);
+        return;
+      }
+
+      // 6. Layout loader endpoint
       if (pathname === '/__nk_loader/__layout/' || pathname === '/__nk_loader/__layout') {
         await handleLayoutLoaderRequest(manifest, serverDir, queryString, req.headers, res);
         return;
       }
 
-      // 5. Loader endpoint for client-side navigation
+      // 7. Loader endpoint for client-side navigation
       if (pathname.startsWith('/__nk_loader/')) {
         await handleLoaderRequest(manifest, serverDir, pagesDir, pathname, queryString, req.headers, res);
         return;

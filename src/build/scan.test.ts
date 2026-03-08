@@ -69,6 +69,20 @@ describe('scanPages', () => {
     const pages = scanPages(dir);
     expect(pages[0].hasLoader).toBe(false);
   });
+
+  it('detects hasSubscribe', () => {
+    const dir = createTmpDir();
+    fs.writeFileSync(path.join(dir, 'index.ts'), 'export function subscribe({ push }) { return () => {}; }\nexport class Page {}');
+    const pages = scanPages(dir);
+    expect(pages[0].hasSubscribe).toBe(true);
+  });
+
+  it('detects no subscribe', () => {
+    const dir = createTmpDir();
+    fs.writeFileSync(path.join(dir, 'index.ts'), 'export class Page {}');
+    const pages = scanPages(dir);
+    expect(pages[0].hasSubscribe).toBe(false);
+  });
 });
 
 describe('scanLayouts', () => {

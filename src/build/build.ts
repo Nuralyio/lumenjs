@@ -81,13 +81,13 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   const serverEntries: Record<string, string> = {};
 
   for (const entry of pageEntries) {
-    if (entry.hasLoader) {
+    if (entry.hasLoader || entry.hasSubscribe) {
       serverEntries[`pages/${entry.name}`] = entry.filePath;
     }
   }
 
   for (const entry of layoutEntries) {
-    if (entry.hasLoader) {
+    if (entry.hasLoader || entry.hasSubscribe) {
       const entryName = entry.dir ? `layouts/${entry.dir}/_layout` : 'layouts/_layout';
       serverEntries[entryName] = entry.filePath;
     }
@@ -183,8 +183,9 @@ export async function buildProject(options: BuildOptions): Promise<void> {
       const relPath = path.relative(pagesDir, e.filePath).replace(/\\/g, '/');
       return {
         path: e.routePath,
-        module: e.hasLoader ? `pages/${e.name}.js` : '',
+        module: (e.hasLoader || e.hasSubscribe) ? `pages/${e.name}.js` : '',
         hasLoader: e.hasLoader,
+        hasSubscribe: e.hasSubscribe,
         tagName: filePathToTagName(relPath),
         ...(routeLayouts.length > 0 ? { layouts: routeLayouts } : {}),
       };
@@ -193,11 +194,13 @@ export async function buildProject(options: BuildOptions): Promise<void> {
       path: `/api/${e.routePath}`,
       module: `api/${e.name}.js`,
       hasLoader: false,
+      hasSubscribe: false,
     })),
     layouts: layoutEntries.map(e => ({
       dir: e.dir,
-      module: e.hasLoader ? (e.dir ? `layouts/${e.dir}/_layout.js` : 'layouts/_layout.js') : '',
+      module: (e.hasLoader || e.hasSubscribe) ? (e.dir ? `layouts/${e.dir}/_layout.js` : 'layouts/_layout.js') : '',
       hasLoader: e.hasLoader,
+      hasSubscribe: e.hasSubscribe,
     })),
     ...(i18nConfig ? { i18n: i18nConfig } : {}),
   };

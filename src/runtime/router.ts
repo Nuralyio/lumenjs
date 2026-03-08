@@ -1,10 +1,11 @@
-import { fetchLoaderData, fetchLayoutLoaderData, render404 } from './router-data.js';
+import { fetchLoaderData, fetchLayoutLoaderData, connectSubscribe, connectLayoutSubscribe, render404 } from './router-data.js';
 import { hydrateInitialRoute } from './router-hydration.js';
 import { getI18nConfig, getLocale, stripLocalePrefix, buildLocalePath } from './i18n.js';
 
 export interface LayoutInfo {
   tagName: string;
   hasLoader?: boolean;
+  hasSubscribe?: boolean;
   load?: () => Promise<any>;
   loaderPath?: string;
 }
@@ -13,6 +14,7 @@ export interface Route {
   path: string;
   tagName: string;
   hasLoader?: boolean;
+  hasSubscribe?: boolean;
   load?: () => Promise<any>;
   layouts?: LayoutInfo[];
   pattern?: RegExp;
@@ -29,6 +31,7 @@ export class NkRouter {
   private outlet: HTMLElement | null = null;
   private currentTag: string | null = null;
   private currentLayoutTags: string[] = [];
+  private subscriptions: EventSource[] = [];
   public params: Record<string, string> = {};
 
   constructor(routes: Route[], outlet: HTMLElement, hydrate = false) {
@@ -70,7 +73,16 @@ export class NkRouter {
     return { pattern: new RegExp(`^${pattern}$`), paramNames };
   }
 
+  private cleanupSubscriptions(): void {
+    for (const es of this.subscriptions) {
+      es.close();
+    }
+    this.subscriptions = [];
+  }
+
   async navigate(pathname: string, pushState = true) {
+    this.cleanupSubscriptions();
+
     const match = this.matchRoute(pathname);
     if (!match) {
       if (this.outlet) this.outlet.innerHTML = render404(pathname);
@@ -82,6 +94,7 @@ export class NkRouter {
     if (pushState) {
       const localePath = this.withLocale(pathname);
       history.pushState(null, '', localePath);
+      window.scrollTo(0, 0);
     }
 
     this.params = match.params;
@@ -126,6 +139,28 @@ export class NkRouter {
     }
 
     this.renderRoute(match.route, loaderData, layouts, layoutDataList);
+
+    // Set up SSE subscriptions for page
+    if (match.route.hasSubscribe) {
+      const es = connectSubscribe(pathname, match.params);
+      es.onmessage = (e) => {
+        const pageEl = this.findPageElement(match.route.tagName);
+        if (pageEl) (pageEl as any).liveData = JSON.parse(e.data);
+      };
+      this.subscriptions.push(es);
+    }
+
+    // Set up SSE subscriptions for layouts
+    for (const layout of layouts) {
+      if (layout.hasSubscribe) {
+        const es = connectLayoutSubscribe(layout.loaderPath || '');
+        es.onmessage = (e) => {
+          const layoutEl = this.outlet?.querySelector(layout.tagName);
+          if (layoutEl) (layoutEl as any).liveData = JSON.parse(e.data);
+        };
+        this.subscriptions.push(es);
+      }
+    }
   }
 
   private matchRoute(pathname: string): { route: Route; params: Record<string, string> } | null {
@@ -235,6 +270,11 @@ export class NkRouter {
       (el as any).loaderData = loaderData;
     }
     return el;
+  }
+
+  private findPageElement(tagName: string): Element | null {
+    if (!this.outlet) return null;
+    return this.outlet.querySelector(tagName) ?? this.outlet.querySelector(`${tagName}:last-child`);
   }
 
   private handleLinkClick(event: MouseEvent) {

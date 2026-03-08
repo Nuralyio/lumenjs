@@ -11,6 +11,7 @@ import {
   readBody,
   escapeHtml,
   fileHasLoader,
+  fileHasSubscribe,
   filePathToRoute,
 } from './utils.js';
 
@@ -226,6 +227,39 @@ describe('fileHasLoader', () => {
 
   it('returns false for non-existent file', () => {
     expect(fileHasLoader('/nonexistent/file.ts')).toBe(false);
+  });
+});
+
+describe('fileHasSubscribe', () => {
+  let tmpDir: string;
+
+  afterEach(() => {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns true for file with export function subscribe', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const file = path.join(tmpDir, 'page.ts');
+    fs.writeFileSync(file, 'export function subscribe({ push }) { return () => {}; }');
+    expect(fileHasSubscribe(file)).toBe(true);
+  });
+
+  it('returns true for async subscribe', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const file = path.join(tmpDir, 'page.ts');
+    fs.writeFileSync(file, 'export async function subscribe({ push }) { return () => {}; }');
+    expect(fileHasSubscribe(file)).toBe(true);
+  });
+
+  it('returns false for file without subscribe', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const file = path.join(tmpDir, 'page.ts');
+    fs.writeFileSync(file, 'export class MyPage extends LitElement {}');
+    expect(fileHasSubscribe(file)).toBe(false);
+  });
+
+  it('returns false for non-existent file', () => {
+    expect(fileHasSubscribe('/nonexistent/file.ts')).toBe(false);
   });
 });
 
