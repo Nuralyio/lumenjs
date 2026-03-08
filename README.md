@@ -105,6 +105,7 @@ Loaders run server-side on initial load (SSR) and are fetched via `/__nk_loader/
 | `query` | `Record<string, string>` | Query string parameters |
 | `url` | `string` | Request pathname |
 | `headers` | `Record<string, any>` | Request headers |
+| `locale` | `string` | Current locale (when i18n is configured) |
 
 ### Redirects
 
@@ -222,6 +223,81 @@ Pages with loaders are automatically server-rendered using `@lit-labs/ssr`:
 5. Client hydrates the existing DOM without re-rendering
 
 Pages without loaders render client-side only (SPA mode). If SSR fails, LumenJS falls back gracefully to client-side rendering.
+
+## Internationalization (i18n)
+
+LumenJS has built-in i18n support with URL-prefix-based locale routing.
+
+### Setup
+
+1. Add i18n config to `lumenjs.config.ts`:
+
+```typescript
+export default {
+  title: 'My App',
+  i18n: {
+    locales: ['en', 'fr'],
+    defaultLocale: 'en',
+    prefixDefault: false, // / instead of /en/
+  },
+};
+```
+
+2. Create translation files in `locales/`:
+
+```
+my-app/
+├── locales/
+│   ├── en.json    # { "home.title": "Welcome", "nav.docs": "Docs" }
+│   └── fr.json    # { "home.title": "Bienvenue", "nav.docs": "Documentation" }
+├── pages/
+└── lumenjs.config.ts
+```
+
+### Usage
+
+```typescript
+import { t, getLocale, setLocale } from '@lumenjs/i18n';
+
+@customElement('page-index')
+export class PageIndex extends LitElement {
+  render() {
+    return html`<h1>${t('home.title')}</h1>`;
+  }
+}
+```
+
+### API
+
+| Function | Description |
+|---|---|
+| `t(key)` | Returns the translated string for the key, or the key itself if not found |
+| `getLocale()` | Returns the current locale string |
+| `setLocale(locale)` | Switches locale — sets cookie, navigates to the localized URL |
+
+### Locale Resolution
+
+Locale is resolved in this order:
+
+1. URL prefix: `/fr/about` → locale `fr`, pathname `/about`
+2. Cookie `nk-locale` (set on explicit locale switch)
+3. `Accept-Language` header (SSR)
+4. Config `defaultLocale`
+
+### URL Routing
+
+With `prefixDefault: false`, the default locale uses clean URLs:
+
+| URL | Locale | Page |
+|---|---|---|
+| `/about` | `en` (default) | `pages/about.ts` |
+| `/fr/about` | `fr` | `pages/about.ts` |
+
+Routes are locale-agnostic — you don't need separate pages per locale. The router strips the locale prefix before matching and prepends it during navigation.
+
+### SSR
+
+Translations are server-rendered. The `<html lang="...">` attribute is set dynamically, and translations are inlined in the response for hydration without flash of untranslated content.
 
 ## Integrations
 
