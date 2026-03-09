@@ -42,8 +42,10 @@ export async function serveProject(options: ServeOptions): Promise<void> {
   }
   const indexHtmlShell = fs.readFileSync(indexHtmlPath, 'utf-8');
 
-  // Load bundled SSR runtime first — it installs @lit-labs/ssr DOM shim
-  // which must be in place before any Lit class is instantiated.
+  // Load bundled SSR runtime first — its install-global-dom-shim sets up
+  // the proper HTMLElement/window/document shims that @lit-labs/ssr needs.
+  // The lit-shared chunk handles missing HTMLElement via a fallback to its own shim,
+  // so no pre-installation is needed.
   const ssrRuntimePath = path.join(serverDir, 'ssr-runtime.js');
   let ssrRuntime: { render: any; html: any; unsafeStatic: any } | null = null;
   if (fs.existsSync(ssrRuntimePath)) {
@@ -51,6 +53,7 @@ export async function serveProject(options: ServeOptions): Promise<void> {
   }
 
   // Install additional DOM shims that NuralyUI components may need
+  // (must run AFTER SSR runtime so we don't block its window/HTMLElement setup)
   installDomShims();
 
   const pagesDir = path.join(projectDir, 'pages');
