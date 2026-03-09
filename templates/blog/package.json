@@ -1,0 +1,14 @@
+{
+  "name": "{{PROJECT_NAME}}",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "lumenjs dev",
+    "build": "lumenjs build",
+    "serve": "lumenjs serve"
+  },
+  "dependencies": {
+    "@nuraly/lumenjs": "^0.1.3",
+    "lit": "^3.1.0"
+  }
+}

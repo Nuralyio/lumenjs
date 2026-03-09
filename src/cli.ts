@@ -11,12 +11,13 @@ function getArg(name: string): string | undefined {
 }
 
 const USAGE = `Usage:
-  lumenjs dev   [--project <dir>] [--port <port>] [--base <path>] [--editor-mode]
-  lumenjs build [--project <dir>] [--out <dir>]
-  lumenjs serve [--project <dir>] [--port <port>]
-  lumenjs add   <integration>`;
+  lumenjs create <name> [--template <default|blog|dashboard>]
+  lumenjs dev    [--project <dir>] [--port <port>] [--base <path>] [--editor-mode]
+  lumenjs build  [--project <dir>] [--out <dir>]
+  lumenjs serve  [--project <dir>] [--port <port>]
+  lumenjs add    <integration>`;
 
-if (!command || !['dev', 'build', 'serve', 'add'].includes(command)) {
+if (!command || !['create', 'dev', 'build', 'serve', 'add'].includes(command)) {
   console.error(USAGE);
   process.exit(1);
 }
@@ -24,7 +25,13 @@ if (!command || !['dev', 'build', 'serve', 'add'].includes(command)) {
 const projectDir = path.resolve(getArg('project') || '.');
 
 async function main() {
-  if (command === 'dev') {
+  if (command === 'create') {
+    const { createProject } = await import('./create.js');
+    const name = args[1];
+    const template = getArg('template') || 'default';
+    await createProject(name, template);
+    return;
+  } else if (command === 'dev') {
     const { createDevServer } = await import('./dev-server/server.js');
     const port = parseInt(getArg('port') || '3000', 10);
     const editorMode = args.includes('--editor-mode');
