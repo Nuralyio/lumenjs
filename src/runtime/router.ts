@@ -58,6 +58,9 @@ export class NkRouter {
           this.params = params;
         }
       );
+      // Wire up SSE subscriptions after hydration
+      const path = this.stripLocale(location.pathname);
+      this.setupSubscriptions(path);
     } else {
       const path = this.stripLocale(location.pathname);
       this.navigate(path, false);
@@ -140,7 +143,17 @@ export class NkRouter {
 
     this.renderRoute(match.route, loaderData, layouts, layoutDataList);
 
-    // Set up SSE subscriptions for page
+    // Set up SSE subscriptions
+    this.setupSubscriptions(pathname);
+  }
+
+  private setupSubscriptions(pathname: string): void {
+    const match = this.matchRoute(pathname);
+    if (!match) return;
+
+    const layouts = match.route.layouts || [];
+
+    // Page subscription
     if (match.route.hasSubscribe) {
       const es = connectSubscribe(pathname, match.params);
       es.onmessage = (e) => {
@@ -150,7 +163,7 @@ export class NkRouter {
       this.subscriptions.push(es);
     }
 
-    // Set up SSE subscriptions for layouts
+    // Layout subscriptions
     for (const layout of layouts) {
       if (layout.hasSubscribe) {
         const es = connectLayoutSubscribe(layout.loaderPath || '');

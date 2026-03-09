@@ -101,12 +101,25 @@ export function escapeHtml(text: string): string {
 }
 
 /**
+ * Check if code has a top-level export of a named function (before the class definition).
+ * In LumenJS, loader/subscribe are always declared before `export class`.
+ */
+function hasTopLevelExport(content: string, fnName: string): boolean {
+  const classStart = content.search(/export\s+class\s+\w+/);
+  const fnRegex = new RegExp(`export\\s+(async\\s+)?function\\s+${fnName}\\s*\\(`);
+  const match = fnRegex.exec(content);
+  if (!match) return false;
+  if (classStart >= 0 && match.index > classStart) return false;
+  return true;
+}
+
+/**
  * Check if a page/layout file exports a loader() function.
  */
 export function fileHasLoader(filePath: string): boolean {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
-    return /export\s+(async\s+)?function\s+loader\s*\(/.test(content);
+    return hasTopLevelExport(content, 'loader');
   } catch { return false; }
 }
 
@@ -116,7 +129,7 @@ export function fileHasLoader(filePath: string): boolean {
 export function fileHasSubscribe(filePath: string): boolean {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
-    return /export\s+(async\s+)?function\s+subscribe\s*\(/.test(content);
+    return hasTopLevelExport(content, 'subscribe');
   } catch { return false; }
 }
 

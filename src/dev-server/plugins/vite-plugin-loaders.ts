@@ -215,13 +215,14 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
      * Applies to both page files and _layout files.
      */
     enforce: 'pre' as const,
-    transform(code: string, id: string, options?: { ssr?: boolean }) {
+    transform(code: string, id: string, options?: { ssr?: boolean }): { code: string; map: null } | undefined {
       if (options?.ssr) return;
       // Apply to page files and layout files within the pages directory
       if (!id.startsWith(pagesDir) || !id.endsWith('.ts')) return;
 
-      const hasLoader = code.includes('export') && code.includes('loader') && /export\s+(async\s+)?function\s+loader\s*\(/.test(code);
-      const hasSubscribe = code.includes('export') && code.includes('subscribe') && /export\s+(async\s+)?function\s+subscribe\s*\(/.test(code);
+      const hasLoader = hasTopLevelServerFunction(code, 'loader');
+      const hasSubscribe = hasTopLevelServerFunction(code, 'subscribe');
+
 
       if (!hasLoader && !hasSubscribe) return;
 
@@ -410,12 +411,29 @@ function findDynamicPage(baseDir: string, segments: string[]): string | null {
 }
 
 /**
+ * Check if code has a top-level export of a server function (before the class definition).
+ * In LumenJS, loader/subscribe are always declared before `export class`.
+ */
+function hasTopLevelServerFunction(code: string, fnName: string): boolean {
+  const classStart = code.search(/export\s+class\s+\w+/);
+  const fnRegex = new RegExp(`export\\s+(async\\s+)?function\\s+${fnName}\\s*\\(`);
+  const match = fnRegex.exec(code);
+  if (!match) return false;
+  // Real server functions appear before the class; code examples appear inside the class
+  if (classStart >= 0 && match.index > classStart) return false;
+  return true;
+}
+
+/**
  * Strip a named server-side function (loader/subscribe) from client code using brace-depth tracking.
  */
 function stripServerFunction(code: string, fnName: string): string {
+  const classStart = code.search(/export\s+class\s+\w+/);
   const regex = new RegExp(`export\\s+(async\\s+)?function\\s+${fnName}\\s*\\(`);
-  const match = code.match(regex);
+  const match = regex.exec(code);
   if (!match) return code;
+  // Only strip if the match is before the class (top-level, not inside a code example)
+  if (classStart >= 0 && match.index > classStart) return code;
 
   const startIdx = match.index!;
   let parenDepth = 1;
