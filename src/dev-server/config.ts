@@ -15,6 +15,7 @@ export interface ProjectConfig {
   title: string;
   integrations: string[];
   i18n?: I18nConfig;
+  db?: { path?: string };
 }
 
 /**
@@ -65,7 +66,21 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
     } catch { /* ignore */ }
   }
 
-  return { title, integrations, ...(i18n ? { i18n } : {}) };
+  // Parse db config
+  let db: { path?: string } | undefined;
+  if (fs.existsSync(configPath)) {
+    try {
+      const configContent = fs.readFileSync(configPath, 'utf-8');
+      const dbMatch = configContent.match(/db\s*:\s*\{([\s\S]*?)\}/);
+      if (dbMatch) {
+        const block = dbMatch[1];
+        const pathMatch = block.match(/path\s*:\s*['"]([^'"]+)['"]/);
+        db = pathMatch ? { path: pathMatch[1] } : {};
+      }
+    } catch { /* ignore */ }
+  }
+
+  return { title, integrations, ...(i18n ? { i18n } : {}), ...(db ? { db } : {}) };
 }
 
 /**

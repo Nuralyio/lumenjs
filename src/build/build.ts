@@ -144,6 +144,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
               'os', 'fs', 'path', 'url', 'util', 'crypto', 'http', 'https', 'net',
               'stream', 'zlib', 'events', 'buffer', 'querystring', 'child_process',
               'worker_threads', 'cluster', 'dns', 'tls', 'assert', 'constants',
+              'better-sqlite3',
             ],
           },
         },

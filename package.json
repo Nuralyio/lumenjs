@@ -1,14 +1,19 @@
 {
   "name": "@nuraly/lumenjs",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Full-stack Lit web component framework with file-based routing, server loaders, SSR, and API routes",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
     "lumenjs": "dist/cli.js"
   },
+  "exports": {
+    ".": "./dist/cli.js",
+    "./db": "./dist/db/index.js"
+  },
   "files": [
     "dist",
+    "templates",
     "README.md"
   ],
   "scripts": {
@@ -42,11 +47,13 @@
   "license": "MIT",
   "dependencies": {
     "@lit-labs/ssr": "^3.2.0",
+    "better-sqlite3": "^11.0.0",
     "glob": "^10.3.0",
     "lit": "^3.1.0",
     "vite": "^5.4.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^20.14.2",
     "@vitest/coverage-v8": "^4.0.18",
     "typescript": "^5.4.5",

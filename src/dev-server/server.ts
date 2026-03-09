@@ -17,6 +17,7 @@ import { sourceAnnotatorPlugin } from './plugins/vite-plugin-source-annotator.js
 import { virtualModulesPlugin } from './plugins/vite-plugin-virtual-modules.js';
 import { i18nPlugin, loadTranslationsFromDisk } from './plugins/vite-plugin-i18n.js';
 import { resolveLocale } from './middleware/locale.js';
+import { setProjectDir } from '../db/context.js';
 
 // Re-export for backwards compatibility
 export { readProjectConfig, readProjectTitle, getLumenJSNodeModules, getLumenJSDirs } from './config.js';
@@ -103,6 +104,7 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
 
 export async function createDevServer(options: DevServerOptions): Promise<ViteDevServer> {
   const { projectDir, port, editorMode = false, base = '/' } = options;
+  setProjectDir(projectDir);
   const pagesDir = path.join(projectDir, 'pages');
   const apiDir = path.join(projectDir, 'api');
   const publicDir = path.join(projectDir, 'public');

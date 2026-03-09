@@ -11,6 +11,7 @@ import { handlePageRoute } from './serve-ssr.js';
 import { renderErrorPage } from './error-page.js';
 import { handleI18nRequest } from './serve-i18n.js';
 import { resolveLocale } from '../dev-server/middleware/locale.js';
+import { setProjectDir } from '../db/context.js';
 
 export interface ServeOptions {
   projectDir: string;
@@ -19,6 +20,7 @@ export interface ServeOptions {
 
 export async function serveProject(options: ServeOptions): Promise<void> {
   const { projectDir } = options;
+  setProjectDir(projectDir);
   const port = options.port || 3000;
   const outDir = path.join(projectDir, '.lumenjs');
   const clientDir = path.join(outDir, 'client');
