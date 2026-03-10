@@ -57,8 +57,6 @@ export class PageIndex extends LitElement {
 }
 ```
 
-No `@customElement` decorator needed — tag names are derived from the file path.
-
 | File | URL | Tag |
 |---|---|---|
 | `pages/index.ts` | `/` | `<page-index>` |
