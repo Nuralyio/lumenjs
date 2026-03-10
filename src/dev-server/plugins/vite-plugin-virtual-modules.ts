@@ -29,6 +29,11 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     'click-select': 'click-select.js',
     'hover-detect': 'hover-detect.js',
     'inline-text-edit': 'inline-text-edit.js',
+    'editor-api-client': 'editor-api-client.js',
+    'standalone-overlay': 'standalone-overlay.js',
+    'standalone-overlay-dom': 'standalone-overlay-dom.js',
+    'standalone-overlay-styles': 'standalone-overlay-styles.js',
+    'standalone-file-panel': 'standalone-file-panel.js',
   };
 
   function rewriteRelativeImports(code: string, modules: Record<string, string>): string {

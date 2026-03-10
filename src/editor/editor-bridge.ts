@@ -8,6 +8,7 @@ import { startAnnotator } from './element-annotator.js';
 import { setupClickToSelect } from './click-select.js';
 import { setupHoverDetection } from './hover-detect.js';
 import { setupInlineTextEdit } from './inline-text-edit.js';
+import { initStandaloneEditor } from './standalone-overlay.js';
 
 let previewMode = false;
 
@@ -98,14 +99,18 @@ function handleHostMessage(event: MessageEvent) {
 }
 
 function initEditorBridge() {
-  if (window.self === window.top) return; // Not in iframe
-
-  startAnnotator();
-  setupClickToSelect();
-  setupHoverDetection();
-  setupInlineTextEdit();
-  window.addEventListener('message', handleHostMessage);
-  sendToHost({ type: 'NK_READY' });
+  if (window.self !== window.top) {
+    // Running inside Studio iframe — use postMessage bridge
+    startAnnotator();
+    setupClickToSelect();
+    setupHoverDetection();
+    setupInlineTextEdit();
+    window.addEventListener('message', handleHostMessage);
+    sendToHost({ type: 'NK_READY' });
+  } else {
+    // Running standalone — activate built-in editor overlay
+    initStandaloneEditor();
+  }
 }
 
 // Auto-init
