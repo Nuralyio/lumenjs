@@ -2,67 +2,16 @@
  * Properties Panel — right-side panel for editing element properties and styles.
  */
 import { discoverProperties, PropertyInfo } from './property-registry.js';
-import { applyAstModification, readFile, writeFile } from './editor-api-client.js';
+import { applyAstModification } from './editor-api-client.js';
+import {
+  CSS_ENUMS, COMMON_CSS_PROPS,
+  isColorValue, normalizeToHex, notifyLayoutChange,
+  loadCssRulesForElement,
+} from './css-rules.js';
 
 let panel: HTMLDivElement;
 let currentElement: HTMLElement | null = null;
 let debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {};
-
-/** CSS style properties with known enum values */
-const CSS_ENUMS: Record<string, string[]> = {
-  display: ['block', 'flex', 'grid', 'inline', 'inline-block', 'inline-flex', 'none'],
-  position: ['static', 'relative', 'absolute', 'fixed', 'sticky'],
-  overflow: ['visible', 'hidden', 'scroll', 'auto'],
-  'overflow-x': ['visible', 'hidden', 'scroll', 'auto'],
-  'overflow-y': ['visible', 'hidden', 'scroll', 'auto'],
-  'text-align': ['left', 'center', 'right', 'justify'],
-  'flex-direction': ['row', 'column', 'row-reverse', 'column-reverse'],
-  'flex-wrap': ['nowrap', 'wrap', 'wrap-reverse'],
-  'justify-content': ['flex-start', 'flex-end', 'center', 'space-between', 'space-around', 'space-evenly'],
-  'align-items': ['flex-start', 'flex-end', 'center', 'baseline', 'stretch'],
-  'align-self': ['auto', 'flex-start', 'flex-end', 'center', 'baseline', 'stretch'],
-  'font-weight': ['100', '200', '300', '400', '500', '600', '700', '800', '900'],
-  'font-style': ['normal', 'italic', 'oblique'],
-  'text-decoration': ['none', 'underline', 'overline', 'line-through'],
-  'text-transform': ['none', 'uppercase', 'lowercase', 'capitalize'],
-  'white-space': ['normal', 'nowrap', 'pre', 'pre-wrap', 'pre-line'],
-  'word-break': ['normal', 'break-all', 'keep-all', 'break-word'],
-  visibility: ['visible', 'hidden', 'collapse'],
-  'box-sizing': ['content-box', 'border-box'],
-  cursor: ['auto', 'default', 'pointer', 'wait', 'text', 'move', 'not-allowed', 'grab', 'grabbing'],
-  'pointer-events': ['auto', 'none'],
-  float: ['none', 'left', 'right'],
-  clear: ['none', 'left', 'right', 'both'],
-};
-
-/** Common CSS properties for the "add style" autocomplete */
-const COMMON_CSS_PROPS = [
-  'display', 'position', 'top', 'right', 'bottom', 'left',
-  'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
-  'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-  'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-  'border', 'border-radius', 'border-color', 'border-width', 'border-style',
-  'background', 'background-color', 'background-image',
-  'color', 'font-size', 'font-weight', 'font-family', 'font-style',
-  'text-align', 'text-decoration', 'text-transform', 'line-height', 'letter-spacing',
-  'flex', 'flex-direction', 'flex-wrap', 'justify-content', 'align-items', 'align-self', 'gap',
-  'grid-template-columns', 'grid-template-rows', 'grid-gap',
-  'overflow', 'overflow-x', 'overflow-y',
-  'opacity', 'z-index', 'cursor', 'pointer-events',
-  'box-shadow', 'transition', 'transform',
-  'white-space', 'word-break', 'visibility',
-];
-
-/** Notify the overlay system that element layout may have changed */
-function notifyLayoutChange(): void {
-  window.dispatchEvent(new Event('resize'));
-}
-
-function isColorValue(name: string, value: string): boolean {
-  if (/color/i.test(name)) return true;
-  if (typeof value === 'string' && (/^#[0-9a-f]{3,8}$/i.test(value) || /^rgb/i.test(value))) return true;
-  return false;
-}
 
 export function createPropertiesPanel(): HTMLDivElement {
   panel = document.createElement('div');
@@ -263,14 +212,15 @@ export function showPropertiesForElement(element: HTMLElement): void {
   styleGroup.appendChild(createAddStyleRow(element, styleGroup));
   content.appendChild(styleGroup);
 
-  // CSS Rules group — loaded from source file's static styles
+  // CSS Rules group
   const cssGroup = createGroup('CSS Rules');
   const cssLoading = document.createElement('div');
   cssLoading.className = 'nk-pp-row';
   cssLoading.innerHTML = '<span class="nk-pp-label" style="width:auto;color:#4a4662">Loading...</span>';
   cssGroup.appendChild(cssLoading);
   content.appendChild(cssGroup);
-  loadCssRulesForElement(element, cssGroup);
+  const currentElementRef = { get current() { return currentElement; } };
+  loadCssRulesForElement(element, cssGroup, currentElementRef, debounceTimers);
 
   panel.classList.add('open');
 }
@@ -327,7 +277,6 @@ function createPropertyRow(prop: PropertyInfo, element: HTMLElement): HTMLDivEle
     control.appendChild(ro);
   } else if (prop.enumValues && prop.enumValues.length > 0) {
     const select = document.createElement('select');
-    // Add empty option
     const emptyOpt = document.createElement('option');
     emptyOpt.value = '';
     emptyOpt.textContent = '—';
@@ -390,7 +339,6 @@ function createPropertyRow(prop: PropertyInfo, element: HTMLElement): HTMLDivEle
     });
     control.appendChild(input);
   } else {
-    // String text input
     const input = document.createElement('input');
     input.type = 'text';
     input.value = prop.value != null ? String(prop.value) : '';
@@ -437,7 +385,7 @@ function createStyleRow(cssProp: string, cssVal: string, element: HTMLElement, g
     const sync = (val: string) => {
       element.style.setProperty(cssProp, val);
       notifyLayoutChange();
-      persistStyleDebounced(element, cssProp);
+      persistStyleDebounced(element);
     };
     colorInput.addEventListener('input', () => {
       textInput.value = colorInput.value;
@@ -462,11 +410,10 @@ function createStyleRow(cssProp: string, cssVal: string, element: HTMLElement, g
       select.appendChild(opt);
     }
     select.value = cssVal;
-    // Also allow typing custom value
     select.addEventListener('change', () => {
       element.style.setProperty(cssProp, select.value);
       notifyLayoutChange();
-      persistStyleDebounced(element, cssProp);
+      persistStyleDebounced(element);
     });
     control.appendChild(select);
   } else {
@@ -476,7 +423,7 @@ function createStyleRow(cssProp: string, cssVal: string, element: HTMLElement, g
     input.addEventListener('input', () => {
       element.style.setProperty(cssProp, input.value);
       notifyLayoutChange();
-      persistStyleDebounced(element, cssProp);
+      persistStyleDebounced(element);
     });
     control.appendChild(input);
   }
@@ -527,11 +474,9 @@ function createAddAttributeRow(element: HTMLElement, group: HTMLDivElement): HTM
       const name = nameInput.value.trim();
       const val = valInput.value;
       if (!name) { addBtn.style.display = ''; form.remove(); return; }
-      // Check duplicate
       if (element.hasAttribute(name)) { nameInput.style.borderColor = '#f87171'; return; }
       element.setAttribute(name, val);
       persistAttribute(element, name, val);
-      // Add row to the group (before the add button wrapper)
       const prop: PropertyInfo = { name, attrName: name, type: 'String', value: val };
       group.insertBefore(createPropertyRow(prop, element), wrapper);
       addBtn.style.display = '';
@@ -647,7 +592,7 @@ function persistStyle(element: HTMLElement): void {
   }).catch(() => {});
 }
 
-function persistStyleDebounced(element: HTMLElement, _cssProp: string): void {
+function persistStyleDebounced(element: HTMLElement): void {
   const key = '__style__';
   if (debounceTimers[key]) clearTimeout(debounceTimers[key]);
   debounceTimers[key] = setTimeout(() => {
@@ -669,456 +614,9 @@ function parseInlineStyles(element: HTMLElement): [string, string][] {
   const style = element.style;
   for (let i = 0; i < style.length; i++) {
     const prop = style[i];
-    // Skip editor-injected styles
     if (prop === 'outline' || prop === 'outline-offset') continue;
     const val = style.getPropertyValue(prop);
     if (val) result.push([prop, val]);
   }
   return result;
-}
-
-function normalizeToHex(value: string): string {
-  if (/^#[0-9a-f]{6}$/i.test(value)) return value;
-  if (/^#[0-9a-f]{3}$/i.test(value)) {
-    return '#' + value[1] + value[1] + value[2] + value[2] + value[3] + value[3];
-  }
-  const m = value.match(/(\d+)/g);
-  if (m && m.length >= 3) {
-    return '#' + [m[0], m[1], m[2]].map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
-  }
-  return '#000000';
-}
-
-// --- CSS Rules from source file ---
-
-interface CssRule {
-  selector: string;
-  properties: [string, string][];
-  /** Character offset of this rule's opening brace in the css`` content */
-  startOffset: number;
-  /** Character offset of this rule's closing brace in the css`` content */
-  endOffset: number;
-}
-
-/**
- * Find the source file for the host custom element (the one with static styles).
- * Walks up from the selected element through shadow DOM to find the host.
- */
-function findHostSourceFile(element: HTMLElement): string | null {
-  // If the element itself has a source, check its host
-  const root = element.getRootNode();
-  if (root instanceof ShadowRoot) {
-    const host = root.host as HTMLElement;
-    const src = host.getAttribute('data-nk-source');
-    if (src) {
-      const lastColon = src.lastIndexOf(':');
-      return lastColon !== -1 ? src.substring(0, lastColon) : null;
-    }
-  }
-  // Fallback: check the element itself
-  const src = element.getAttribute('data-nk-source');
-  if (src) {
-    const lastColon = src.lastIndexOf(':');
-    return lastColon !== -1 ? src.substring(0, lastColon) : null;
-  }
-  return null;
-}
-
-/**
- * Extract CSS rules from a `static styles = css\`...\`` block in the source.
- * Returns the raw css content and parsed rules.
- */
-function extractCssFromSource(source: string): { cssContent: string; cssStart: number; rules: CssRule[] } | null {
-  // Find css`...` tagged template
-  const cssTagRegex = /css\s*`([\s\S]*?)`/;
-  const match = cssTagRegex.exec(source);
-  if (!match) return null;
-
-  const cssContent = match[1];
-  const cssStart = match.index + match[0].indexOf('`') + 1;
-
-  const rules = parseCssRules(cssContent);
-  return { cssContent, cssStart, rules };
-}
-
-/**
- * Simple CSS rule parser — extracts selector + properties from a CSS string.
- * Handles nested @media by flattening rules inside.
- */
-function parseCssRules(css: string): CssRule[] {
-  const rules: CssRule[] = [];
-  let i = 0;
-
-  while (i < css.length) {
-    // Skip whitespace
-    while (i < css.length && /\s/.test(css[i])) i++;
-    if (i >= css.length) break;
-
-    // Check for @media or @keyframes — skip the outer block, parse inner rules
-    if (css[i] === '@') {
-      const atStart = i;
-      // Find the opening brace
-      const braceIdx = css.indexOf('{', i);
-      if (braceIdx === -1) break;
-      const mediaSelector = css.substring(atStart, braceIdx).trim();
-      i = braceIdx + 1;
-      // Find matching closing brace
-      let depth = 1;
-      const innerStart = i;
-      while (i < css.length && depth > 0) {
-        if (css[i] === '{') depth++;
-        else if (css[i] === '}') depth--;
-        i++;
-      }
-      const innerCss = css.substring(innerStart, i - 1);
-      // Parse inner rules and prefix their selectors with the @media
-      const innerRules = parseCssRules(innerCss);
-      for (const r of innerRules) {
-        rules.push({
-          ...r,
-          selector: `${mediaSelector} { ${r.selector} }`,
-          startOffset: innerStart + r.startOffset,
-          endOffset: innerStart + r.endOffset,
-        });
-      }
-      continue;
-    }
-
-    // Regular rule: selector { ... }
-    const braceIdx = css.indexOf('{', i);
-    if (braceIdx === -1) break;
-    const selector = css.substring(i, braceIdx).trim();
-    i = braceIdx + 1;
-    const startOffset = braceIdx;
-
-    // Find closing brace (no nesting for regular rules)
-    const closeIdx = css.indexOf('}', i);
-    if (closeIdx === -1) break;
-    const body = css.substring(i, closeIdx).trim();
-    const endOffset = closeIdx + 1;
-    i = closeIdx + 1;
-
-    const properties: [string, string][] = [];
-    for (const decl of body.split(';')) {
-      const colonIdx = decl.indexOf(':');
-      if (colonIdx === -1) continue;
-      const prop = decl.substring(0, colonIdx).trim();
-      const val = decl.substring(colonIdx + 1).trim();
-      if (prop && val) properties.push([prop, val]);
-    }
-
-    if (selector) {
-      rules.push({ selector, properties, startOffset, endOffset });
-    }
-  }
-
-  return rules;
-}
-
-/**
- * Check if a CSS selector matches the selected element.
- * Supports: tag, .class, :host, tag.class, .class1.class2
- */
-function selectorMatchesElement(selector: string, element: HTMLElement): boolean {
-  const tag = element.tagName.toLowerCase();
-  const classes = Array.from(element.classList);
-  const sel = selector.trim();
-
-  if (sel === ':host') return false; // :host applies to the host, not inner elements
-  if (sel === tag) return true;
-
-  // .class or .class1.class2
-  if (sel.startsWith('.')) {
-    const selClasses = sel.split('.').filter(Boolean);
-    return selClasses.every(c => classes.includes(c));
-  }
-
-  // tag.class
-  if (sel.includes('.')) {
-    const dotIdx = sel.indexOf('.');
-    const selTag = sel.substring(0, dotIdx);
-    const selClasses = sel.substring(dotIdx).split('.').filter(Boolean);
-    if (selTag && selTag !== tag) return false;
-    return selClasses.every(c => classes.includes(c));
-  }
-
-  return false;
-}
-
-/**
- * Load CSS rules from the component source file and render matching rules in the panel.
- */
-async function loadCssRulesForElement(element: HTMLElement, cssGroup: HTMLDivElement): Promise<void> {
-  // Remove loading indicator
-  const loadingRow = cssGroup.querySelector('.nk-pp-row');
-
-  const sourceFile = findHostSourceFile(element);
-  if (!sourceFile) {
-    if (loadingRow) loadingRow.innerHTML = '<span class="nk-pp-label" style="width:auto;color:#4a4662">No source file</span>';
-    return;
-  }
-
-  try {
-    const data = await readFile(sourceFile);
-    const extracted = extractCssFromSource(data.content);
-    if (!extracted || extracted.rules.length === 0) {
-      if (loadingRow) loadingRow.innerHTML = '<span class="nk-pp-label" style="width:auto;color:#4a4662">No static styles</span>';
-      return;
-    }
-
-    // Remove loading
-    if (loadingRow) loadingRow.remove();
-
-    // Find matching rules for this element
-    const matchingRules = extracted.rules.filter(r => {
-      // Strip @media wrapper for matching
-      const innerSel = r.selector.includes('{') ? r.selector.substring(r.selector.lastIndexOf('{') + 1).trim().replace('}', '').trim() : r.selector;
-      return selectorMatchesElement(innerSel, element);
-    });
-
-    // Also show :host if the element IS the host
-    const root = element.getRootNode();
-    const isHost = !(root instanceof ShadowRoot);
-    if (isHost) {
-      const hostRules = extracted.rules.filter(r => r.selector.trim() === ':host');
-      matchingRules.unshift(...hostRules);
-    }
-
-    if (matchingRules.length === 0) {
-      const noMatch = document.createElement('div');
-      noMatch.className = 'nk-pp-row';
-      noMatch.innerHTML = '<span class="nk-pp-label" style="width:auto;color:#4a4662">No matching rules</span>';
-      cssGroup.appendChild(noMatch);
-
-      // Still show all rules collapsed
-      renderAllRules(extracted.rules, extracted, data.content, sourceFile, cssGroup);
-      return;
-    }
-
-    // Render matching rules
-    for (const rule of matchingRules) {
-      renderCssRule(rule, extracted, data.content, sourceFile, cssGroup, true);
-    }
-
-    // Show other rules collapsed
-    const otherRules = extracted.rules.filter(r => !matchingRules.includes(r));
-    if (otherRules.length > 0) {
-      renderAllRules(otherRules, extracted, data.content, sourceFile, cssGroup);
-    }
-  } catch {
-    if (loadingRow) loadingRow.innerHTML = '<span class="nk-pp-label" style="width:auto;color:#4a4662">Failed to load</span>';
-  }
-}
-
-function renderCssRule(
-  rule: CssRule,
-  extracted: { cssContent: string; cssStart: number; rules: CssRule[] },
-  fullSource: string,
-  sourceFile: string,
-  container: HTMLDivElement,
-  startOpen: boolean,
-): void {
-  const header = document.createElement('div');
-  header.className = 'nk-pp-rule-header';
-  const arrow = document.createElement('span');
-  arrow.className = 'nk-pp-toggle-arrow' + (startOpen ? ' open' : '');
-  arrow.textContent = '▶';
-  const selectorSpan = document.createElement('span');
-  selectorSpan.textContent = rule.selector;
-  header.appendChild(selectorSpan);
-  header.appendChild(arrow);
-
-  const body = document.createElement('div');
-  body.className = 'nk-pp-rule-body' + (startOpen ? ' open' : '');
-
-  for (const [prop, val] of rule.properties) {
-    const row = document.createElement('div');
-    row.className = 'nk-pp-row';
-
-    const label = document.createElement('div');
-    label.className = 'nk-pp-label';
-    label.textContent = prop;
-    label.title = prop;
-    row.appendChild(label);
-
-    const control = document.createElement('div');
-    control.className = 'nk-pp-control';
-
-    const enumVals = CSS_ENUMS[prop];
-    if (isColorValue(prop, val)) {
-      const wrap = document.createElement('div');
-      wrap.className = 'nk-pp-color-wrap';
-      const colorInput = document.createElement('input');
-      colorInput.type = 'color';
-      colorInput.value = normalizeToHex(val);
-      const textInput = document.createElement('input');
-      textInput.type = 'text';
-      textInput.value = val;
-      const sync = (newVal: string) => {
-        persistCssPropertyDebounced(sourceFile, fullSource, extracted, rule, prop, newVal);
-      };
-      colorInput.addEventListener('input', () => { textInput.value = colorInput.value; sync(colorInput.value); });
-      textInput.addEventListener('input', () => { sync(textInput.value); });
-      wrap.appendChild(colorInput);
-      wrap.appendChild(textInput);
-      control.appendChild(wrap);
-    } else if (enumVals) {
-      const select = document.createElement('select');
-      const emptyOpt = document.createElement('option');
-      emptyOpt.value = '';
-      emptyOpt.textContent = '—';
-      select.appendChild(emptyOpt);
-      for (const v of enumVals) {
-        const opt = document.createElement('option');
-        opt.value = v;
-        opt.textContent = v;
-        select.appendChild(opt);
-      }
-      select.value = val;
-      select.addEventListener('change', () => {
-        persistCssPropertyDebounced(sourceFile, fullSource, extracted, rule, prop, select.value);
-      });
-      control.appendChild(select);
-    } else {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.value = val;
-      input.addEventListener('input', () => {
-        persistCssPropertyDebounced(sourceFile, fullSource, extracted, rule, prop, input.value);
-      });
-      control.appendChild(input);
-    }
-
-    row.appendChild(control);
-    body.appendChild(row);
-  }
-
-  header.addEventListener('click', () => {
-    arrow.classList.toggle('open');
-    body.classList.toggle('open');
-  });
-
-  container.appendChild(header);
-  container.appendChild(body);
-}
-
-function renderAllRules(
-  rules: CssRule[],
-  extracted: { cssContent: string; cssStart: number; rules: CssRule[] },
-  fullSource: string,
-  sourceFile: string,
-  container: HTMLDivElement,
-): void {
-  const sep = document.createElement('div');
-  sep.className = 'nk-pp-group-header';
-  sep.textContent = 'ALL RULES';
-  sep.style.marginTop = '4px';
-  container.appendChild(sep);
-
-  for (const rule of rules) {
-    renderCssRule(rule, extracted, fullSource, sourceFile, container, false);
-  }
-}
-
-/**
- * Persist a CSS property change back to the source file.
- * Rewrites the property value within the rule in the css`` template.
- */
-function persistCssPropertyDebounced(
-  sourceFile: string,
-  fullSource: string,
-  extracted: { cssContent: string; cssStart: number; rules: CssRule[] },
-  rule: CssRule,
-  prop: string,
-  newVal: string,
-): void {
-  const key = `__css_${rule.selector}_${prop}`;
-  if (debounceTimers[key]) clearTimeout(debounceTimers[key]);
-  debounceTimers[key] = setTimeout(async () => {
-    try {
-      // Re-read the file to get the latest content
-      const latest = await readFile(sourceFile);
-      const latestExtracted = extractCssFromSource(latest.content);
-      if (!latestExtracted) return;
-
-      // Find the matching rule in the latest source
-      const latestRule = latestExtracted.rules.find(r => r.selector === rule.selector);
-      if (!latestRule) return;
-
-      // Rebuild the rule body with the updated property
-      const newProps = latestRule.properties.map(([p, v]) =>
-        p === prop ? `${p}: ${newVal}` : `${p}: ${v}`
-      );
-      const newBody = ' ' + newProps.join('; ') + '; ';
-
-      // Replace the rule body in the css content
-      const cssContent = latestExtracted.cssContent;
-      const openBrace = latestRule.startOffset;
-      const closeBrace = latestRule.endOffset - 1; // endOffset is after }
-      const newCss = cssContent.substring(0, openBrace + 1) + newBody + cssContent.substring(closeBrace);
-
-      // Reconstruct the full source
-      const newSource = latest.content.substring(0, latestExtracted.cssStart) +
-        newCss +
-        latest.content.substring(latestExtracted.cssStart + cssContent.length);
-
-      // Apply visually to the shadow DOM stylesheet immediately (no page reload)
-      if (currentElement) {
-        applyCssToShadowRoot(currentElement, rule.selector, prop, newVal);
-        notifyLayoutChange();
-      }
-
-      // Write file with HMR suppressed — visual change already applied above
-      await writeFile(sourceFile, newSource);
-    } catch { /* silent fail */ }
-  }, 300);
-}
-
-/**
- * Apply a CSS property change directly to the shadow DOM stylesheet.
- * Handles both regular rules (e.g. "h1") and @media-wrapped rules.
- */
-function applyCssToShadowRoot(element: HTMLElement, ruleSelector: string, prop: string, value: string): void {
-  const root = element.getRootNode();
-  if (!(root instanceof ShadowRoot)) return;
-
-  // Collect all stylesheets from the shadow root
-  const sheets: CSSStyleSheet[] = [];
-  if (root.adoptedStyleSheets?.length) {
-    sheets.push(...root.adoptedStyleSheets);
-  }
-  for (const s of Array.from(root.styleSheets || [])) {
-    sheets.push(s as CSSStyleSheet);
-  }
-
-  // Check if the selector is wrapped in @media
-  const mediaMatch = ruleSelector.match(/^(@media\s+[^{]+)\{\s*(.+?)\s*\}$/);
-
-  try {
-    for (const sheet of sheets) {
-      if (mediaMatch) {
-        // Find the matching @media rule, then the inner rule
-        const mediaCondition = mediaMatch[1].trim();
-        const innerSelector = mediaMatch[2].trim();
-        for (const cssRule of Array.from(sheet.cssRules)) {
-          if (cssRule instanceof CSSMediaRule && mediaCondition.includes(cssRule.conditionText)) {
-            for (const inner of Array.from(cssRule.cssRules)) {
-              if (inner instanceof CSSStyleRule && inner.selectorText === innerSelector) {
-                inner.style.setProperty(prop, value);
-                return;
-              }
-            }
-          }
-        }
-      } else {
-        // Regular rule
-        for (const cssRule of Array.from(sheet.cssRules)) {
-          if (cssRule instanceof CSSStyleRule && cssRule.selectorText === ruleSelector.trim()) {
-            cssRule.style.setProperty(prop, value);
-            return;
-          }
-        }
-      }
-    }
-  } catch { /* cross-origin or security restriction */ }
 }
