@@ -111,6 +111,22 @@ export function fileHasLoader(filePath: string): boolean {
 }
 
 /**
+ * Get the HTTP methods exported by an API route file (GET, POST, PUT, DELETE).
+ */
+export function fileGetApiMethods(filePath: string): string[] {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const methods: string[] = [];
+    for (const method of ['GET', 'POST', 'PUT', 'DELETE']) {
+      if (new RegExp(`export\\s+(async\\s+)?function\\s+${method}\\s*\\(`).test(content)) {
+        methods.push(method);
+      }
+    }
+    return methods;
+  } catch { return []; }
+}
+
+/**
  * Check if a page/layout file exports a subscribe() function.
  */
 export function fileHasSubscribe(filePath: string): boolean {

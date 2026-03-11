@@ -6,7 +6,7 @@ Full-stack Lit web component framework. File-based routing, server loaders, SSR,
 
 ```
 project/
-├── lumenjs.config.ts     # Config: { title, integrations?, i18n? }
+├── lumenjs.config.ts     # Config: { title, integrations?, i18n?, db? }
 ├── pages/                # File-based routes
 │   ├── _layout.ts        # Layout (wraps children, uses <slot>)
 │   ├── index.ts          # Route: /
@@ -157,6 +157,26 @@ Available: nr-alert, nr-badge, nr-breadcrumb, nr-button, nr-canvas, nr-card, nr-
 
 Pages with loaders are server-rendered via `@lit-labs/ssr`. Loader data embedded as `<script type="application/json" id="__nk_ssr_data__">`. Client hydrates without re-render. Fallback to CSR on SSR failure.
 
+## Database
+
+Config: `db: { path?: string }`. Enables SQLite database support. Default path: `data.db` in project root.
+
+Used in loaders and API routes to query/mutate data. The `db` config is detected by the framework for feature discovery (e.g., `llms.txt` generation).
+
+## Auto-generated `/llms.txt`
+
+Every LumenJS project automatically serves an `/llms.txt` endpoint following the llmstxt.org convention, making the project discoverable by AI tools. Zero config required.
+
+The generated file includes:
+- All pages with their routes and loader data (rendered as plain text key-value pairs)
+- Dynamic routes (e.g., `/blog/:slug`) — if loader data is available, entries are expanded with content; if the database is empty or loaders fail, the route is listed as `- Dynamic route` without a count
+- All API routes with their HTTP methods
+- Enabled features (database, i18n, integrations)
+
+**Override:** Place a `public/llms.txt` file to serve custom content instead of the auto-generated version.
+
+Works in both dev (`lumenjs dev`) and production (`lumenjs serve`) modes.
+
 ## Config Reference
 
 ```typescript
@@ -168,6 +188,9 @@ export default {
     locales: string[],              // ['en', 'fr']
     defaultLocale: string,          // 'en'
     prefixDefault: boolean,         // prefix default locale in URLs
+  },
+  db?: {
+    path?: string,                  // SQLite DB path (default: 'data.db')
   },
 };
 ```

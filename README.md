@@ -41,6 +41,7 @@ export default {
 |---|---|---|
 | `title` | `string` | HTML page title |
 | `integrations` | `string[]` | Optional integrations: `'tailwind'`, `'nuralyui'` |
+| `db` | `{ path?: string }` | SQLite database config (default path: `data.db`) |
 
 ## Pages
 
@@ -272,6 +273,47 @@ export async function POST(req) {
   }
   return { uploaded: req.files.length };
 }
+```
+
+## Auto-generated `/llms.txt`
+
+Every LumenJS project automatically serves an `/llms.txt` endpoint following the [llmstxt.org](https://llmstxt.org) convention. This makes your app discoverable by AI tools — zero config required.
+
+The generated file includes:
+- All pages with routes and loader data (rendered as key-value text)
+- Dynamic routes expanded with all known entries (e.g., each blog post)
+- API routes with their HTTP methods
+- Enabled features (database, i18n, integrations)
+
+Works in both `lumenjs dev` and `lumenjs serve` modes.
+
+### Override
+
+Place a `public/llms.txt` file in your project to serve custom content instead of the auto-generated version.
+
+### Example Output
+
+```
+# My Blog
+
+> Built with LumenJS
+
+## Pages
+
+### /
+count: 3
+
+### /blog/:slug
+- Dynamic route
+
+## API Routes
+
+- GET /api/posts
+- POST /api/posts
+
+## Features
+
+- SQLite Database
 ```
 
 ## SSR & Hydration

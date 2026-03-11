@@ -51,6 +51,9 @@ export function initI18n(
   i18nConfig = config;
   currentLocale = locale;
   translations = trans;
+  if (typeof window !== 'undefined') {
+    (window as any).__nk_i18n_config__ = config;
+  }
 }
 
 /**

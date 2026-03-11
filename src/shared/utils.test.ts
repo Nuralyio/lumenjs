@@ -12,6 +12,7 @@ import {
   escapeHtml,
   fileHasLoader,
   fileHasSubscribe,
+  fileGetApiMethods,
   filePathToRoute,
 } from './utils.js';
 
@@ -260,6 +261,65 @@ describe('fileHasSubscribe', () => {
 
   it('returns false for non-existent file', () => {
     expect(fileHasSubscribe('/nonexistent/file.ts')).toBe(false);
+  });
+});
+
+describe('fileGetApiMethods', () => {
+  let tmpDir: string;
+
+  afterEach(() => {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('detects GET export', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const file = path.join(tmpDir, 'route.ts');
+    fs.writeFileSync(file, 'export function GET(req) { return {}; }');
+    expect(fileGetApiMethods(file)).toEqual(['GET']);
+  });
+
+  it('detects async GET export', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const file = path.join(tmpDir, 'route.ts');
+    fs.writeFileSync(file, 'export async function GET(req) { return {}; }');
+    expect(fileGetApiMethods(file)).toEqual(['GET']);
+  });
+
+  it('detects multiple methods', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const file = path.join(tmpDir, 'route.ts');
+    fs.writeFileSync(file, 'export function GET() { return {}; }\nexport async function POST(req) { return {}; }\nexport function DELETE(req) { return {}; }');
+    expect(fileGetApiMethods(file)).toEqual(['GET', 'POST', 'DELETE']);
+  });
+
+  it('returns empty array for file without methods', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const file = path.join(tmpDir, 'route.ts');
+    fs.writeFileSync(file, 'export class SomeThing {}');
+    expect(fileGetApiMethods(file)).toEqual([]);
+  });
+
+  it('returns empty array for non-existent file', () => {
+    expect(fileGetApiMethods('/nonexistent/file.ts')).toEqual([]);
+  });
+
+  it('detects all four HTTP methods', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const file = path.join(tmpDir, 'route.ts');
+    fs.writeFileSync(file, [
+      'export function GET() { return {}; }',
+      'export function POST(req) { return {}; }',
+      'export function PUT(req) { return {}; }',
+      'export function DELETE(req) { return {}; }',
+    ].join('\n'));
+    expect(fileGetApiMethods(file)).toEqual(['GET', 'POST', 'PUT', 'DELETE']);
+  });
+
+  it('does not match non-exported functions', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const file = path.join(tmpDir, 'route.ts');
+    fs.writeFileSync(file, 'function GET() { return {}; }');
+    expect(fileGetApiMethods(file)).toEqual([]);
   });
 });
 

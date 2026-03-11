@@ -54,10 +54,19 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
-    "@types/node": "^20.14.2",
+    "@types/node": "^20.19.37",
     "@vitest/coverage-v8": "^4.0.18",
+    "ts-morph": "^27.0.2",
     "typescript": "^5.4.5",
     "vitest": "^4.0.18"
+  },
+  "peerDependencies": {
+    "ts-morph": ">=20.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ts-morph": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=18"

@@ -1,6 +1,6 @@
 import { fetchLoaderData, fetchLayoutLoaderData, connectSubscribe, connectLayoutSubscribe, render404 } from './router-data.js';
 import { hydrateInitialRoute } from './router-hydration.js';
-import { getI18nConfig, getLocale, stripLocalePrefix, buildLocalePath } from './i18n.js';
+import { getI18nConfig, getLocale, stripLocalePrefix, buildLocalePath, initI18n } from './i18n.js';
 
 export interface LayoutInfo {
   tagName: string;
@@ -41,6 +41,18 @@ export class NkRouter {
       ...this.compilePattern(r.path),
     }));
 
+    // Read i18n data early — needed for both CSR and SSR hydration paths
+    if (!hydrate) {
+      const i18nScript = document.getElementById('__nk_i18n__');
+      if (i18nScript) {
+        try {
+          const i18nData = JSON.parse(i18nScript.textContent || '');
+          initI18n(i18nData.config, i18nData.locale, i18nData.translations);
+        } catch { /* ignore */ }
+        i18nScript.remove();
+      }
+    }
+
     window.addEventListener('popstate', () => {
       const path = this.stripLocale(location.pathname);
       this.navigate(path, false);
@@ -56,6 +68,8 @@ export class NkRouter {
           this.currentTag = tag;
           this.currentLayoutTags = layoutTags;
           this.params = params;
+          // Start SSE subscriptions for the hydrated route
+          this.connectInitialSubscriptions(tag, layoutTags, params);
         }
       );
     } else {
@@ -275,6 +289,34 @@ export class NkRouter {
   private findPageElement(tagName: string): Element | null {
     if (!this.outlet) return null;
     return this.outlet.querySelector(tagName) ?? this.outlet.querySelector(`${tagName}:last-child`);
+  }
+
+  /** Start SSE subscriptions after hydration (mirrors logic in navigate()). */
+  private connectInitialSubscriptions(tag: string, layoutTags: string[], params: Record<string, string>) {
+    const pathname = this.stripLocale(location.pathname);
+    const match = this.matchRoute(pathname);
+    if (!match) return;
+
+    if (match.route.hasSubscribe) {
+      const es = connectSubscribe(pathname, params);
+      es.onmessage = (e) => {
+        const pageEl = this.findPageElement(match.route.tagName);
+        if (pageEl) (pageEl as any).liveData = JSON.parse(e.data);
+      };
+      this.subscriptions.push(es);
+    }
+
+    const layouts = match.route.layouts || [];
+    for (const layout of layouts) {
+      if (layout.hasSubscribe) {
+        const es = connectLayoutSubscribe(layout.loaderPath || '');
+        es.onmessage = (e) => {
+          const layoutEl = this.outlet?.querySelector(layout.tagName);
+          if (layoutEl) (layoutEl as any).liveData = JSON.parse(e.data);
+        };
+        this.subscriptions.push(es);
+      }
+    }
   }
 
   private handleLinkClick(event: MouseEvent) {

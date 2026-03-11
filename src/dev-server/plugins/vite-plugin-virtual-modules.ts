@@ -29,6 +29,11 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     'click-select': 'click-select.js',
     'hover-detect': 'hover-detect.js',
     'inline-text-edit': 'inline-text-edit.js',
+    'editor-api-client': 'editor-api-client.js',
+    'standalone-overlay': 'standalone-overlay.js',
+    'property-registry': 'property-registry.js',
+    'properties-panel': 'properties-panel.js',
+    'i18n-key-gen': 'i18n-key-gen.js',
   };
 
   function rewriteRelativeImports(code: string, modules: Record<string, string>): string {
@@ -48,6 +53,17 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
   return {
     name: 'lumenjs-virtual-modules',
     enforce: 'pre' as const,
+    configureServer(server) {
+      // Disable 304 caching for virtual modules so restarted server always sends fresh code
+      server.middlewares.use((req, _res, next) => {
+        if (req.url?.includes('__x00__lumenjs:') || req.url?.includes('@lumenjs/')) {
+          // Remove If-None-Match / If-Modified-Since so Vite won't respond 304
+          delete req.headers['if-none-match'];
+          delete req.headers['if-modified-since'];
+        }
+        next();
+      });
+    },
     resolveId(id) {
       const match = id.match(/^\/@lumenjs\/(.+)$/);
       if (!match) return;
