@@ -34,6 +34,8 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     'property-registry': 'property-registry.js',
     'properties-panel': 'properties-panel.js',
     'i18n-key-gen': 'i18n-key-gen.js',
+    'ai-chat-panel': 'ai-chat-panel.js',
+    'ai-project-panel': 'ai-project-panel.js',
   };
 
   function rewriteRelativeImports(code: string, modules: Record<string, string>): string {

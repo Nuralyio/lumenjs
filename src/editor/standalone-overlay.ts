@@ -16,6 +16,8 @@ import { readFile, writeFile, applyAstModification, makeTranslatable } from './e
 import { generateI18nKey } from './i18n-key-gen.js';
 import { setPreviewMode } from './editor-bridge.js';
 import { createPropertiesPanel, showPropertiesForElement, hidePropertiesPanel, isPropertiesPanelOpen } from './properties-panel.js';
+import { createAiChatPanel, showAiChatForElement, hideAiChatPanel, isAiChatPanelOpen, updateAiChatPosition } from './ai-chat-panel.js';
+import { createAiProjectPanel, showAiProjectPanel, hideAiProjectPanel, isAiProjectPanelOpen, sendProjectMessage } from './ai-project-panel.js';
 
 let initialized = false;
 let selectedElement: HTMLElement | null = null;
@@ -25,6 +27,8 @@ let toolbar: HTMLDivElement;
 let filePanel: HTMLDivElement;
 let textToolbar: HTMLDivElement;
 let propsPanel: HTMLDivElement;
+let aiChatPanel: HTMLDivElement;
+let aiProjectPanel: HTMLDivElement;
 let isFilePanelOpen = false;
 let isEditorMode = true;  // true = Edit, false = Preview
 const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
@@ -434,6 +438,15 @@ function createToolbar(): HTMLDivElement {
         <span class="nk-tb-hint">${isTouchDevice ? 'Tap to select. Double-tap text to edit.' : 'Click to select. Double-click text to edit.'}</span>
       </div>
       <div class="nk-toolbar-right">
+        <div class="nk-tb-page-ai">
+          <span class="nk-tb-page-ai-icon">✦</span>
+          <input class="nk-tb-page-ai-input" type="text" placeholder="Ask AI about this page..." />
+          <button class="nk-tb-page-ai-send" disabled title="Send">▶</button>
+        </div>
+        <button class="nk-tb-btn nk-tb-project-ai" title="Project AI Chat" style="display:flex;align-items:center;gap:4px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          <span class="nk-tb-project-ai-label">Chat</span>
+        </button>
         <button class="nk-tb-btn nk-tb-deselect" style="display:none" title="Deselect">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -466,6 +479,30 @@ function createToolbar(): HTMLDivElement {
     .nk-tb-btn:hover { background: #334155; border-color: #475569; }
     .nk-tb-btn:active { background: #475569; }
     .nk-tb-btn.active { background: #7c3aed; border-color: #7c3aed; }
+    .nk-tb-project-ai-label { font-size: 11px; font-weight: 600; }
+    .nk-tb-page-ai {
+      display: flex; align-items: center; gap: 0;
+      background: #0f0d1a; border: 1px solid #334155; border-radius: 8px;
+      padding: 0 2px 0 8px; height: 30px; transition: border-color 0.15s;
+    }
+    .nk-tb-page-ai:focus-within { border-color: #7c3aed; }
+    .nk-tb-page-ai-icon { color: #7c3aed; font-size: 12px; flex-shrink: 0; margin-right: 4px; }
+    .nk-tb-page-ai-input {
+      background: transparent; border: none; color: #e2e8f0; font-size: 12px;
+      font-family: inherit; outline: none; width: 180px; padding: 0;
+    }
+    .nk-tb-page-ai-input::placeholder { color: #64748b; }
+    .nk-tb-page-ai-send {
+      background: #7c3aed; border: none; color: #fff; width: 24px; height: 24px;
+      border-radius: 6px; cursor: pointer; font-size: 10px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; transition: opacity 0.15s;
+    }
+    .nk-tb-page-ai-send:disabled { opacity: 0.3; cursor: default; }
+    .nk-tb-page-ai-send:not(:disabled):hover { background: #6d28d9; }
+    @media (max-width: 640px) {
+      .nk-tb-project-ai-label { display: none; }
+      .nk-tb-page-ai-input { width: 100px; }
+    }
     .nk-tb-toggle {
       display: inline-flex; align-items: center; padding: 2px; gap: 0;
       background: #0f0d1a; border: 1px solid #334155; border-radius: 6px;
@@ -726,6 +763,7 @@ function deselect() {
     hideOverlay(selectOverlay);
     hideTextToolbar();
     hidePropertiesPanel();
+    hideAiChatPanel();
     updateSelectionInfo(null);
   }
 }
@@ -801,6 +839,14 @@ function touchToElement(touch: Touch): { element: HTMLElement; source: any } | n
   return null;
 }
 
+function sendPageAiPrompt(prompt: string) {
+  if (!isAiProjectPanelOpen()) {
+    showAiProjectPanel();
+    (toolbar?.querySelector('.nk-tb-project-ai') as HTMLElement)?.classList.add('active');
+  }
+  sendProjectMessage(prompt);
+}
+
 export function initStandaloneEditor() {
   if (initialized) return;
   initialized = true;
@@ -811,6 +857,8 @@ export function initStandaloneEditor() {
   document.getElementById('nk-file-editor')?.remove();
   document.getElementById('nk-text-toolbar')?.remove();
   document.getElementById('nk-props-panel')?.remove();
+  document.getElementById('nk-ai-chat')?.remove();
+  document.getElementById('nk-ai-project')?.remove();
 
   // Create UI elements
   hoverOverlay = createOverlay('#7c3aed', 'dashed');
@@ -820,6 +868,8 @@ export function initStandaloneEditor() {
   textToolbar = createTextToolbar();
   setupTextToolbarHandlers();
   propsPanel = createPropertiesPanel();
+  aiChatPanel = createAiChatPanel();
+  aiProjectPanel = createAiProjectPanel();
 
   // Restore saved editor mode
   try {
@@ -839,7 +889,7 @@ export function initStandaloneEditor() {
     if (!isEditorMode) return;
     const result = findAnnotatedElement(event);
     const hoverEl = result?.element ?? (event.target instanceof HTMLElement ? event.target : null);
-    if (hoverEl && hoverEl !== selectedElement && hoverEl !== document.body && hoverEl !== document.documentElement && !hoverEl.closest('#nk-editor-toolbar') && !hoverEl.closest('#nk-props-panel') && !hoverEl.closest('#nk-file-panel')) {
+    if (hoverEl && hoverEl !== selectedElement && hoverEl !== document.body && hoverEl !== document.documentElement && !hoverEl.closest('#nk-editor-toolbar') && !hoverEl.closest('#nk-props-panel') && !hoverEl.closest('#nk-file-panel') && !hoverEl.closest('#nk-ai-chat') && !hoverEl.closest('#nk-ai-project')) {
       positionOverlay(hoverOverlay, hoverEl);
     } else {
       hideOverlay(hoverOverlay);
@@ -856,7 +906,7 @@ export function initStandaloneEditor() {
     if (isTouchDevice) return;
     if (!isEditorMode) return;
     const t = event.target as HTMLElement;
-    if (t.closest('#nk-editor-toolbar') || t.closest('#nk-file-panel') || t.closest('#nk-file-editor') || t.closest('#nk-text-toolbar') || t.closest('#nk-props-panel')) return;
+    if (t.closest('#nk-editor-toolbar') || t.closest('#nk-file-panel') || t.closest('#nk-file-editor') || t.closest('#nk-text-toolbar') || t.closest('#nk-props-panel') || t.closest('#nk-ai-chat') || t.closest('#nk-ai-project')) return;
 
     // Drill through shadow DOMs (with forced pointer-events) to find the real element
     const deepEl = deepElementFromPoint(event.clientX, event.clientY);
@@ -895,6 +945,8 @@ export function initStandaloneEditor() {
     updateSelectionInfo(selectEl);
     showTextToolbarForElement(selectEl);
     showPropertiesForElement(selectEl);
+    aiChatPanel.classList.add('open');
+    showAiChatForElement(selectEl);
   }, true);
 
   // Click to select (desktop)
@@ -906,7 +958,7 @@ export function initStandaloneEditor() {
     if (!isEditorMode) return;
     // Skip clicks on editor UI
     const t = event.target as HTMLElement;
-    if (t.closest('#nk-editor-toolbar') || t.closest('#nk-file-panel') || t.closest('#nk-file-editor') || t.closest('#nk-text-toolbar') || t.closest('#nk-props-panel')) return;
+    if (t.closest('#nk-editor-toolbar') || t.closest('#nk-file-panel') || t.closest('#nk-file-editor') || t.closest('#nk-text-toolbar') || t.closest('#nk-props-panel') || t.closest('#nk-ai-chat') || t.closest('#nk-ai-project')) return;
 
     let result = findAnnotatedElement(event);
     // If the found element is inside a shadow DOM, prefer the custom element host
@@ -967,6 +1019,8 @@ export function initStandaloneEditor() {
       updateSelectionInfo(selectEl);
       showTextToolbarForElement(selectEl);
       showPropertiesForElement(selectEl);
+      aiChatPanel.classList.add('open');
+    showAiChatForElement(selectEl);
     }, 200);
   }, true);
 
@@ -983,7 +1037,7 @@ export function initStandaloneEditor() {
   document.addEventListener('touchend', (event) => {
     // Don't interfere with toolbar/panel touches
     const target = event.target as HTMLElement;
-    if (target.closest('#nk-editor-toolbar') || target.closest('#nk-file-panel') || target.closest('#nk-file-editor') || target.closest('#nk-text-toolbar') || target.closest('#nk-props-panel')) {
+    if (target.closest('#nk-editor-toolbar') || target.closest('#nk-file-panel') || target.closest('#nk-file-editor') || target.closest('#nk-text-toolbar') || target.closest('#nk-props-panel') || target.closest('#nk-ai-chat') || target.closest('#nk-ai-project')) {
       return;
     }
     if (!isEditorMode) return;
@@ -1030,6 +1084,8 @@ export function initStandaloneEditor() {
         updateSelectionInfo(tapEl);
         showTextToolbarForElement(tapEl);
         showPropertiesForElement(tapEl);
+        aiChatPanel.classList.add('open');
+        showAiChatForElement(tapEl);
       }, 300);
       // In edit mode, block all default behavior (navigation, etc.)
       event.preventDefault();
@@ -1037,6 +1093,30 @@ export function initStandaloneEditor() {
   }, { passive: false, capture: true } as any);
 
   // --- Toolbar button handlers ---
+
+  // Page-level AI input
+  const pageAiInput = toolbar.querySelector('.nk-tb-page-ai-input') as HTMLInputElement;
+  const pageAiSend = toolbar.querySelector('.nk-tb-page-ai-send') as HTMLButtonElement;
+  pageAiInput.addEventListener('input', () => {
+    pageAiSend.disabled = !pageAiInput.value.trim();
+  });
+  pageAiInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && pageAiInput.value.trim()) {
+      e.preventDefault();
+      sendPageAiPrompt(pageAiInput.value.trim());
+      pageAiInput.value = '';
+      pageAiSend.disabled = true;
+    }
+    e.stopPropagation(); // prevent editor shortcuts while typing
+  });
+  pageAiSend.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (pageAiInput.value.trim()) {
+      sendPageAiPrompt(pageAiInput.value.trim());
+      pageAiInput.value = '';
+      pageAiSend.disabled = true;
+    }
+  });
 
   // Edit / Preview toggle
   document.getElementById('nk-tb-toggle')!.addEventListener('click', (e) => {
@@ -1048,6 +1128,18 @@ export function initStandaloneEditor() {
   toolbar.querySelector('.nk-tb-deselect')!.addEventListener('click', (e) => {
     e.stopPropagation();
     deselect();
+  });
+
+  // Project AI panel toggle
+  toolbar.querySelector('.nk-tb-project-ai')!.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isAiProjectPanelOpen()) {
+      hideAiProjectPanel();
+      (toolbar.querySelector('.nk-tb-project-ai') as HTMLElement).classList.remove('active');
+    } else {
+      showAiProjectPanel();
+      (toolbar.querySelector('.nk-tb-project-ai') as HTMLElement).classList.add('active');
+    }
   });
 
   // File panel toggle
@@ -1090,6 +1182,11 @@ export function initStandaloneEditor() {
       if (currentEditorFile) {
         document.getElementById('nk-file-editor')!.classList.remove('open');
         currentEditorFile = null;
+      } else if (isAiProjectPanelOpen()) {
+        hideAiProjectPanel();
+        (toolbar.querySelector('.nk-tb-project-ai') as HTMLElement)?.classList.remove('active');
+      } else if (isAiChatPanelOpen()) {
+        hideAiChatPanel();
       } else if (isPropertiesPanelOpen()) {
         hidePropertiesPanel();
       } else if (isFilePanelOpen) {
@@ -1106,6 +1203,7 @@ export function initStandaloneEditor() {
       positionOverlay(selectOverlay, selectedElement);
       if (textToolbar.style.display !== 'none') positionTextToolbar(selectedElement);
     }
+    updateAiChatPosition();
   };
   window.addEventListener('scroll', updateOverlays, true);
   window.addEventListener('resize', updateOverlays);
@@ -1164,9 +1262,11 @@ function reselectAfterHmr() {
         positionOverlay(selectOverlay, newEl);
         updateSelectionInfo(newEl);
         showPropertiesForElement(newEl);
+        if (isAiChatPanelOpen()) showAiChatForElement(newEl);
       } else if (selectedElement?.isConnected) {
         // Element still in DOM, just refresh panel
         showPropertiesForElement(selectedElement);
+        if (isAiChatPanelOpen()) showAiChatForElement(selectedElement);
       }
     }, 150);
   });
