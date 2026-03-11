@@ -16,6 +16,7 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     'router': 'router.js',
     'router-data': 'router-data.js',
     'router-hydration': 'router-hydration.js',
+    'nk-island': 'nk-island.js',
     'i18n': 'i18n.js',
   };
 

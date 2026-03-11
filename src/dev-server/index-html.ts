@@ -72,6 +72,7 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
   ${loaderDataScript}
   ${appTag}
   ${hydrateScript}
+  <script type="module" src="/@lumenjs/nk-island"></script>
   <script type="module" src="/@lumenjs/app-shell"></script>
   ${editorScript}
 </body>

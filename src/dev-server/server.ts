@@ -19,6 +19,7 @@ import { editorApiPlugin } from './plugins/vite-plugin-editor-api.js';
 import { virtualModulesPlugin } from './plugins/vite-plugin-virtual-modules.js';
 import { i18nPlugin, loadTranslationsFromDisk } from './plugins/vite-plugin-i18n.js';
 import { lumenLlmsPlugin } from './plugins/vite-plugin-llms.js';
+import { islandsPlugin } from './plugins/vite-plugin-islands.js';
 import { resolveLocale } from './middleware/locale.js';
 import { setProjectDir } from '../db/context.js';
 
@@ -134,6 +135,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       lumenApiRoutesPlugin(apiDir, projectDir),
       lumenLlmsPlugin(projectDir),
       litHmrPlugin(projectDir),
+      islandsPlugin(projectDir),
       ...(i18nConfig ? [i18nPlugin(projectDir, i18nConfig)] : []),
       ...(editorMode ? [sourceAnnotatorPlugin(projectDir), editorApiPlugin(projectDir)] : []),
       {
