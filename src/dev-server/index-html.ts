@@ -58,7 +58,7 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
 <html lang="${htmlLang}">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0${options.editorMode ? ', maximum-scale=1.0, user-scalable=no' : ''}" />
   <title>${escapeHtml(options.title)}</title>
   ${options.integrations?.includes('nuralyui') ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@nuralyui/themes@latest/dist/default.css">' : ''}${options.integrations?.includes('tailwind') ? '\n  <script type="module">import "/styles/tailwind.css";</script>' : ''}
   <style>

@@ -27,6 +27,67 @@ const RESOLVED_VIRTUAL_MODULE_ID = '\0' + VIRTUAL_MODULE_ID;
  *   pages/blog/[slug].ts → /blog/:slug
  *   pages/_layout.ts     → layout wrapping all pages in directory + subdirectories
  */
+
+/**
+ * Scans pages/ and returns route data for the editor Pages tab.
+ */
+export function scanRoutesForEditor(pagesDir: string): Array<{ path: string; tagName: string; file: string; layouts: Array<{ tagName: string; dir: string }> }> {
+  if (!fs.existsSync(pagesDir)) return [];
+
+  const routes: Array<{ path: string; tagName: string; file: string }> = [];
+  const layouts: Array<{ dir: string; filePath: string; tagName: string }> = [];
+
+  // Scan layouts
+  function walkLayouts(baseDir: string, relativePath: string) {
+    const fullDir = path.join(baseDir, relativePath);
+    const entries = fs.readdirSync(fullDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && /^_layout\.(ts|js)$/.test(entry.name)) {
+        const filePath = path.join(fullDir, entry.name);
+        const tagName = dirToLayoutTagName(relativePath);
+        layouts.push({ dir: relativePath.replace(/\\/g, '/'), filePath, tagName });
+      }
+      if (entry.isDirectory()) {
+        walkLayouts(baseDir, path.join(relativePath, entry.name));
+      }
+    }
+  }
+
+  // Scan pages
+  function walkPages(baseDir: string, relativePath: string) {
+    const fullDir = path.join(baseDir, relativePath);
+    const entries = fs.readdirSync(fullDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryRelative = path.join(relativePath, entry.name);
+      if (entry.isDirectory()) {
+        walkPages(baseDir, entryRelative);
+      } else if (entry.isFile() && /\.(ts|js)$/.test(entry.name) && !entry.name.startsWith('_')) {
+        const routePath = filePathToRoute(entryRelative);
+        const tagName = filePathToTagName(entryRelative);
+        routes.push({ path: routePath, tagName, file: entryRelative.replace(/\\/g, '/') });
+      }
+    }
+  }
+
+  walkLayouts(pagesDir, '');
+  walkPages(pagesDir, '');
+
+  // Attach layout chain to each route
+  return routes.map(r => {
+    const relDir = path.dirname(r.file).split('/').filter(p => p && p !== '.');
+    const chain: Array<{ tagName: string; dir: string }> = [];
+    const rootLayout = layouts.find(l => l.dir === '');
+    if (rootLayout) chain.push({ tagName: rootLayout.tagName, dir: rootLayout.dir });
+    let currentDir = '';
+    for (const part of relDir) {
+      currentDir = currentDir ? `${currentDir}/${part}` : part;
+      const layout = layouts.find(l => l.dir === currentDir);
+      if (layout) chain.push({ tagName: layout.tagName, dir: layout.dir });
+    }
+    return { ...r, layouts: chain };
+  });
+}
+
 export function lumenRoutesPlugin(pagesDir: string): Plugin {
   function scanLayouts(): LayoutEntry[] {
     if (!fs.existsSync(pagesDir)) return [];

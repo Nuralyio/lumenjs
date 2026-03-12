@@ -89,7 +89,7 @@ export function createToolbar(): HTMLDivElement {
       position: fixed; top: 0; left: 0; right: 0; height: 44px;
       background: #1e1b2e; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif;
       font-size: 12px; z-index: 99999; box-shadow: 0 2px 12px rgba(0,0,0,0.3);
-      user-select: none; -webkit-user-select: none;
+      user-select: none; -webkit-user-select: none; touch-action: manipulation;
     }
     .nk-toolbar-inner {
       display: flex; align-items: center; height: 44px; padding: 0 12px; gap: 8px;
@@ -154,7 +154,7 @@ export function createToolbar(): HTMLDivElement {
       background: #1e1b2e; border-right: 1px solid #334155; border-bottom: 1px solid #334155;
       z-index: 99999; display: none; flex-direction: column; font-family: system-ui, -apple-system, sans-serif;
       box-shadow: 4px 0 16px rgba(0,0,0,0.3);
-      padding-bottom: env(safe-area-inset-bottom, 0);
+      padding-bottom: env(safe-area-inset-bottom, 0); touch-action: manipulation;
     }
     #nk-file-panel.open { display: flex; }
     .nk-fp-header {
@@ -179,6 +179,36 @@ export function createToolbar(): HTMLDivElement {
     .nk-fp-item:active { background: #334155; }
     .nk-fp-item.active { background: #7c3aed22; color: #c084fc; }
     .nk-fp-icon { width: 14px; text-align: center; flex-shrink: 0; }
+
+    /* Tabs in file panel header */
+    .nk-fp-tabs {
+      display: flex; gap: 2px; background: #0f0d1a; border-radius: 6px; padding: 2px;
+    }
+    .nk-fp-tab {
+      padding: 4px 12px; border: none; border-radius: 4px; font-size: 11px; font-weight: 600;
+      font-family: inherit; color: #64748b; background: transparent; cursor: pointer;
+      transition: all 0.15s; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    }
+    .nk-fp-tab:hover { color: #e2e8f0; }
+    .nk-fp-tab.active { background: #7c3aed; color: #fff; }
+
+    /* Pages view */
+    .nk-fp-pages {
+      flex: 1; overflow-y: auto; padding: 4px 0; -webkit-overflow-scrolling: touch;
+    }
+    .nk-fp-layout-group { margin-bottom: 4px; }
+    .nk-fp-layout-label {
+      padding: 8px 12px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.05em; color: #7c3aed; font-family: system-ui, sans-serif;
+    }
+    .nk-fp-route {
+      display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 24px; cursor: pointer;
+      color: #94a3b8; font-size: 12px; font-family: 'SF Mono', ui-monospace, monospace;
+      transition: background 0.1s; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    }
+    .nk-fp-route:hover { background: #262338; color: #e2e8f0; }
+    .nk-fp-route:active { background: #334155; }
+    .nk-fp-route.active { background: #7c3aed22; color: #c084fc; }
 
     /* File editor — right of sidebar on desktop, full-width on mobile */
     #nk-file-editor {
@@ -252,12 +282,16 @@ export function createFilePanel(): HTMLDivElement {
   panel.id = 'nk-file-panel';
   panel.innerHTML = `
     <div class="nk-fp-header">
-      <span>Project Files</span>
+      <div class="nk-fp-tabs">
+        <button class="nk-fp-tab active" data-tab="files">Files</button>
+        <button class="nk-fp-tab" data-tab="pages">Pages</button>
+      </div>
       <button class="nk-fp-close-btn" id="nk-fp-close">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="nk-fp-list" id="nk-fp-list"></div>
+    <div class="nk-fp-pages" id="nk-fp-pages" style="display:none"></div>
   `;
   document.body.appendChild(panel);
 
@@ -276,8 +310,71 @@ export function createFilePanel(): HTMLDivElement {
   `;
   document.body.appendChild(editor);
 
+  // Tab switching
+  let pagesLoaded = false;
+  panel.addEventListener('click', (e) => {
+    const tab = (e.target as HTMLElement).closest('.nk-fp-tab') as HTMLElement;
+    if (!tab) return;
+    const tabName = tab.dataset.tab;
+    panel.querySelectorAll('.nk-fp-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const filesList = panel.querySelector('#nk-fp-list') as HTMLElement;
+    const pagesList = panel.querySelector('#nk-fp-pages') as HTMLElement;
+    if (tabName === 'files') {
+      filesList.style.display = '';
+      pagesList.style.display = 'none';
+    } else {
+      filesList.style.display = 'none';
+      pagesList.style.display = '';
+      if (!pagesLoaded) {
+        pagesLoaded = true;
+        loadPagesList();
+      }
+    }
+  });
+
   filePanel = panel;
   return panel;
+}
+
+async function loadPagesList() {
+  const container = document.getElementById('nk-fp-pages');
+  if (!container) return;
+  try {
+    const res = await fetch('/__nk_editor/routes');
+    const data = await res.json();
+    const routes: Array<{ path: string; tagName: string; file: string; layouts?: Array<{ tagName: string; dir: string }> }> = data.routes || [];
+
+    // Group by deepest layout
+    const groups = new Map<string, typeof routes>();
+    for (const r of routes) {
+      const layoutLabel = r.layouts?.length ? r.layouts[r.layouts.length - 1].tagName : 'no-layout';
+      if (!groups.has(layoutLabel)) groups.set(layoutLabel, []);
+      groups.get(layoutLabel)!.push(r);
+    }
+
+    let html = '';
+    for (const [layout, groupRoutes] of groups) {
+      html += `<div class="nk-fp-layout-group">`;
+      html += `<div class="nk-fp-layout-label">${layout}</div>`;
+      for (const r of groupRoutes) {
+        const currentPath = window.location.pathname;
+        // Match current page (handle dynamic segments)
+        const routeRegex = r.path.replace(/:[^/]+/g, '[^/]+');
+        const isActive = new RegExp(`^${routeRegex}$`).test(currentPath);
+        html += `<div class="nk-fp-route${isActive ? ' active' : ''}" data-route="${r.path}">${r.path}</div>`;
+      }
+      html += `</div>`;
+    }
+    container.innerHTML = html;
+    container.addEventListener('click', (e) => {
+      const route = (e.target as HTMLElement).closest('.nk-fp-route') as HTMLElement;
+      if (!route) return;
+      window.location.href = route.dataset.route!;
+    });
+  } catch {
+    container.innerHTML = '<div style="padding:12px;color:#f87171;font-size:11px">Failed to load pages</div>';
+  }
 }
 
 function getFileIcon(name: string): string {

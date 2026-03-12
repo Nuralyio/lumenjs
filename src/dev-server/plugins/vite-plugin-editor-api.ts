@@ -4,6 +4,7 @@ import fs from 'fs';
 import { EditorFileService } from '../../editor/file-service.js';
 import { AstService } from '../../editor/ast-service.js';
 import { AstModification } from '../../editor/ast-modification.js';
+import { scanRoutesForEditor } from './vite-plugin-routes.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 
 const EDITOR_PREFIX = '/__nk_editor/';
@@ -82,6 +83,14 @@ export function editorApiPlugin(projectDir: string): Plugin {
         const rest = urlPath.slice(EDITOR_PREFIX.length);
 
         try {
+          // GET /__nk_editor/routes — list all routes for Pages tab
+          if (rest === 'routes' && req.method === 'GET') {
+            const pagesDir = path.join(projectDir, 'pages');
+            const routes = scanRoutesForEditor(pagesDir);
+            sendJson(res, 200, { routes });
+            return;
+          }
+
           // GET /__nk_editor/files — list all files
           if (rest === 'files' && req.method === 'GET') {
             const files = fileService.listFiles();
