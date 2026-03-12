@@ -175,6 +175,18 @@ export function createPropertiesPanel(): HTMLDivElement {
     .nk-pp-ai-btn:hover { background: #6d28d9; }
     .nk-pp-ai-btn:active { background: #5b21b6; }
 
+    /* Floating properties icon (mobile only) */
+    #nk-pp-fab {
+      display: none; position: fixed; bottom: 24px; right: 16px;
+      width: 48px; height: 48px; border-radius: 50%;
+      background: #7c3aed; color: #fff; border: none;
+      box-shadow: 0 4px 16px rgba(124,58,237,0.5);
+      z-index: 99999; cursor: pointer; align-items: center; justify-content: center;
+      font-size: 20px; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    }
+    #nk-pp-fab.visible { display: flex; }
+    #nk-pp-fab:active { background: #5b21b6; transform: scale(0.92); }
+
     /* Mobile responsive */
     @media (max-width: 640px) {
       #nk-props-panel {
@@ -215,6 +227,21 @@ export function createPropertiesPanel(): HTMLDivElement {
   panel.addEventListener('touchend', (e) => e.stopPropagation());
 
   document.body.appendChild(panel);
+
+  // Floating action button for mobile
+  const fab = document.createElement('button');
+  fab.id = 'nk-pp-fab';
+  fab.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+  fab.title = 'Edit properties';
+  fab.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!currentElement) return;
+    fab.classList.remove('visible');
+    openPanelFull(currentElement);
+  });
+  fab.addEventListener('touchend', (e) => e.stopPropagation());
+  document.body.appendChild(fab);
+
   return panel;
 }
 
@@ -224,14 +251,33 @@ function toggleToolbarForPanel(show: boolean): void {
   if (toolbar && isMobile()) toolbar.style.display = show ? '' : 'none';
 }
 
+function openPanelFull(element: HTMLElement): void {
+  const tag = element.tagName.toLowerCase();
+  panel.querySelector('.nk-pp-tag')!.textContent = `<${tag}>`;
+  toggleToolbarForPanel(false);
+  buildPanelContent(element);
+  panel.classList.add('open');
+}
+
 export function showPropertiesForElement(element: HTMLElement): void {
   currentElement = element;
   debounceTimers = {};
 
+  if (isMobile()) {
+    // On mobile: show floating icon, don't open panel
+    const fab = document.getElementById('nk-pp-fab');
+    if (fab) fab.classList.add('visible');
+    return;
+  }
+
   const tag = element.tagName.toLowerCase();
   panel.querySelector('.nk-pp-tag')!.textContent = `<${tag}>`;
-  toggleToolbarForPanel(false);
+  buildPanelContent(element);
+  panel.classList.add('open');
+}
 
+function buildPanelContent(element: HTMLElement): void {
+  debounceTimers = {};
   const content = panel.querySelector('.nk-pp-content')!;
   content.innerHTML = '';
 
@@ -262,13 +308,13 @@ export function showPropertiesForElement(element: HTMLElement): void {
   content.appendChild(cssGroup);
   const currentElementRef = { get current() { return currentElement; } };
   loadCssRulesForElement(element, cssGroup, currentElementRef, debounceTimers);
-
-  panel.classList.add('open');
 }
 
 export function hidePropertiesPanel(): void {
   panel.classList.remove('open');
   toggleToolbarForPanel(true);
+  const fab = document.getElementById('nk-pp-fab');
+  if (fab) fab.classList.remove('visible');
   currentElement = null;
   debounceTimers = {};
 }
