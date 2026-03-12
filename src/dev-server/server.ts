@@ -17,6 +17,8 @@ import { sourceAnnotatorPlugin } from './plugins/vite-plugin-source-annotator.js
 import { virtualModulesPlugin } from './plugins/vite-plugin-virtual-modules.js';
 import { i18nPlugin, loadTranslationsFromDisk } from './plugins/vite-plugin-i18n.js';
 import { resolveLocale } from './middleware/locale.js';
+import { scanMiddleware, getMiddlewareDirsForPathname } from '../build/scan.js';
+import { runMiddlewareChain, extractMiddleware, ConnectMiddleware } from '../shared/middleware-runner.js';
 
 // Re-export for backwards compatibility
 export { readProjectConfig, readProjectTitle, getLumenJSNodeModules, getLumenJSDirs } from './config.js';
@@ -129,6 +131,58 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       litHmrPlugin(projectDir),
       ...(i18nConfig ? [i18nPlugin(projectDir, i18nConfig)] : []),
       ...(editorMode ? [sourceAnnotatorPlugin(projectDir)] : []),
+      {
+        name: 'lumenjs-user-middleware',
+        config(config) {
+          const entries = scanMiddleware(pagesDir);
+          if (entries.length === 0) return;
+          const npmDeps = new Set<string>();
+          for (const entry of entries) {
+            try {
+              const content = fs.readFileSync(entry.filePath, 'utf-8');
+              const importMatches = content.matchAll(/(?:import|require)\s*(?:\(?\s*['"]([^./][^'"]*)['"]\s*\)?|.*from\s*['"]([^./][^'"]*)['"]\s*)/g);
+              for (const m of importMatches) {
+                const pkg = m[1] || m[2];
+                if (pkg) {
+                  const pkgName = pkg.startsWith('@') ? pkg.split('/').slice(0, 2).join('/') : pkg.split('/')[0];
+                  npmDeps.add(pkgName);
+                }
+              }
+            } catch {}
+          }
+          if (npmDeps.size > 0) {
+            const existing = (config.ssr as any)?.external || [];
+            return { ssr: { external: [...existing, ...npmDeps] } };
+          }
+        },
+        configureServer(server) {
+          server.middlewares.use(async (req: any, res: any, next: any) => {
+            const pathname = (req.url || '/').split('?')[0];
+            if (pathname.startsWith('/@') || pathname.startsWith('/node_modules') || pathname.includes('.')) {
+              return next();
+            }
+
+            const middlewareEntries = scanMiddleware(pagesDir);
+            if (middlewareEntries.length === 0) return next();
+
+            const matchingDirs = getMiddlewareDirsForPathname(pathname, middlewareEntries);
+            if (matchingDirs.length === 0) return next();
+
+            const allMw: ConnectMiddleware[] = [];
+            for (const entry of matchingDirs) {
+              try {
+                const mod = await server.ssrLoadModule(entry.filePath);
+                allMw.push(...extractMiddleware(mod));
+              } catch (err) {
+                console.error(`[LumenJS] Failed to load _middleware.ts (${entry.dir || 'root'}):`, err);
+              }
+            }
+
+            if (allMw.length === 0) return next();
+            runMiddlewareChain(allMw, req, res, next);
+          });
+        }
+      },
       {
         name: 'lumenjs-index-html',
         configureServer(server) {

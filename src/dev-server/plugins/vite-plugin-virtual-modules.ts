@@ -34,6 +34,18 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     'standalone-overlay-dom': 'standalone-overlay-dom.js',
     'standalone-overlay-styles': 'standalone-overlay-styles.js',
     'standalone-file-panel': 'standalone-file-panel.js',
+    'overlay-utils': 'overlay-utils.js',
+    'text-toolbar': 'text-toolbar.js',
+    'editor-toolbar': 'editor-toolbar.js',
+    'css-rules': 'css-rules.js',
+    'ast-modification': 'ast-modification.js',
+    'ast-service': 'ast-service.js',
+    'file-service': 'file-service.js',
+    'property-registry': 'property-registry.js',
+    'properties-panel': 'properties-panel.js',
+    'i18n-key-gen': 'i18n-key-gen.js',
+    'ai-chat-panel': 'ai-chat-panel.js',
+    'ai-project-panel': 'ai-project-panel.js',
   };
 
   function rewriteRelativeImports(code: string, modules: Record<string, string>): string {
