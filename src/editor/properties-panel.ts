@@ -23,6 +23,11 @@ export function createPropertiesPanel(): HTMLDivElement {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
+    <div class="nk-pp-ai-row">
+      <button class="nk-pp-ai-btn" id="nk-pp-ai-btn">
+        <span>✦</span> Ask AI about this element
+      </button>
+    </div>
     <div class="nk-pp-content"></div>
   `;
 
@@ -157,14 +162,28 @@ export function createPropertiesPanel(): HTMLDivElement {
       background: #0f0d1a; cursor: pointer; padding: 0; flex-shrink: 0;
     }
     .nk-pp-color-wrap input[type="text"] { flex: 1; }
+    .nk-pp-ai-row {
+      display: none; padding: 8px 12px; border-bottom: 1px solid #334155;
+    }
+    .nk-pp-ai-btn {
+      width: 100%; padding: 8px 12px; background: #7c3aed; color: #fff;
+      border: none; border-radius: 6px; font-size: 12px; font-weight: 600;
+      font-family: inherit; cursor: pointer; display: flex; align-items: center;
+      justify-content: center; gap: 6px;
+      -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    }
+    .nk-pp-ai-btn:hover { background: #6d28d9; }
+    .nk-pp-ai-btn:active { background: #5b21b6; }
 
     /* Mobile responsive */
     @media (max-width: 640px) {
       #nk-props-panel {
-        width: 100%; left: 0; right: 0; top: 44px;
-        height: auto; max-height: 50vh;
-        border-left: none; border-bottom: 1px solid #334155;
+        width: 100%; left: 0; right: 0; top: 0;
+        height: 100vh; max-height: 100vh;
+        border-left: none; border-bottom: none;
+        touch-action: manipulation;
       }
+      .nk-pp-ai-row { display: block; }
     }
   `;
   document.head.appendChild(style);
@@ -173,6 +192,21 @@ export function createPropertiesPanel(): HTMLDivElement {
   panel.querySelector('.nk-pp-close')!.addEventListener('click', (e) => {
     e.stopPropagation();
     hidePropertiesPanel();
+  });
+
+  // AI button — prefills toolbar AI input with element context
+  panel.querySelector('#nk-pp-ai-btn')!.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!currentElement) return;
+    const tag = currentElement.tagName.toLowerCase();
+    const aiInput = document.querySelector('.nk-tb-page-ai-input') as HTMLInputElement | null;
+    if (aiInput) {
+      hidePropertiesPanel();
+      aiInput.value = `Change the <${tag}> element: `;
+      aiInput.focus();
+      const sendBtn = document.querySelector('.nk-tb-page-ai-send') as HTMLButtonElement | null;
+      if (sendBtn) sendBtn.disabled = false;
+    }
   });
 
   // Prevent clicks from propagating to element selection
@@ -184,12 +218,19 @@ export function createPropertiesPanel(): HTMLDivElement {
   return panel;
 }
 
+function isMobile(): boolean { return window.innerWidth <= 640; }
+function toggleToolbarForPanel(show: boolean): void {
+  const toolbar = document.getElementById('nk-editor-toolbar');
+  if (toolbar && isMobile()) toolbar.style.display = show ? '' : 'none';
+}
+
 export function showPropertiesForElement(element: HTMLElement): void {
   currentElement = element;
   debounceTimers = {};
 
   const tag = element.tagName.toLowerCase();
   panel.querySelector('.nk-pp-tag')!.textContent = `<${tag}>`;
+  toggleToolbarForPanel(false);
 
   const content = panel.querySelector('.nk-pp-content')!;
   content.innerHTML = '';
@@ -227,6 +268,7 @@ export function showPropertiesForElement(element: HTMLElement): void {
 
 export function hidePropertiesPanel(): void {
   panel.classList.remove('open');
+  toggleToolbarForPanel(true);
   currentElement = null;
   debounceTimers = {};
 }
