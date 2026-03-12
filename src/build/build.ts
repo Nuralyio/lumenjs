@@ -6,7 +6,7 @@ import { readProjectConfig } from '../dev-server/config.js';
 import { generateIndexHtml } from '../dev-server/index-html.js';
 import type { BuildManifest } from '../shared/types.js';
 import { filePathToTagName } from '../shared/utils.js';
-import { scanPages, scanLayouts, scanApiRoutes, getLayoutDirsForPage } from './scan.js';
+import { scanPages, scanLayouts, scanApiRoutes, scanMiddleware, getLayoutDirsForPage } from './scan.js';
 
 export interface BuildOptions {
   projectDir: string;
@@ -35,6 +35,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   const pageEntries = scanPages(pagesDir);
   const layoutEntries = scanLayouts(pagesDir);
   const apiEntries = scanApiRoutes(apiDir);
+  const middlewareEntries = scanMiddleware(pagesDir);
 
   // --- Client build ---
   console.log('[LumenJS] Building client bundle...');
@@ -95,6 +96,11 @@ export async function buildProject(options: BuildOptions): Promise<void> {
 
   for (const entry of apiEntries) {
     serverEntries[`api/${entry.name}`] = entry.filePath;
+  }
+
+  for (const entry of middlewareEntries) {
+    const entryName = entry.dir ? `middleware/${entry.dir}/_middleware` : 'middleware/_middleware';
+    serverEntries[entryName] = entry.filePath;
   }
 
   // Create SSR runtime entry — bundles @lit-labs/ssr alongside Lit so all
@@ -204,6 +210,12 @@ export async function buildProject(options: BuildOptions): Promise<void> {
       hasSubscribe: e.hasSubscribe,
     })),
     ...(i18nConfig ? { i18n: i18nConfig } : {}),
+    ...(middlewareEntries.length > 0 ? {
+      middlewares: middlewareEntries.map(e => ({
+        dir: e.dir,
+        module: e.dir ? `middleware/${e.dir}/_middleware.js` : 'middleware/_middleware.js',
+      })),
+    } : {}),
   };
 
   fs.writeFileSync(

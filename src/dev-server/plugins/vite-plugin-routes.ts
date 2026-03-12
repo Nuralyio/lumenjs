@@ -105,6 +105,26 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
     return chain;
   }
 
+  function scanMiddlewareFiles(): { dir: string; filePath: string }[] {
+    if (!fs.existsSync(pagesDir)) return [];
+    const entries: { dir: string; filePath: string }[] = [];
+    walkForMiddlewareFiles(pagesDir, '', entries);
+    return entries;
+  }
+
+  function walkForMiddlewareFiles(baseDir: string, relativePath: string, entries: { dir: string; filePath: string }[]) {
+    const fullDir = path.join(baseDir, relativePath);
+    const dirEntries = fs.readdirSync(fullDir, { withFileTypes: true });
+    for (const entry of dirEntries) {
+      if (entry.isFile() && /^_middleware\.(ts|js)$/.test(entry.name)) {
+        entries.push({ dir: relativePath.replace(/\\/g, '/'), filePath: path.join(fullDir, entry.name) });
+      }
+      if (entry.isDirectory()) {
+        walkForMiddlewareFiles(baseDir, path.join(relativePath, entry.name), entries);
+      }
+    }
+  }
+
   return {
     name: 'lumenjs-routes',
     resolveId(id) {
@@ -144,13 +164,16 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
       // Full-reload when route structure changes (file added/removed)
       let lastRoutes = JSON.stringify(scanPages().map(r => r.path));
       let lastLayouts = JSON.stringify(scanLayouts().map(l => l.dir));
+      let lastMiddleware = JSON.stringify(scanMiddlewareFiles().map(m => m.dir));
 
       const checkReload = () => {
         const newRoutes = JSON.stringify(scanPages().map(r => r.path));
         const newLayouts = JSON.stringify(scanLayouts().map(l => l.dir));
-        if (newRoutes !== lastRoutes || newLayouts !== lastLayouts) {
+        const newMiddleware = JSON.stringify(scanMiddlewareFiles().map(m => m.dir));
+        if (newRoutes !== lastRoutes || newLayouts !== lastLayouts || newMiddleware !== lastMiddleware) {
           lastRoutes = newRoutes;
           lastLayouts = newLayouts;
+          lastMiddleware = newMiddleware;
           const mod = server.moduleGraph.getModuleById(RESOLVED_VIRTUAL_MODULE_ID);
           if (mod) {
             server.moduleGraph.invalidateModule(mod);

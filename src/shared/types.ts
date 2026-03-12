@@ -20,9 +20,15 @@ export interface I18nManifest {
   prefixDefault: boolean;
 }
 
+export interface ManifestMiddleware {
+  dir: string;
+  module: string;
+}
+
 export interface BuildManifest {
   routes: ManifestRoute[];
   apiRoutes: ManifestRoute[];
   layouts: ManifestLayout[];
+  middlewares?: ManifestMiddleware[];
   i18n?: I18nManifest;
 }

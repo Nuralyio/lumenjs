@@ -22,6 +22,8 @@ import { lumenLlmsPlugin } from './plugins/vite-plugin-llms.js';
 import { islandsPlugin } from './plugins/vite-plugin-islands.js';
 import { resolveLocale } from './middleware/locale.js';
 import { setProjectDir } from '../db/context.js';
+import { scanMiddleware, getMiddlewareDirsForPathname } from '../build/scan.js';
+import { runMiddlewareChain, extractMiddleware, ConnectMiddleware } from '../shared/middleware-runner.js';
 
 // Re-export for backwards compatibility
 export { readProjectConfig, readProjectTitle, getLumenJSNodeModules, getLumenJSDirs } from './config.js';
@@ -138,6 +140,63 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       islandsPlugin(projectDir),
       ...(i18nConfig ? [i18nPlugin(projectDir, i18nConfig)] : []),
       ...(editorMode ? [sourceAnnotatorPlugin(projectDir), editorApiPlugin(projectDir)] : []),
+      {
+        name: 'lumenjs-user-middleware',
+        config(config) {
+          // Scan middleware files for npm imports and externalize them for SSR
+          // so CJS packages like cors/helmet work with ssrLoadModule
+          const entries = scanMiddleware(pagesDir);
+          if (entries.length === 0) return;
+          const npmDeps = new Set<string>();
+          for (const entry of entries) {
+            try {
+              const content = fs.readFileSync(entry.filePath, 'utf-8');
+              const importMatches = content.matchAll(/(?:import|require)\s*(?:\(?\s*['"]([^./][^'"]*)['"]\s*\)?|.*from\s*['"]([^./][^'"]*)['"]\s*)/g);
+              for (const m of importMatches) {
+                const pkg = m[1] || m[2];
+                if (pkg) {
+                  // Extract bare package name (handle scoped packages)
+                  const pkgName = pkg.startsWith('@') ? pkg.split('/').slice(0, 2).join('/') : pkg.split('/')[0];
+                  npmDeps.add(pkgName);
+                }
+              }
+            } catch {}
+          }
+          if (npmDeps.size > 0) {
+            const existing = (config.ssr as any)?.external || [];
+            return { ssr: { external: [...existing, ...npmDeps] } };
+          }
+        },
+        configureServer(server) {
+          // Re-scan on each request so newly added _middleware.ts files are picked up
+          server.middlewares.use(async (req: any, res: any, next: any) => {
+            const pathname = (req.url || '/').split('?')[0];
+            // Skip internal/static requests
+            if (pathname.startsWith('/@') || pathname.startsWith('/node_modules') || pathname.includes('.')) {
+              return next();
+            }
+
+            const middlewareEntries = scanMiddleware(pagesDir);
+            if (middlewareEntries.length === 0) return next();
+
+            const matchingDirs = getMiddlewareDirsForPathname(pathname, middlewareEntries);
+            if (matchingDirs.length === 0) return next();
+
+            const allMw: ConnectMiddleware[] = [];
+            for (const entry of matchingDirs) {
+              try {
+                const mod = await server.ssrLoadModule(entry.filePath);
+                allMw.push(...extractMiddleware(mod));
+              } catch (err) {
+                console.error(`[LumenJS] Failed to load _middleware.ts (${entry.dir || 'root'}):`, err);
+              }
+            }
+
+            if (allMw.length === 0) return next();
+            runMiddlewareChain(allMw, req, res, next);
+          });
+        }
+      },
       {
         name: 'lumenjs-index-html',
         configureServer(server) {

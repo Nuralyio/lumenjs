@@ -12,6 +12,8 @@ import { renderErrorPage } from './error-page.js';
 import { handleI18nRequest } from './serve-i18n.js';
 import { resolveLocale } from '../dev-server/middleware/locale.js';
 import { setProjectDir } from '../db/context.js';
+import { runMiddlewareChain, extractMiddleware, ConnectMiddleware } from '../shared/middleware-runner.js';
+import { getMiddlewareDirsForPathname, MiddlewareEntry } from './scan.js';
 
 export interface ServeOptions {
   projectDir: string;
@@ -57,12 +59,48 @@ export async function serveProject(options: ServeOptions): Promise<void> {
 
   const pagesDir = path.join(projectDir, 'pages');
 
+  // Load bundled middleware at startup
+  const middlewareModules: Map<string, ConnectMiddleware[]> = new Map();
+  if (manifest.middlewares) {
+    for (const entry of manifest.middlewares) {
+      const modPath = path.join(serverDir, entry.module);
+      if (fs.existsSync(modPath)) {
+        try {
+          const mod = await import(modPath);
+          middlewareModules.set(entry.dir, extractMiddleware(mod));
+        } catch (err) {
+          console.error(`[LumenJS] Failed to load middleware (${entry.dir || 'root'}):`, err);
+        }
+      }
+    }
+  }
+
+  // Build MiddlewareEntry list for pathname matching
+  const middlewareEntries: MiddlewareEntry[] = manifest.middlewares
+    ? manifest.middlewares.map(e => ({ dir: e.dir, filePath: '' }))
+    : [];
+
   const server = http.createServer(async (req, res) => {
     const url = req.url || '/';
     const [pathname, queryString] = url.split('?');
     const method = req.method || 'GET';
 
     try {
+      // 0. Run user middleware chain
+      if (middlewareModules.size > 0 && !pathname.includes('.') && !pathname.startsWith('/__nk_')) {
+        const matching = getMiddlewareDirsForPathname(pathname, middlewareEntries);
+        const allMw: ConnectMiddleware[] = [];
+        for (const entry of matching) {
+          const mws = middlewareModules.get(entry.dir);
+          if (mws) allMw.push(...mws);
+        }
+        if (allMw.length > 0) {
+          const err: any = await new Promise(resolve => runMiddlewareChain(allMw, req, res, resolve));
+          if (err) { res.statusCode = 500; res.end('Internal Server Error'); return; }
+          if (res.writableEnded) return;
+        }
+      }
+
       // 1. API routes
       if (pathname.startsWith('/api/')) {
         await handleApiRoute(manifest, serverDir, pathname, queryString, method, req, res);

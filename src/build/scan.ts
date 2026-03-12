@@ -103,6 +103,78 @@ function walkForLayouts(baseDir: string, relativePath: string, entries: LayoutEn
   }
 }
 
+export interface MiddlewareEntry {
+  dir: string;
+  filePath: string;
+}
+
+export function scanMiddleware(pagesDir: string): MiddlewareEntry[] {
+  if (!fs.existsSync(pagesDir)) return [];
+  const entries: MiddlewareEntry[] = [];
+  walkForMiddleware(pagesDir, '', entries);
+  return entries;
+}
+
+/** Get the middleware directory chain for a given page file */
+export function getMiddlewareDirsForPage(pageFilePath: string, pagesDir: string, middlewares: MiddlewareEntry[]): string[] {
+  const relativeToPages = path.relative(pagesDir, pageFilePath).replace(/\\/g, '/');
+  const dirParts = path.dirname(relativeToPages).split('/').filter(p => p && p !== '.');
+
+  const chain: string[] = [];
+
+  if (middlewares.some(m => m.dir === '')) {
+    chain.push('');
+  }
+
+  let currentDir = '';
+  for (const part of dirParts) {
+    currentDir = currentDir ? `${currentDir}/${part}` : part;
+    if (middlewares.some(m => m.dir === currentDir)) {
+      chain.push(currentDir);
+    }
+  }
+
+  return chain;
+}
+
+/** Get matching middleware entries for a URL pathname, ordered root-first */
+export function getMiddlewareDirsForPathname(pathname: string, middlewares: MiddlewareEntry[]): MiddlewareEntry[] {
+  const trimmed = pathname.replace(/^\/|\/$/g, '');
+  const parts = trimmed ? trimmed.split('/') : [];
+
+  const matching: MiddlewareEntry[] = [];
+
+  // Root middleware always matches
+  const root = middlewares.find(m => m.dir === '');
+  if (root) matching.push(root);
+
+  // Check each directory level
+  let currentDir = '';
+  for (const part of parts) {
+    currentDir = currentDir ? `${currentDir}/${part}` : part;
+    const entry = middlewares.find(m => m.dir === currentDir);
+    if (entry) matching.push(entry);
+  }
+
+  return matching;
+}
+
+function walkForMiddleware(baseDir: string, relativePath: string, entries: MiddlewareEntry[]) {
+  const fullDir = path.join(baseDir, relativePath);
+  const dirEntries = fs.readdirSync(fullDir, { withFileTypes: true });
+
+  for (const entry of dirEntries) {
+    if (entry.isFile() && /^_middleware\.(ts|js)$/.test(entry.name)) {
+      const filePath = path.join(fullDir, entry.name);
+      const dir = relativePath.replace(/\\/g, '/');
+      entries.push({ dir, filePath });
+    }
+    if (entry.isDirectory()) {
+      walkForMiddleware(baseDir, path.join(relativePath, entry.name), entries);
+    }
+  }
+}
+
 function walkApiDir(baseDir: string, relativePath: string, entries: ApiEntry[], apiDir: string) {
   const fullDir = path.join(baseDir, relativePath);
   const dirEntries = fs.readdirSync(fullDir, { withFileTypes: true });
