@@ -291,7 +291,7 @@ export function showAiChatForElement(el: HTMLElement): void {
   panel.classList.add('open');
 }
 
-/** Update target reference after HMR without moving the panel */
+/** Update target reference after HMR and reanchor the panel to the new element */
 export function updateAiChatTarget(el: HTMLElement): void {
   currentTarget = el;
   const tag = el.tagName.toLowerCase();
@@ -302,6 +302,8 @@ export function updateAiChatTarget(el: HTMLElement): void {
     if (parts.length >= 2) ctx += ` ${parts[0]}:${parts[1]}`;
   }
   contextBadge.textContent = ctx;
+  // Reposition to the new element (unless user has manually dragged)
+  positionBubble(el);
 }
 
 export function hideAiChatPanel(): void {
@@ -313,9 +315,9 @@ export function isAiChatPanelOpen(): boolean {
   return panel.classList.contains('open');
 }
 
-/** Reposition on scroll/resize if open */
+/** Reposition on scroll/resize if open (skips if element was disconnected by HMR) */
 export function updateAiChatPosition(): void {
-  if (currentTarget && isAiChatPanelOpen()) {
+  if (currentTarget && currentTarget.isConnected && isAiChatPanelOpen()) {
     positionBubble(currentTarget);
   }
 }
