@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import chokidar from 'chokidar';
 import { Plugin, ViteDevServer } from 'vite';
 import type { I18nConfig } from '../middleware/locale.js';
 
@@ -56,27 +55,26 @@ export function i18nPlugin(projectDir: string, config: I18nConfig): Plugin {
       });
 
       // Watch locale files for changes and send HMR event.
-      // Uses a dedicated chokidar watcher with polling enabled so it works
-      // reliably inside Docker containers (where inotify can miss changes).
+      // Uses fs.watchFile (stat-based polling) instead of inotify/chokidar so
+      // it works reliably inside Docker containers where inotify misses changes.
       if (fs.existsSync(localesDir)) {
-        const localeWatcher = chokidar.watch(path.join(localesDir, '*.json'), {
-          usePolling: true,
-          interval: 500,
-          ignoreInitial: true,
-        });
-        const onLocaleFileChange = (file: string) => {
-          const normalized = path.normalize(file);
-          const locale = path.basename(normalized, '.json');
-          if (!config.locales.includes(locale)) return;
-          server.ws.send({
-            type: 'custom',
-            event: 'lumenjs:i18n-update',
-            data: { locale },
+        for (const locale of config.locales) {
+          const filePath = path.join(localesDir, `${locale}.json`);
+          if (!fs.existsSync(filePath)) continue;
+          fs.watchFile(filePath, { interval: 500 }, (curr, prev) => {
+            if (curr.mtimeMs === prev.mtimeMs) return;
+            server.ws.send({
+              type: 'custom',
+              event: 'lumenjs:i18n-update',
+              data: { locale },
+            });
           });
-        };
-        localeWatcher.on('change', onLocaleFileChange);
-        localeWatcher.on('add', onLocaleFileChange);
-        server.httpServer?.on('close', () => localeWatcher.close());
+        }
+        server.httpServer?.on('close', () => {
+          for (const locale of config.locales) {
+            fs.unwatchFile(path.join(localesDir, `${locale}.json`));
+          }
+        });
       }
     },
 
