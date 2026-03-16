@@ -25,7 +25,11 @@ export async function handlePageRoute(
   const matched = matchRoute(manifest.routes.filter(r => r.hasLoader), pathname);
 
   if (matched && matched.route.module) {
-    const modulePath = path.join(serverDir, matched.route.module);
+    // Rollup sanitizes brackets in filenames: [...path] → _...path_
+    let modulePath = path.join(serverDir, matched.route.module);
+    if (!fs.existsSync(modulePath)) {
+      modulePath = path.join(serverDir, matched.route.module.replace(/\[/g, '_').replace(/\]/g, '_'));
+    }
     if (fs.existsSync(modulePath)) {
       try {
         const mod = await import(modulePath);
@@ -118,9 +122,11 @@ export async function handlePageRoute(
             const hydrateScript = `<script type="module">import '@lit-labs/ssr-client/lit-element-hydrate-support.js';</script>`;
 
             let html_out = indexHtmlShell;
+            // Inject hydrate support BEFORE the first module script so it loads before Lit
+            html_out = html_out.replace('<script type="module"', `${hydrateScript}\n  <script type="module"`);
             html_out = html_out.replace(
               /<nk-app><\/nk-app>/,
-              `${loaderDataScript}<nk-app data-nk-ssr><div id="nk-router-outlet">${ssrHtml}</div></nk-app>${hydrateScript}`
+              `${loaderDataScript}<nk-app data-nk-ssr><div id="nk-router-outlet">${ssrHtml}</div></nk-app>`
             );
 
             sendCompressed(req, res, 200, 'text/html; charset=utf-8', html_out);

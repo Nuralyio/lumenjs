@@ -1,6 +1,6 @@
 import { fetchLoaderData, fetchLayoutLoaderData, connectSubscribe, connectLayoutSubscribe, render404 } from './router-data.js';
 import { hydrateInitialRoute } from './router-hydration.js';
-import { getI18nConfig, getLocale, stripLocalePrefix, buildLocalePath } from './i18n.js';
+import { getI18nConfig, getLocale, initI18n, stripLocalePrefix, buildLocalePath } from './i18n.js';
 
 export interface LayoutInfo {
   tagName: string;
@@ -40,6 +40,16 @@ export class NkRouter {
       ...r,
       ...this.compilePattern(r.path),
     }));
+
+    // Initialize i18n from inlined data before any rendering
+    const i18nScript = document.getElementById('__nk_i18n__');
+    if (i18nScript) {
+      try {
+        const i18nData = JSON.parse(i18nScript.textContent || '');
+        initI18n(i18nData.config, i18nData.locale, i18nData.translations);
+      } catch { /* ignore */ }
+      if (!hydrate) i18nScript.remove();
+    }
 
     window.addEventListener('popstate', () => {
       const path = this.stripLocale(location.pathname);

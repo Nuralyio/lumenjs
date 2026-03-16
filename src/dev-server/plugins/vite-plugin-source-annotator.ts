@@ -17,7 +17,8 @@ export function sourceAnnotatorPlugin(projectDir: string): Plugin {
         const beforeTemplate = code.substring(0, code.indexOf(match));
         const baseLine = beforeTemplate.split('\n').length;
 
-        const annotated = templateContent.replace(/<([a-z][a-z0-9]*-[a-z0-9-]*)([\s>])/gi, (tagMatch: string, tagName: string, after: string) => {
+        // Annotate both custom elements (tags with hyphens) and standard HTML elements
+        const annotated = templateContent.replace(/<((?:[a-z][a-z0-9]*-[a-z0-9-]*)|(?:div|section|article|aside|main|nav|header|footer|h[1-6]|p|span|a|ul|ol|li|button|form|input|textarea|select|label|img|table|tr|td|th|thead|tbody))([\s>])/gi, (tagMatch: string, tagName: string, after: string) => {
           const beforeTag = templateContent.substring(0, templateContent.indexOf(tagMatch, offset));
           const lineInTemplate = beforeTag.split('\n').length - 1;
           offset = templateContent.indexOf(tagMatch, offset) + tagMatch.length;

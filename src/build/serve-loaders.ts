@@ -5,6 +5,13 @@ import type { BuildManifest } from '../shared/types.js';
 import { isRedirectResponse } from '../shared/utils.js';
 import { matchRoute } from '../shared/route-matching.js';
 
+/** Resolve a module path, falling back to bracket-sanitized filename (Rollup replaces [] with _) */
+function resolveModulePath(serverDir: string, moduleName: string): string {
+  const p = path.join(serverDir, moduleName);
+  if (fs.existsSync(p)) return p;
+  return path.join(serverDir, moduleName.replace(/\[/g, '_').replace(/\]/g, '_'));
+}
+
 export async function handleLayoutLoaderRequest(
   manifest: BuildManifest,
   serverDir: string,
@@ -30,7 +37,7 @@ export async function handleLayoutLoaderRequest(
     return;
   }
 
-  const modulePath = path.join(serverDir, layout.module);
+  const modulePath = resolveModulePath(serverDir, layout.module);
   if (!fs.existsSync(modulePath)) {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ __nk_no_loader: true }));
@@ -94,7 +101,7 @@ export async function handleLayoutSubscribeRequest(
     return;
   }
 
-  const modulePath = path.join(serverDir, layout.module);
+  const modulePath = resolveModulePath(serverDir, layout.module);
   if (!fs.existsSync(modulePath)) {
     res.writeHead(204);
     res.end();
@@ -165,7 +172,7 @@ export async function handleSubscribeRequest(
     return;
   }
 
-  const modulePath = path.join(serverDir, matched.route.module);
+  const modulePath = resolveModulePath(serverDir, matched.route.module);
   if (!fs.existsSync(modulePath)) {
     res.writeHead(204);
     res.end();
@@ -238,7 +245,7 @@ export async function handleLoaderRequest(
     return;
   }
 
-  const modulePath = path.join(serverDir, matched.route.module);
+  const modulePath = resolveModulePath(serverDir, matched.route.module);
   if (!fs.existsSync(modulePath)) {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ __nk_no_loader: true }));

@@ -74,56 +74,77 @@ export const implicitDeps: Record<string, string[]> = {
  * NuralyUI component alias map — mirrors the studio astro.config.mjs aliases.
  * Points to the component source directories within the studio service.
  */
+/**
+ * Resolve a component directory to its entry file.
+ * Prefers index.ts, falls back to <dirname>.component.ts.
+ */
+function resolveComponentEntry(dirPath: string): string {
+  const indexPath = path.join(dirPath, 'index.ts');
+  if (fs.existsSync(indexPath)) return indexPath;
+  const name = path.basename(dirPath);
+  const componentPath = path.join(dirPath, `${name}.component.ts`);
+  if (fs.existsSync(componentPath)) return componentPath;
+  return dirPath;
+}
+
 export function getNuralyUIAliases(nuralyUIPath: string, nuralyCommonPath: string): Record<string, string> {
-  return {
-    '@nuralyui/alert': path.join(nuralyUIPath, 'alert'),
-    '@nuralyui/badge': path.join(nuralyUIPath, 'badge'),
-    '@nuralyui/breadcrumb': path.join(nuralyUIPath, 'breadcrumb'),
-    '@nuralyui/button': path.join(nuralyUIPath, 'button'),
-    '@nuralyui/canvas': path.join(nuralyUIPath, 'canvas'),
-    '@nuralyui/card': path.join(nuralyUIPath, 'card'),
-    '@nuralyui/chatbot': path.join(nuralyUIPath, 'chatbot'),
-    '@nuralyui/checkbox': path.join(nuralyUIPath, 'checkbox'),
-    '@nuralyui/collapse': path.join(nuralyUIPath, 'collapse'),
-    '@nuralyui/color-picker': path.join(nuralyUIPath, 'colorpicker'),
-    '@nuralyui/datepicker': path.join(nuralyUIPath, 'datepicker'),
-    '@nuralyui/divider': path.join(nuralyUIPath, 'divider'),
-    '@nuralyui/document': path.join(nuralyUIPath, 'document'),
-    '@nuralyui/dropdown': path.join(nuralyUIPath, 'dropdown'),
-    '@nuralyui/file-upload': path.join(nuralyUIPath, 'file-upload'),
-    '@nuralyui/flex': path.join(nuralyUIPath, 'flex'),
-    '@nuralyui/forms': path.join(nuralyUIPath, 'form'),
-    '@nuralyui/grid': path.join(nuralyUIPath, 'grid'),
-    '@nuralyui/icon': path.join(nuralyUIPath, 'icon'),
-    '@nuralyui/image': path.join(nuralyUIPath, 'image'),
-    '@nuralyui/input': path.join(nuralyUIPath, 'input'),
-    '@nuralyui/label': path.join(nuralyUIPath, 'label'),
-    '@nuralyui/layout': path.join(nuralyUIPath, 'layout'),
-    '@nuralyui/menu': path.join(nuralyUIPath, 'menu'),
-    '@nuralyui/modal': path.join(nuralyUIPath, 'modal'),
-    '@nuralyui/panel': path.join(nuralyUIPath, 'panel'),
-    '@nuralyui/popconfirm': path.join(nuralyUIPath, 'popconfirm'),
-    '@nuralyui/radio': path.join(nuralyUIPath, 'radio'),
-    '@nuralyui/select': path.join(nuralyUIPath, 'select'),
-    '@nuralyui/skeleton': path.join(nuralyUIPath, 'skeleton'),
-    '@nuralyui/slider-input': path.join(nuralyUIPath, 'slider-input'),
-    '@nuralyui/table': path.join(nuralyUIPath, 'table'),
-    '@nuralyui/tabs': path.join(nuralyUIPath, 'tabs'),
-    '@nuralyui/tag': path.join(nuralyUIPath, 'tag'),
-    '@nuralyui/textarea': path.join(nuralyUIPath, 'textarea'),
-    '@nuralyui/timeline': path.join(nuralyUIPath, 'timeline'),
-    '@nuralyui/toast': path.join(nuralyUIPath, 'toast'),
-    '@nuralyui/video': path.join(nuralyUIPath, 'video'),
-    '@nuralyui/radio-group': path.join(nuralyUIPath, 'radio-group'),
-    '@nuralyui/iconpicker': path.join(nuralyUIPath, 'iconpicker'),
-    '@nuralyui/container': path.join(nuralyUIPath, 'container'),
-    '@nuralyui/code-editor': path.join(nuralyUIPath, 'code-editor'),
-    '@nuralyui/common/controllers': path.join(nuralyCommonPath, 'controllers.ts'),
-    '@nuralyui/common/mixins': path.join(nuralyCommonPath, 'mixins.ts'),
-    '@nuralyui/common/utils': path.join(nuralyCommonPath, 'utils.ts'),
-    '@nuralyui/common/themes': path.join(nuralyCommonPath, 'themes.ts'),
-    '@nuralyui/common': path.join(nuralyCommonPath, 'index.ts'),
+  const componentNames: Record<string, string> = {
+    '@nuralyui/alert': 'alert',
+    '@nuralyui/badge': 'badge',
+    '@nuralyui/breadcrumb': 'breadcrumb',
+    '@nuralyui/button': 'button',
+    '@nuralyui/canvas': 'canvas',
+    '@nuralyui/card': 'card',
+    '@nuralyui/chatbot': 'chatbot',
+    '@nuralyui/checkbox': 'checkbox',
+    '@nuralyui/collapse': 'collapse',
+    '@nuralyui/color-picker': 'colorpicker',
+    '@nuralyui/datepicker': 'datepicker',
+    '@nuralyui/divider': 'divider',
+    '@nuralyui/document': 'document',
+    '@nuralyui/dropdown': 'dropdown',
+    '@nuralyui/file-upload': 'file-upload',
+    '@nuralyui/flex': 'flex',
+    '@nuralyui/forms': 'form',
+    '@nuralyui/grid': 'grid',
+    '@nuralyui/icon': 'icon',
+    '@nuralyui/image': 'image',
+    '@nuralyui/input': 'input',
+    '@nuralyui/label': 'label',
+    '@nuralyui/layout': 'layout',
+    '@nuralyui/menu': 'menu',
+    '@nuralyui/modal': 'modal',
+    '@nuralyui/panel': 'panel',
+    '@nuralyui/popconfirm': 'popconfirm',
+    '@nuralyui/radio': 'radio',
+    '@nuralyui/select': 'select',
+    '@nuralyui/skeleton': 'skeleton',
+    '@nuralyui/slider-input': 'slider-input',
+    '@nuralyui/table': 'table',
+    '@nuralyui/tabs': 'tabs',
+    '@nuralyui/tag': 'tag',
+    '@nuralyui/textarea': 'textarea',
+    '@nuralyui/timeline': 'timeline',
+    '@nuralyui/toast': 'toast',
+    '@nuralyui/video': 'video',
+    '@nuralyui/radio-group': 'radio-group',
+    '@nuralyui/iconpicker': 'iconpicker',
+    '@nuralyui/container': 'container',
+    '@nuralyui/code-editor': 'code-editor',
   };
+
+  const aliases: Record<string, string> = {};
+  for (const [pkg, dir] of Object.entries(componentNames)) {
+    aliases[pkg] = resolveComponentEntry(path.join(nuralyUIPath, dir));
+  }
+
+  aliases['@nuralyui/common/controllers'] = path.join(nuralyCommonPath, 'controllers.ts');
+  aliases['@nuralyui/common/mixins'] = path.join(nuralyCommonPath, 'mixins.ts');
+  aliases['@nuralyui/common/utils'] = path.join(nuralyCommonPath, 'utils.ts');
+  aliases['@nuralyui/common/themes'] = path.join(nuralyCommonPath, 'themes.ts');
+  aliases['@nuralyui/common'] = path.join(nuralyCommonPath, 'index.ts');
+
+  return aliases;
 }
 
 /**
@@ -133,8 +154,12 @@ export function getNuralyUIAliases(nuralyUIPath: string, nuralyCommonPath: strin
  */
 export function resolveNuralyUIPaths(projectDir: string): { componentsPath: string; commonPath: string } | null {
   const nuralyUIRelPath = 'services/studio/src/features/runtime/components/ui/nuraly-ui';
+  // Also check directly inside the project (Docker mounts project at /app/studio)
+  const nuralyUIInProject = 'src/features/runtime/components/ui/nuraly-ui';
 
   const candidates = [
+    // Direct path inside project dir (Docker: /app/studio/src/features/...)
+    path.join(projectDir, nuralyUIInProject),
     // Walk up from project dir to find the monorepo root containing services/
     findMonorepoRoot(projectDir, nuralyUIRelPath),
     // Relative to lumenjs lib (in-repo: libs/lumenjs → repo root)

@@ -23,6 +23,10 @@ export function isPreviewMode(): boolean {
   return previewMode;
 }
 
+export function setPreviewMode(value: boolean) {
+  previewMode = value;
+}
+
 export function sendToHost(message: NkEditorMessage) {
   if (window.parent && window.parent !== window) {
     window.parent.postMessage(message, '*');

@@ -11,9 +11,11 @@ import { ssrRenderPage } from './ssr-render.js';
 import { readProjectConfig, getLumenJSNodeModules, getLumenJSDirs } from './config.js';
 import { getNuralyUIAliases, resolveNuralyUIPaths } from './nuralyui-aliases.js';
 import { litDedupPlugin } from './plugins/vite-plugin-lit-dedup.js';
+import { autoDefinePlugin } from './plugins/vite-plugin-auto-define.js';
 import { autoImportPlugin } from './plugins/vite-plugin-auto-import.js';
 import { litHmrPlugin } from './plugins/vite-plugin-lit-hmr.js';
 import { sourceAnnotatorPlugin } from './plugins/vite-plugin-source-annotator.js';
+import { editorApiPlugin } from './plugins/vite-plugin-editor-api.js';
 import { virtualModulesPlugin } from './plugins/vite-plugin-virtual-modules.js';
 import { i18nPlugin, loadTranslationsFromDisk } from './plugins/vite-plugin-i18n.js';
 import { resolveLocale } from './middleware/locale.js';
@@ -79,6 +81,7 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
   const plugins: Plugin[] = [
     lumenRoutesPlugin(pagesDir),
     lumenLoadersPlugin(pagesDir),
+    autoDefinePlugin(pagesDir),
     litDedupPlugin(lumenNodeModules, isDev),
     virtualModulesPlugin(runtimeDir, editorDir),
   ];
@@ -123,6 +126,9 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       allowedHosts: true,
       cors: true,
       hmr: true,
+      fs: {
+        allow: [projectDir, getLumenJSNodeModules(), path.resolve(getLumenJSNodeModules(), '..')],
+      },
     },
     resolve: shared.resolve,
     plugins: [
@@ -130,7 +136,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       lumenApiRoutesPlugin(apiDir, projectDir),
       litHmrPlugin(projectDir),
       ...(i18nConfig ? [i18nPlugin(projectDir, i18nConfig)] : []),
-      ...(editorMode ? [sourceAnnotatorPlugin(projectDir)] : []),
+      ...(editorMode ? [sourceAnnotatorPlugin(projectDir), editorApiPlugin(projectDir)] : []),
       {
         name: 'lumenjs-user-middleware',
         config(config) {

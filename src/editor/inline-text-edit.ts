@@ -1,7 +1,8 @@
 import { sendToHost, isPreviewMode } from './editor-bridge.js';
-import { applyAstModification } from './editor-api-client.js';
+import { applyAstModification, updateTranslation } from './editor-api-client.js';
 
 const EDITABLE_TAGS = ['H1','H2','H3','H4','H5','H6','P','SPAN','A','LABEL','LI'];
+
 let editingEl: HTMLElement | null = null;
 
 /**
@@ -38,7 +39,7 @@ function findEditTarget(startEl: HTMLElement): { textEl: HTMLElement; annotatedP
   return { textEl, annotatedParent };
 }
 
-function showDynamicWarning(textEl: HTMLElement): void {
+function showDynamicWarning(textEl: HTMLElement) {
   textEl.style.outline = '2px dashed #f59e0b';
   textEl.style.outlineOffset = '2px';
   const indicator = document.createElement('div');
@@ -66,8 +67,9 @@ function showDynamicWarning(textEl: HTMLElement): void {
   }, 2000);
 }
 
-function startEditing(textEl: HTMLElement, annotatedParent: HTMLElement): void {
+function startEditing(textEl: HTMLElement, annotatedParent: HTMLElement) {
   if (editingEl) return;
+
   editingEl = textEl;
   const originalText = textEl.textContent || '';
   textEl.setAttribute('contenteditable', 'true');
@@ -102,9 +104,16 @@ function startEditing(textEl: HTMLElement, annotatedParent: HTMLElement): void {
       const i18nKey = textEl.getAttribute('data-nk-i18n-key');
       if (i18nKey) {
         const locale = document.documentElement.lang || 'en';
-        sendToHost({
-          type: 'NK_TRANSLATION_CHANGED',
-          payload: { key: i18nKey, locale, originalText, newText }
+        updateTranslation(locale, i18nKey, newText).then(() => {
+          sendToHost({
+            type: 'NK_TRANSLATION_CHANGED',
+            payload: { key: i18nKey, locale, originalText, newText, appliedLocally: true }
+          });
+        }).catch(() => {
+          sendToHost({
+            type: 'NK_TRANSLATION_CHANGED',
+            payload: { key: i18nKey, locale, originalText, newText }
+          });
         });
       } else {
         applyAstModification(sourceFile, {
@@ -131,11 +140,11 @@ function startEditing(textEl: HTMLElement, annotatedParent: HTMLElement): void {
   textEl.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      textEl.blur();
+      textEl!.blur();
     }
     if (e.key === 'Escape') {
-      textEl.textContent = originalText;
-      textEl.blur();
+      textEl!.textContent = originalText;
+      textEl!.blur();
     }
   });
 }
@@ -146,13 +155,20 @@ function startEditing(textEl: HTMLElement, annotatedParent: HTMLElement): void {
  */
 export function triggerInlineEdit(target: HTMLElement): boolean {
   if (isPreviewMode() || editingEl) return false;
+
   const result = findEditTarget(target);
   if (!result) return false;
+
   const { textEl, annotatedParent } = result;
-  if (textEl.hasAttribute('data-nk-dynamic') || textEl.closest('[data-nk-dynamic]')) {
+
+  const isDynamic = textEl.hasAttribute('data-nk-dynamic') || !!textEl.closest('[data-nk-dynamic]');
+  const isI18n = !!textEl.getAttribute('data-nk-i18n-key') || !!textEl.closest('[data-nk-i18n-key]');
+
+  if (isDynamic && !isI18n) {
     showDynamicWarning(textEl);
     return true;
   }
+
   startEditing(textEl, annotatedParent);
   return true;
 }
@@ -191,7 +207,10 @@ export function setupInlineTextEdit() {
 
     if (!textEl || !annotatedParent || editingEl) return;
 
-    if (textEl.hasAttribute('data-nk-dynamic') || textEl.closest('[data-nk-dynamic]')) {
+    const isDynamic = textEl.hasAttribute('data-nk-dynamic') || !!textEl.closest('[data-nk-dynamic]');
+    const isI18n = !!textEl.getAttribute('data-nk-i18n-key') || !!textEl.closest('[data-nk-i18n-key]');
+
+    if (isDynamic && !isI18n) {
       event.preventDefault();
       event.stopPropagation();
       showDynamicWarning(textEl);
