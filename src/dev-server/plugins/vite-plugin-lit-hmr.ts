@@ -64,11 +64,21 @@ if (import.meta.hot) {
         el.renderRoot.querySelectorAll('[style]').forEach((child) => {
           child.removeAttribute('style');
         });
-        // Clear Lit's template cache to force re-render with new template
-        const childPart = Object.getOwnPropertySymbols(el.renderRoot)
-          .map(s => el.renderRoot[s])
-          .find(v => v && typeof v === 'object' && '_$committedValue' in v);
-        if (childPart) childPart._$committedValue = undefined;
+        // Clear Lit's template cache to force a full re-render.
+        // Deleting the ChildPart forces Lit to re-create the entire template
+        // from scratch instead of diffing against stale cached values.
+        if ('_$litPart$' in el.renderRoot) {
+          delete el.renderRoot['_$litPart$'];
+        } else {
+          // Lit 2.x fallback: clear via symbols
+          for (const s of Object.getOwnPropertySymbols(el.renderRoot)) {
+            const v = el.renderRoot[s];
+            if (v && typeof v === 'object' && '_$committedValue' in v) {
+              v._$committedValue = undefined;
+              break;
+            }
+          }
+        }
       }
       if (el.requestUpdate) el.requestUpdate();
     });

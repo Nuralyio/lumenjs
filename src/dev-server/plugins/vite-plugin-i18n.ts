@@ -98,17 +98,20 @@ hot.on('lumenjs:i18n-update', async ({ locale }) => {
   function __updateAll(root) {
     for (const el of root.querySelectorAll('*')) {
       if (el.requestUpdate) {
-        // Clear Lit's template cache to force re-evaluation of t() calls.
-        // Lit stores the child ChildPart on renderRoot — check both the
-        // string property (Lit 3.x) and symbols (Lit 2.x).
+        // Clear Lit's template cache to force a full re-render.
+        // Deleting _$litPart$ forces Lit to re-create the template from scratch.
         if (el.renderRoot) {
-          let childPart = el.renderRoot['_$litPart$'];
-          if (!childPart) {
-            childPart = Object.getOwnPropertySymbols(el.renderRoot)
-              .map(s => el.renderRoot[s])
-              .find(v => v && typeof v === 'object' && '_$committedValue' in v);
+          if ('_$litPart$' in el.renderRoot) {
+            delete el.renderRoot['_$litPart$'];
+          } else {
+            for (const s of Object.getOwnPropertySymbols(el.renderRoot)) {
+              const v = el.renderRoot[s];
+              if (v && typeof v === 'object' && '_$committedValue' in v) {
+                v._$committedValue = undefined;
+                break;
+              }
+            }
           }
-          if (childPart) childPart._$committedValue = undefined;
         }
         el.requestUpdate();
       }

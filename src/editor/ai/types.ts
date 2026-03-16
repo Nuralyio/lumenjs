@@ -47,6 +47,13 @@ IMPORTANT — Styling rules:
 - Example: to change the h1 color, find the \`h1 { ... }\` rule in \`static styles\` and update its \`color\` property. Do not create a new class.
 - If no CSS rule exists for the element, add one to the existing \`static styles\` block — do not add a separate \`<style>\` tag.
 
+IMPORTANT — i18n / translation rules (when the project uses i18n):
+- Text content in templates uses \`t('key')\` from \`@lumenjs/i18n\` — NEVER replace a \`t()\` call with hardcoded text.
+- To change displayed text, edit the translation value in \`locales/<locale>.json\` — do NOT modify the template.
+- Example: to change the subtitle, update \`"home.subtitle"\` in \`locales/en.json\` (and other locale files like \`locales/fr.json\`).
+- To add new text, add a key to ALL locale JSON files and use \`t('new.key')\` in the template.
+- The dev server watches locale files and updates the page automatically via HMR.
+
 You have full access to the filesystem and can run shell commands.
 When a task requires a new npm package, install it with \`npm install <package>\`.
 After npm install, the dev server will automatically restart to load the new dependency.
@@ -55,6 +62,8 @@ Vite's HMR will pick up file changes automatically — no manual restart needed.
 
 export function buildPrompt(options: AiChatOptions): string {
   const { mode, prompt, context } = options;
+  let result = prompt;
+
   if (mode === 'element' && context.elementTag) {
     let enriched = `I'm looking at \`<${context.elementTag}>\``;
     if (context.sourceFile) {
@@ -69,7 +78,18 @@ export function buildPrompt(options: AiChatOptions): string {
       enriched += ` with attributes: ${attrs}`;
     }
     enriched += `. ${prompt}`;
-    return enriched;
+    result = enriched;
   }
-  return prompt;
+
+  // Append i18n context so the AI knows to edit locale files, not templates
+  if ((context as any)?.i18n?.translations) {
+    const i18n = (context as any).i18n;
+    const locales = Object.keys(i18n.translations);
+    result += `\n\nThis project uses i18n (locales: ${locales.join(', ')}). Translation files:\n`;
+    for (const [locale, trans] of Object.entries(i18n.translations)) {
+      result += `locales/${locale}.json: ${JSON.stringify(trans, null, 2)}\n`;
+    }
+  }
+
+  return result;
 }

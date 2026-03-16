@@ -161,6 +161,23 @@ export function editorApiPlugin(projectDir: string): Plugin {
               }
             }
 
+            // If project has i18n, include locale translations so the AI knows
+            // to edit locale JSON files instead of hardcoding text in templates.
+            const localesDir = path.join(projectDir, 'locales');
+            if (fs.existsSync(localesDir)) {
+              try {
+                const localeFiles = fs.readdirSync(localesDir).filter(f => f.endsWith('.json'));
+                const translations: Record<string, any> = {};
+                for (const f of localeFiles) {
+                  const locale = f.replace('.json', '');
+                  translations[locale] = JSON.parse(fs.readFileSync(path.join(localesDir, f), 'utf-8'));
+                }
+                enrichedContext = { ...enrichedContext, i18n: { translations } };
+              } catch {
+                // Non-fatal
+              }
+            }
+
             // Set up SSE response
             res.writeHead(200, {
               'Content-Type': 'text/event-stream',
