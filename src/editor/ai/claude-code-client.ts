@@ -88,11 +88,14 @@ export function streamAiChat(projectDir: string, options: AiChatOptions): AiChat
 }
 
 /**
- * Check if Claude Code CLI is installed and logged in.
+ * Check if Claude Code CLI is installed and the Agent SDK is importable.
+ * Both are required — the CLI alone isn't enough.
  */
 export async function checkAiStatus(): Promise<AiStatusResult> {
   try {
     execSync('claude --version', { timeout: 5000, stdio: 'pipe' });
+    // Verify the SDK is actually importable (it's an optional dependency)
+    await import('@anthropic-ai/claude-agent-sdk');
     return { configured: true, backend: 'claude-code' };
   } catch {
     return { configured: false, backend: 'claude-code' };

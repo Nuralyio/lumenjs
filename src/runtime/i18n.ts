@@ -55,7 +55,7 @@ export function initI18n(
 
 /**
  * Load translations for a locale from the server and swap them in.
- * Used during client-side locale switches.
+ * Used during client-side locale switches and HMR updates.
  */
 export async function loadTranslations(locale: string): Promise<void> {
   const res = await fetch(`/__nk_i18n/${locale}.json`);
@@ -65,6 +65,20 @@ export async function loadTranslations(locale: string): Promise<void> {
   }
   translations = await res.json();
   currentLocale = locale;
+}
+
+/**
+ * Register the HMR reload handler on the global scope.
+ * The i18n Vite plugin injects an inline script that calls this function
+ * when a locale file changes — ensuring translations are updated in this
+ * module instance (not a duplicate created by Vite's cache-busting).
+ */
+if (typeof window !== 'undefined') {
+  (window as any).__lumenjs_i18n_reload = async (locale: string): Promise<boolean> => {
+    if (locale !== currentLocale) return false;
+    await loadTranslations(locale);
+    return true;
+  };
 }
 
 /**

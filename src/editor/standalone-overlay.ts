@@ -13,7 +13,7 @@
 import { findAnnotatedElement, parseSourceAttr, startAnnotator } from './element-annotator.js';
 import { setupInlineTextEdit, triggerInlineEdit } from './inline-text-edit.js';
 import { createPropertiesPanel, showPropertiesForElement, hidePropertiesPanel, isPropertiesPanelOpen } from './properties-panel.js';
-import { createAiChatPanel, showAiChatForElement, hideAiChatPanel, isAiChatPanelOpen, updateAiChatPosition } from './ai-chat-panel.js';
+import { createAiChatPanel, showAiChatForElement, hideAiChatPanel, isAiChatPanelOpen, updateAiChatPosition, updateAiChatTarget } from './ai-chat-panel.js';
 import { createAiProjectPanel, showAiProjectPanel, hideAiProjectPanel, isAiProjectPanelOpen, sendProjectMessage } from './ai-project-panel.js';
 import { deepElementFromPoint, createOverlay, positionOverlay, hideOverlay } from './overlay-utils.js';
 import {
@@ -500,10 +500,10 @@ function reselectAfterHmr() {
         positionOverlay(selectOverlay, newEl);
         updateSelectionInfo(newEl);
         showPropertiesForElement(newEl);
-        if (isAiChatPanelOpen()) showAiChatForElement(newEl);
+        if (isAiChatPanelOpen()) updateAiChatTarget(newEl);
       } else if (selectedElement?.isConnected) {
         showPropertiesForElement(selectedElement);
-        if (isAiChatPanelOpen()) showAiChatForElement(selectedElement);
+        if (isAiChatPanelOpen()) updateAiChatTarget(selectedElement);
       }
     }, 150);
   });

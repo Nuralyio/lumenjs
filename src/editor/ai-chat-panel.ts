@@ -291,6 +291,19 @@ export function showAiChatForElement(el: HTMLElement): void {
   panel.classList.add('open');
 }
 
+/** Update target reference after HMR without moving the panel */
+export function updateAiChatTarget(el: HTMLElement): void {
+  currentTarget = el;
+  const tag = el.tagName.toLowerCase();
+  const source = el.getAttribute('data-nk-source');
+  let ctx = `<${tag}>`;
+  if (source) {
+    const parts = source.split(':');
+    if (parts.length >= 2) ctx += ` ${parts[0]}:${parts[1]}`;
+  }
+  contextBadge.textContent = ctx;
+}
+
 export function hideAiChatPanel(): void {
   panel.classList.remove('open');
   currentTarget = null;
