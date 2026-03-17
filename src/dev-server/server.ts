@@ -61,12 +61,13 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
   const resolve: UserConfig['resolve'] = {
     alias: {
       ...aliases,
-      // Map @lumenjs/i18n to the physical dist file so Vite resolves it
-      // without going through node_modules (it's not an npm package).
       '@lumenjs/i18n': path.join(runtimeDir, 'i18n.js'),
     },
     conditions: isDev ? ['development', 'browser'] : ['browser'],
-    dedupe: ['lit', 'lit-html', 'lit-element', '@lit/reactive-element'],
+    // Note: resolve.dedupe is NOT used — it resolves via Node's algorithm
+    // which ignores Vite's resolve.conditions, picking the `default` export
+    // (prod proxy) instead of `development`. The litDedupPlugin handles
+    // single-copy resolution with correct conditions instead.
   };
 
   const esbuild: UserConfig['esbuild'] = {
@@ -263,8 +264,16 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     ],
     esbuild: shared.esbuild,
     optimizeDeps: {
-      include: ['lit', 'lit/decorators.js', 'lit/directive.js', 'lit/directive-helpers.js', 'lit/async-directive.js', 'lit-html', 'lit-element', '@lit/reactive-element'],
-      exclude: ['@lumenjs/i18n'],
+      exclude: [
+        '@lumenjs/i18n',
+        // Lit packages must NOT be pre-bundled — pre-bundling creates separate
+        // module entries (/.vite/deps/) alongside raw /@fs/ files, causing
+        // multiple lit-html instances. Instead, resolve.dedupe forces all lit
+        // imports to a single copy. The project's lit version MUST match
+        // lumenjs's lit version for dedupe to work.
+        'lit', 'lit-html', 'lit-element', '@lit/reactive-element',
+        '@lit-labs/ssr-client',
+      ],
     },
     ssr: {
       noExternal: true,

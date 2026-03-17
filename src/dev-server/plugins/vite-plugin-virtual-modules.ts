@@ -17,6 +17,7 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     'router-data': 'router-data.js',
     'router-hydration': 'router-hydration.js',
     'i18n': 'i18n.js',
+    'hydrate-support': '__virtual__',
   };
 
   // Modules resolved via resolve.alias instead of virtual module.
@@ -79,8 +80,82 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
       if (!id.startsWith('\0lumenjs:')) return;
       const name = id.slice('\0lumenjs:'.length);
 
+      if (name === 'hydrate-support') {
+        // Custom hydrate support that catches digest mismatch errors and falls
+        // back to CSR instead of leaving double-rendered content.
+        // The stock @lit-labs/ssr-client/lit-element-hydrate-support.js throws
+        // on digest mismatch, sets _$AG=false before throwing, so the next
+        // update() appends fresh render alongside stale SSR content.
+        return `
+import { render } from 'lit-html';
+import { hydrate } from '@lit-labs/ssr-client';
+
+globalThis.litElementHydrateSupport = ({LitElement}) => {
+  const observedGet = Object.getOwnPropertyDescriptor(
+    Object.getPrototypeOf(LitElement), 'observedAttributes'
+  ).get;
+  Object.defineProperty(LitElement, 'observedAttributes', {
+    get() { return [...observedGet.call(this), 'defer-hydration']; }
+  });
+
+  const origAttrChanged = LitElement.prototype.attributeChangedCallback;
+  LitElement.prototype.attributeChangedCallback = function(name, old, value) {
+    if (name === 'defer-hydration' && value === null) {
+      origConnected.call(this);
+    }
+    origAttrChanged.call(this, name, old, value);
+  };
+
+  const origConnected = LitElement.prototype.connectedCallback;
+  LitElement.prototype.connectedCallback = function() {
+    if (!this.hasAttribute('defer-hydration')) origConnected.call(this);
+  };
+
+  const origCreateRoot = LitElement.prototype.createRenderRoot;
+  LitElement.prototype.createRenderRoot = function() {
+    if (this.shadowRoot) {
+      this._$AG = true;
+      return this.shadowRoot;
+    }
+    return origCreateRoot.call(this);
+  };
+
+  const superUpdate = Object.getPrototypeOf(LitElement.prototype).update;
+  LitElement.prototype.update = function(changedProps) {
+    const value = this.render();
+    superUpdate.call(this, changedProps);
+    if (this._$AG) {
+      this._$AG = false;
+      for (const attr of this.getAttributeNames()) {
+        if (attr.startsWith('hydrate-internals-')) {
+          this.removeAttribute(attr.slice(18));
+          this.removeAttribute(attr);
+        }
+      }
+      try {
+        hydrate(value, this.renderRoot, this.renderOptions);
+      } catch (err) {
+        // Digest mismatch — clear SSR content and render fresh (CSR fallback)
+        console.warn('[LumenJS] Hydration failed for <' + this.localName + '>, falling back to CSR:', err.message);
+        const root = this.renderRoot;
+        while (root.firstChild) root.removeChild(root.firstChild);
+        delete root._$litPart$;
+        render(value, root, this.renderOptions);
+      }
+    } else {
+      render(value, this.renderRoot, this.renderOptions);
+    }
+  };
+};
+`;
+      }
       if (runtimeModules[name]) {
-        const code = fs.readFileSync(path.join(runtimeDir, runtimeModules[name]), 'utf-8');
+        let code = fs.readFileSync(path.join(runtimeDir, runtimeModules[name]), 'utf-8');
+        // Prepend hydrate support to app-shell so all Lit imports share one module graph.
+        // Uses our custom hydrate-support virtual module (with CSR fallback) instead of stock.
+        if (name === 'app-shell') {
+          code = `import '/@lumenjs/hydrate-support';\n` + code;
+        }
         return rewriteRelativeImports(code, runtimeModules);
       }
       if (editorModules[name]) {

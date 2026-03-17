@@ -48,9 +48,8 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
 
   // i18n module is loaded via imports from router-hydration, no separate script needed
 
-  const hydrateScript = isSSR
-    ? `<script type="module" src="/@id/@lit-labs/ssr-client/lit-element-hydrate-support.js"></script>`
-    : '';
+  // Hydrate support is always loaded via the app-shell virtual module (first import)
+  // to avoid Lit module duplication from separate script tags.
 
   const htmlLang = options.locale || 'en';
 
@@ -61,7 +60,6 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(options.title)}</title>
   ${options.integrations?.includes('nuralyui') ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@nuralyui/themes@latest/dist/default.css">' : ''}${options.integrations?.includes('tailwind') ? '\n  <script type="module">import "/styles/tailwind.css";</script>' : ''}
-  ${hydrateScript}
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; }
