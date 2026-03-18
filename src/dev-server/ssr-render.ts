@@ -171,24 +171,40 @@ function findLayoutFile(dir: string): string | null {
 }
 
 /**
- * Aggressively invalidate a module for SSR re-execution.
+ * Aggressively invalidate a module and all its SSR-imported dependencies.
+ * Without this, editing a component imported by a page/layout serves stale SSR.
  */
 function invalidateSsrModule(server: ViteDevServer, filePath: string) {
-  const byFile = server.moduleGraph.getModulesByFile(filePath);
-  if (byFile) {
-    for (const m of byFile) {
-      server.moduleGraph.invalidateModule(m);
-      (m as any).ssrModule = null;
-      (m as any).ssrTransformResult = null;
+  const visited = new Set<string>();
+
+  function invalidateRecursive(id: string) {
+    if (visited.has(id)) return;
+    visited.add(id);
+
+    const mods = server.moduleGraph.getModulesByFile(id);
+    if (mods) {
+      for (const m of mods) {
+        server.moduleGraph.invalidateModule(m);
+        (m as any).ssrModule = null;
+        (m as any).ssrTransformResult = null;
+        // Recurse into SSR-imported modules
+        if (m.ssrImportedModules) {
+          for (const dep of m.ssrImportedModules) {
+            if (dep.file) invalidateRecursive(dep.file);
+          }
+        }
+      }
+    }
+
+    const urlMod = server.moduleGraph.getModuleById(id);
+    if (urlMod) {
+      server.moduleGraph.invalidateModule(urlMod);
+      (urlMod as any).ssrModule = null;
+      (urlMod as any).ssrTransformResult = null;
     }
   }
 
-  const urlMod = server.moduleGraph.getModuleById(filePath);
-  if (urlMod) {
-    server.moduleGraph.invalidateModule(urlMod);
-    (urlMod as any).ssrModule = null;
-    (urlMod as any).ssrTransformResult = null;
-  }
+  invalidateRecursive(filePath);
 }
 
 /**
