@@ -2,7 +2,7 @@ import { ViteDevServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import { resolvePageFile, extractRouteParams } from './plugins/vite-plugin-loaders.js';
-import { stripOuterLitMarkers, dirToLayoutTagName, filePathToTagName } from '../shared/utils.js';
+import { stripOuterLitMarkers, dirToLayoutTagName, filePathToTagName, patchLoaderDataSpread } from '../shared/utils.js';
 import { installDomShims } from '../shared/dom-shims.js';
 import { loadTranslationsFromDisk } from './plugins/vite-plugin-i18n.js';
 
@@ -54,7 +54,11 @@ export async function ssrRenderPage(
     clearSsrCustomElement(g);
 
     // Load the page module via Vite (registers the custom element, applies transforms)
+    // Bypass get() so auto-define re-registers fresh classes
+    const registry = g.customElements;
+    if (registry) registry.__nk_bypass_get = true;
     const mod = await server.ssrLoadModule(filePath);
+    if (registry) registry.__nk_bypass_get = false;
 
     // Run loader if present
     let loaderData: any = undefined;
@@ -80,7 +84,9 @@ export async function ssrRenderPage(
       invalidateSsrModule(server, layout.filePath);
       clearSsrCustomElement(g);
 
+      if (registry) registry.__nk_bypass_get = true;
       const layoutMod = await server.ssrLoadModule(layout.filePath);
+      if (registry) registry.__nk_bypass_get = false;
       let layoutLoaderData: any = undefined;
 
       if (layoutMod.loader && typeof layoutMod.loader === 'function') {
@@ -94,6 +100,12 @@ export async function ssrRenderPage(
       layoutModules.push({ tagName: layoutTagName, loaderData: layoutLoaderData });
       layoutsData.push({ loaderPath: layout.dir, data: layoutLoaderData });
     }
+
+    // Patch element classes to spread loaderData into individual properties
+    for (const lm of layoutModules) {
+      patchLoaderDataSpread(lm.tagName);
+    }
+    patchLoaderDataSpread(tagName);
 
     // Load SSR render + lit/static-html.js through Vite (same module registry as page)
     const { render } = await server.ssrLoadModule('@lit-labs/ssr');
@@ -208,22 +220,35 @@ function invalidateSsrModule(server: ViteDevServer, filePath: string) {
 }
 
 /**
- * Patch the SSR customElements registry to allow re-registration.
+ * Patch the SSR customElements registry to allow re-registration,
+ * and proactively clear all definitions so auto-define guards pass.
  */
 function clearSsrCustomElement(g: any) {
   const registry = g.customElements;
-  if (!registry || registry.__nk_patched) return;
-  registry.__nk_patched = true;
+  if (!registry) return;
 
-  const origDefine = registry.define.bind(registry);
-  registry.define = (name: string, ctor: any) => {
-    if (registry.__definitions && registry.__definitions.has(name)) {
-      const oldCtor = registry.__definitions.get(name)?.ctor;
-      registry.__definitions.delete(name);
-      if (oldCtor && registry.__reverseDefinitions) {
-        registry.__reverseDefinitions.delete(oldCtor);
+  // Patch define() to allow re-registration and get() to bypass
+  // auto-define guards (one-time)
+  if (!registry.__nk_patched) {
+    registry.__nk_patched = true;
+    const origDefine = registry.define.bind(registry);
+    registry.define = (name: string, ctor: any) => {
+      if (registry.__definitions && registry.__definitions.has(name)) {
+        const oldCtor = registry.__definitions.get(name)?.ctor;
+        registry.__definitions.delete(name);
+        if (oldCtor && registry.__reverseDefinitions) {
+          registry.__reverseDefinitions.delete(oldCtor);
+        }
       }
-    }
-    return origDefine(name, ctor);
-  };
+      return origDefine(name, ctor);
+    };
+
+    // Patch get() so auto-define's `if (!customElements.get('tag'))` guard
+    // always passes, allowing define() to re-register the fresh class.
+    const origGet = registry.get.bind(registry);
+    registry.get = (name: string) => {
+      if (registry.__nk_bypass_get) return undefined;
+      return origGet(name);
+    };
+  }
 }
