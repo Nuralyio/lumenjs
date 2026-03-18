@@ -3,16 +3,16 @@ import path from 'path';
 import { tagToPackage, implicitDeps, getNuralyUIAliases } from './nuralyui-aliases.js';
 
 describe('tagToPackage', () => {
-  it('maps nr-button to @nuralyui/button', () => {
-    expect(tagToPackage['nr-button']).toBe('@nuralyui/button');
+  it('maps nr-button to @nuraly/lumenui/button', () => {
+    expect(tagToPackage['nr-button']).toBe('@nuraly/lumenui/button');
   });
 
-  it('maps nr-icon to @nuralyui/icon', () => {
-    expect(tagToPackage['nr-icon']).toBe('@nuralyui/icon');
+  it('maps nr-icon to @nuraly/lumenui/icon', () => {
+    expect(tagToPackage['nr-icon']).toBe('@nuraly/lumenui/icon');
   });
 
-  it('maps nr-table to @nuralyui/table', () => {
-    expect(tagToPackage['nr-table']).toBe('@nuralyui/table');
+  it('maps nr-table to @nuraly/lumenui/table', () => {
+    expect(tagToPackage['nr-table']).toBe('@nuraly/lumenui/table');
   });
 
   it('has entries for all known tags', () => {
@@ -41,8 +41,8 @@ describe('implicitDeps', () => {
 describe('getNuralyUIAliases', () => {
   it('returns alias map with all component packages', () => {
     const aliases = getNuralyUIAliases('/ui/components', '/ui/common');
-    expect(aliases['@nuralyui/button']).toBe(path.join('/ui/components', 'button'));
-    expect(aliases['@nuralyui/icon']).toBe(path.join('/ui/components', 'icon'));
+    expect(aliases['@nuraly/lumenui/button']).toBe(path.join('/ui/components', 'button'));
+    expect(aliases['@nuraly/lumenui/icon']).toBe(path.join('/ui/components', 'icon'));
   });
 
   it('includes common package aliases', () => {
@@ -54,11 +54,11 @@ describe('getNuralyUIAliases', () => {
 
   it('maps color-picker to colorpicker directory', () => {
     const aliases = getNuralyUIAliases('/ui/components', '/ui/common');
-    expect(aliases['@nuralyui/color-picker']).toBe(path.join('/ui/components', 'colorpicker'));
+    expect(aliases['@nuraly/lumenui/color-picker']).toBe(path.join('/ui/components', 'colorpicker'));
   });
 
-  it('maps forms to form directory', () => {
+  it('maps form to form directory', () => {
     const aliases = getNuralyUIAliases('/ui/components', '/ui/common');
-    expect(aliases['@nuralyui/forms']).toBe(path.join('/ui/components', 'form'));
+    expect(aliases['@nuraly/lumenui/form']).toBe(path.join('/ui/components', 'form'));
   });
 });
