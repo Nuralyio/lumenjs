@@ -99,6 +99,8 @@ src/
 ### Server loaders
 - `export async function loader({ params, query, url, headers, locale })` — runs server-side
 - Return data object → available as `this.loaderData` on the page element
+- Loader data keys are also spread as individual properties on the element (e.g., `this.stats` if loader returns `{ stats: [...] }`)
+- Both approaches work: `this.loaderData.stats` (classic) or `this.stats` (individual properties)
 - Return `{ __nk_redirect: true, location: '/path', status: 302 }` for redirects
 
 ### Subscribe (SSE)

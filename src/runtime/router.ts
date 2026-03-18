@@ -239,6 +239,7 @@ export class NkRouter {
         }
         if (layoutDataList && layoutDataList[i] !== undefined) {
           (layoutEl as any).loaderData = layoutDataList[i];
+          this.spreadData(layoutEl, layoutDataList[i]);
         }
         parentEl = layoutEl;
       }
@@ -266,6 +267,7 @@ export class NkRouter {
     const outerLayout = document.createElement(layouts[0].tagName);
     if (layoutDataList[0] !== undefined) {
       (outerLayout as any).loaderData = layoutDataList[0];
+      this.spreadData(outerLayout, layoutDataList[0]);
     }
 
     let current = outerLayout;
@@ -273,6 +275,7 @@ export class NkRouter {
       const inner = document.createElement(layouts[i].tagName);
       if (layoutDataList[i] !== undefined) {
         (inner as any).loaderData = layoutDataList[i];
+        this.spreadData(inner, layoutDataList[i]);
       }
       current.appendChild(inner);
       current = inner;
@@ -284,6 +287,15 @@ export class NkRouter {
     return outerLayout;
   }
 
+  /** Spread loader data as individual properties on an element. */
+  private spreadData(el: Element, data: any): void {
+    if (data && typeof data === 'object') {
+      for (const [key, value] of Object.entries(data)) {
+        (el as any)[key] = value;
+      }
+    }
+  }
+
   private createPageElement(route: Route, loaderData?: any): HTMLElement {
     const el = document.createElement(route.tagName);
     for (const [key, value] of Object.entries(this.params)) {
@@ -291,6 +303,7 @@ export class NkRouter {
     }
     if (loaderData !== undefined) {
       (el as any).loaderData = loaderData;
+      this.spreadData(el, loaderData);
     }
     return el;
   }

@@ -75,6 +75,45 @@ export function isRedirectResponse(value: any): value is { location: string; sta
 }
 
 /**
+ * Patch a custom element class's loaderData setter to also spread
+ * individual properties from the loader data object onto the element.
+ * This enables components to declare individual reactive properties
+ * (e.g., `stats: { type: Array }`) instead of using `this.loaderData.stats`.
+ *
+ * Must be called AFTER the element is registered and BEFORE SSR rendering.
+ */
+export function patchLoaderDataSpread(tagName: string): void {
+  const g = globalThis as any;
+  const ElementClass = g.customElements?.get?.(tagName);
+  if (!ElementClass) return;
+
+  const proto = ElementClass.prototype;
+  const original = Object.getOwnPropertyDescriptor(proto, 'loaderData');
+
+  Object.defineProperty(proto, 'loaderData', {
+    set(value: any) {
+      if (original?.set) {
+        original.set.call(this, value);
+      } else {
+        this.__nk_loaderData = value;
+      }
+      if (value && typeof value === 'object') {
+        for (const [key, val] of Object.entries(value)) {
+          if (key !== 'loaderData') {
+            (this as any)[key] = val;
+          }
+        }
+      }
+    },
+    get() {
+      if (original?.get) return original.get.call(this);
+      return this.__nk_loaderData;
+    },
+    configurable: true
+  });
+}
+
+/**
  * Read and parse the body of an HTTP request.
  */
 export function readBody(req: any): Promise<any> {

@@ -2,7 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import type { BuildManifest } from '../shared/types.js';
-import { stripOuterLitMarkers, dirToLayoutTagName, isRedirectResponse } from '../shared/utils.js';
+import { stripOuterLitMarkers, dirToLayoutTagName, isRedirectResponse, patchLoaderDataSpread } from '../shared/utils.js';
 import { matchRoute } from '../shared/route-matching.js';
 import { sendCompressed } from './serve-static.js';
 
@@ -78,6 +78,12 @@ export async function handlePageRoute(
           layoutsData.push({ loaderPath: dir, data: layoutLoaderData });
           layoutModules.push({ tagName: layoutTagName, loaderData: layoutLoaderData });
         }
+
+        // Patch element classes to spread loaderData into individual properties
+        for (const lm of layoutModules) {
+          patchLoaderDataSpread(lm.tagName);
+        }
+        patchLoaderDataSpread(tagName);
 
         if (tagName && ssrRuntime) {
           // SSR render with the bundled @lit-labs/ssr runtime

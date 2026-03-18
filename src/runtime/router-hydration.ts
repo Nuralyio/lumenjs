@@ -55,6 +55,15 @@ export async function hydrateInitialRoute(
     }
   }
 
+  /** Spread loader data as individual properties on an element. */
+  function spreadData(el: Element, data: any): void {
+    if (data && typeof data === 'object') {
+      for (const [key, value] of Object.entries(data)) {
+        (el as any)[key] = value;
+      }
+    }
+  }
+
   // Load each layout module and immediately set loaderData on the
   // existing DOM element BEFORE the next await yields to microtasks.
   for (const layout of layouts) {
@@ -63,6 +72,7 @@ export async function hydrateInitialRoute(
       const data = layoutDataMap.get(layout.loaderPath ?? '');
       if (data !== undefined) {
         (existingLayout as any).loaderData = data;
+        spreadData(existingLayout, data);
       }
     }
 
@@ -78,6 +88,7 @@ export async function hydrateInitialRoute(
   const existingPage = outlet?.querySelector(match.route.tagName);
   if (existingPage && pageData !== undefined) {
     (existingPage as any).loaderData = pageData;
+    spreadData(existingPage, pageData);
   }
 
   // Load the page module (registers element, triggers hydration microtask)
