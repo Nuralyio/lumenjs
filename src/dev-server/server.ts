@@ -139,6 +139,20 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       ...(i18nConfig ? [i18nPlugin(projectDir, i18nConfig)] : []),
       ...(editorMode ? [sourceAnnotatorPlugin(projectDir), editorApiPlugin(projectDir)] : []),
       {
+        // Clear SSR module cache on file changes so the next SSR request uses fresh code.
+        // Without this, HMR updates the client but SSR keeps serving stale modules.
+        name: 'lumenjs-ssr-invalidate-on-change',
+        handleHotUpdate({ file, server }) {
+          const mods = server.moduleGraph.getModulesByFile(file);
+          if (mods) {
+            for (const m of mods) {
+              (m as any).ssrModule = null;
+              (m as any).ssrTransformResult = null;
+            }
+          }
+        },
+      },
+      {
         name: 'lumenjs-user-middleware',
         config(config) {
           const entries = scanMiddleware(pagesDir);
