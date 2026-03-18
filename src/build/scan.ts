@@ -74,7 +74,7 @@ function walkDir(baseDir: string, relativePath: string, entries: PageEntry[], pa
 
   for (const entry of dirEntries) {
     const entryRelative = path.join(relativePath, entry.name);
-    if (entry.isDirectory()) {
+    if (entry.isDirectory() && !entry.name.startsWith('_')) {
       walkDir(baseDir, entryRelative, entries, pagesDir);
     } else if (entry.isFile() && /\.(ts|js)$/.test(entry.name) && !entry.name.startsWith('_')) {
       const filePath = path.join(pagesDir, entryRelative);
@@ -97,7 +97,7 @@ function walkForLayouts(baseDir: string, relativePath: string, entries: LayoutEn
       const dir = relativePath.replace(/\\/g, '/');
       entries.push({ dir, filePath, hasLoader: fileHasLoader(filePath), hasSubscribe: fileHasSubscribe(filePath) });
     }
-    if (entry.isDirectory()) {
+    if (entry.isDirectory() && !entry.name.startsWith('_')) {
       walkForLayouts(baseDir, path.join(relativePath, entry.name), entries);
     }
   }
@@ -142,7 +142,7 @@ function walkForMiddleware(baseDir: string, relativePath: string, entries: Middl
       const dir = relativePath.replace(/\\/g, '/');
       entries.push({ dir, filePath });
     }
-    if (entry.isDirectory()) {
+    if (entry.isDirectory() && !entry.name.startsWith('_')) {
       walkForMiddleware(baseDir, path.join(relativePath, entry.name), entries);
     }
   }

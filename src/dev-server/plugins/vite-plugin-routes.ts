@@ -45,7 +45,7 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
         const tagName = dirToLayoutTagName(relativePath);
         layouts.push({ dir: relativePath.replace(/\\/g, '/'), filePath, tagName });
       }
-      if (entry.isDirectory()) {
+      if (entry.isDirectory() && !entry.name.startsWith('_')) {
         walkForLayouts(baseDir, path.join(relativePath, entry.name), layouts);
       }
     }
@@ -75,7 +75,7 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
 
     for (const entry of entries) {
       const entryRelative = path.join(relativePath, entry.name);
-      if (entry.isDirectory()) {
+      if (entry.isDirectory() && !entry.name.startsWith('_')) {
         walkDir(baseDir, entryRelative, routes);
       } else if (entry.isFile() && /\.(ts|js)$/.test(entry.name) && !entry.name.startsWith('_')) {
         const routePath = filePathToRoute(entryRelative);

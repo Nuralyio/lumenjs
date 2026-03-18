@@ -111,10 +111,21 @@ globalThis.litElementHydrateSupport = ({LitElement}) => {
     if (!this.hasAttribute('defer-hydration')) origConnected.call(this);
   };
 
+  function adoptElementStyles(el) {
+    const styles = el.constructor.elementStyles;
+    if (styles?.length && el.renderRoot instanceof ShadowRoot) {
+      el.renderRoot.adoptedStyleSheets = styles.map(
+        s => s instanceof CSSStyleSheet ? s : s.styleSheet
+      );
+    }
+  }
+
   const origCreateRoot = LitElement.prototype.createRenderRoot;
   LitElement.prototype.createRenderRoot = function() {
     if (this.shadowRoot) {
       this._$AG = true;
+      // Adopt styles that SSR declarative shadow roots don't include
+      adoptElementStyles(this);
       return this.shadowRoot;
     }
     return origCreateRoot.call(this);
@@ -140,6 +151,8 @@ globalThis.litElementHydrateSupport = ({LitElement}) => {
         const root = this.renderRoot;
         while (root.firstChild) root.removeChild(root.firstChild);
         delete root._$litPart$;
+        // Re-adopt styles since clearing removed SSR <style> tags
+        adoptElementStyles(this);
         render(value, root, this.renderOptions);
       }
     } else {
