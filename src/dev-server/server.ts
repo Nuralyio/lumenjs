@@ -291,7 +291,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     },
     ssr: {
       noExternal: true,
-      external: ['node-domexception'],
+      external: ['node-domexception', 'socket.io-client', 'xmlhttprequest-ssl', 'engine.io-client'],
       resolve: {
         conditions: ['node', 'import'],
       },
