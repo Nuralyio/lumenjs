@@ -56,6 +56,14 @@ export class NkRouter {
       this.navigate(path, false);
     });
     document.addEventListener('click', (e) => this.handleLinkClick(e));
+    (window as any).__nk_navigate = (href: string) => {
+      const path = this.stripLocale(href);
+      if (this.matchRoute(path)) {
+        this.navigate(path);
+      } else {
+        window.location.href = href;
+      }
+    };
 
     if (hydrate) {
       hydrateInitialRoute(
@@ -337,5 +345,15 @@ export class NkRouter {
   private withLocale(path: string): string {
     const config = getI18nConfig();
     return config ? buildLocalePath(getLocale(), path) : path;
+  }
+}
+
+/** Navigate via the client-side router. Falls back to full reload for unknown routes. */
+export function navigate(href: string): void {
+  const nav = (window as any).__nk_navigate;
+  if (nav) {
+    nav(href);
+  } else {
+    window.location.href = href;
   }
 }
