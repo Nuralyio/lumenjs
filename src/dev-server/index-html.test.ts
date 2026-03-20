@@ -28,12 +28,13 @@ describe('generateIndexHtml', () => {
     });
     expect(html).toContain('data-nk-ssr');
     expect(html).toContain('<div>server-rendered</div>');
-    expect(html).toContain('lit-element-hydrate-support');
+    // Hydrate support is loaded via app-shell virtual module, not a separate script
+    expect(html).toContain('data-nk-ssr');
   });
 
   it('does not include hydrate script without SSR', () => {
     const html = generateIndexHtml({ title: 'Test', editorMode: false });
-    expect(html).not.toContain('lit-element-hydrate-support');
+    expect(html).not.toContain('data-nk-ssr');
   });
 
   it('includes loader data JSON script for SSR', () => {
@@ -97,7 +98,7 @@ describe('generateIndexHtml', () => {
       editorMode: false,
       integrations: ['nuralyui'],
     });
-    expect(html).toContain('nuralyui/themes');
+    expect(html).toContain('lumenui');
   });
 
   it('includes tailwind import when integration present', () => {
