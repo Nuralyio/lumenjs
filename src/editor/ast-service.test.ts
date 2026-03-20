@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { AstService } from './ast-service.js';
 
+let hasTsMorph = false;
+try { await import('ts-morph'); hasTsMorph = true; } catch {}
+
 const service = new AstService();
 
 const sampleComponent = `import { html, css, LitElement } from 'lit';
@@ -24,7 +27,7 @@ export class PageIndex extends LitElement {
 }
 `;
 
-describe('AstService', () => {
+describe.skipIf(!hasTsMorph)('AstService', () => {
   describe('setTextContent', () => {
     it('changes text content of an element', async () => {
       const result = await service.applyModification(sampleComponent, {
