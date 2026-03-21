@@ -3,6 +3,11 @@ import fs from 'fs';
 import Database from 'better-sqlite3';
 import { getProjectDir } from './context.js';
 import { readProjectConfig } from '../dev-server/config.js';
+import { autoMigrate } from './auto-migrate.js';
+import { getRegisteredTables } from './table.js';
+
+export { defineTable, getRegisteredTables } from './table.js';
+export type { TableDefinition, TableColumn } from './table.js';
 
 export class LumenDb {
   private db: Database.Database;
@@ -59,6 +64,9 @@ export function useDb(): LumenDb {
   db.pragma('foreign_keys = ON');
 
   _instance = new LumenDb(db);
+
+  // Auto-generate migrations from defineTable() definitions
+  autoMigrate(db, projectDir, getRegisteredTables());
 
   // Run pending migrations
   runMigrations(db, projectDir);
