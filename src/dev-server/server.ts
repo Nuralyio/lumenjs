@@ -114,7 +114,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
   const publicDir = path.join(projectDir, 'public');
 
   const config = readProjectConfig(projectDir);
-  const { title, integrations, i18n: i18nConfig } = config;
+  const { title, integrations, i18n: i18nConfig, prefetch: prefetchStrategy } = config;
   const shared = getSharedViteConfig(projectDir, { integrations });
 
   const server = await createViteServer({
@@ -252,6 +252,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                   locale,
                   i18nConfig: i18nConfig || undefined,
                   translations,
+                  prefetch: prefetchStrategy,
                 });
                 const transformed = await server.transformIndexHtml(req.url!, shellHtml);
                 const finalHtml = ssrResult
@@ -262,7 +263,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                 res.end(finalHtml);
               }).catch(err => {
                 console.error('[LumenJS] SSR/HTML generation error:', err);
-                const html = generateIndexHtml({ title, editorMode, integrations, locale, i18nConfig: i18nConfig || undefined, translations });
+                const html = generateIndexHtml({ title, editorMode, integrations, locale, i18nConfig: i18nConfig || undefined, translations, prefetch: prefetchStrategy });
                 server.transformIndexHtml(req.url!, html).then(transformed => {
                   res.setHeader('Content-Type', 'text/html');
                   res.setHeader('Cache-Control', 'no-store');

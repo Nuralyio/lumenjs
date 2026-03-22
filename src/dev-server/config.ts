@@ -11,10 +11,13 @@ export interface I18nConfig {
   prefixDefault: boolean;
 }
 
+export type PrefetchStrategy = 'hover' | 'viewport' | 'none';
+
 export interface ProjectConfig {
   title: string;
   integrations: string[];
   i18n?: I18nConfig;
+  prefetch?: PrefetchStrategy;
 }
 
 /**
@@ -23,6 +26,7 @@ export interface ProjectConfig {
 export function readProjectConfig(projectDir: string): ProjectConfig {
   let title = 'LumenJS App';
   let integrations: string[] = [];
+  let prefetch: PrefetchStrategy | undefined;
   const configPath = path.join(projectDir, 'lumenjs.config.ts');
   if (fs.existsSync(configPath)) {
     try {
@@ -35,6 +39,13 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
           .split(',')
           .map(s => s.trim().replace(/^['"]|['"]$/g, ''))
           .filter(Boolean);
+      }
+      const prefetchMatch = configContent.match(/prefetch\s*:\s*['"]([^'"]+)['"]/);
+      if (prefetchMatch) {
+        const val = prefetchMatch[1];
+        if (val === 'hover' || val === 'viewport' || val === 'none') {
+          prefetch = val as PrefetchStrategy;
+        }
       }
     } catch { /* use defaults */ }
   }
@@ -65,7 +76,7 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
     } catch { /* ignore */ }
   }
 
-  return { title, integrations, ...(i18n ? { i18n } : {}) };
+  return { title, integrations, ...(i18n ? { i18n } : {}), ...(prefetch ? { prefetch } : {}) };
 }
 
 /**

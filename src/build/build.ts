@@ -28,7 +28,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   }
   fs.mkdirSync(outDir, { recursive: true });
 
-  const { title, integrations, i18n: i18nConfig } = readProjectConfig(projectDir);
+  const { title, integrations, i18n: i18nConfig, prefetch: prefetchStrategy } = readProjectConfig(projectDir);
   const shared = getSharedViteConfig(projectDir, { mode: 'production', integrations });
 
   // Scan pages, layouts, and API routes for the manifest
@@ -40,7 +40,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   console.log('[LumenJS] Building client bundle...');
 
   // Generate index.html as build entry
-  const indexHtml = generateIndexHtml({ title, editorMode: false, integrations });
+  const indexHtml = generateIndexHtml({ title, editorMode: false, integrations, prefetch: prefetchStrategy });
   const tempIndexPath = path.join(projectDir, '__nk_build_index.html');
   fs.writeFileSync(tempIndexPath, indexHtml);
 
@@ -203,6 +203,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
       hasSubscribe: e.hasSubscribe,
     })),
     ...(i18nConfig ? { i18n: i18nConfig } : {}),
+    ...(prefetchStrategy ? { prefetch: prefetchStrategy } : {}),
   };
 
   fs.writeFileSync(

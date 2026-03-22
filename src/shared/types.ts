@@ -25,4 +25,5 @@ export interface BuildManifest {
   apiRoutes: ManifestRoute[];
   layouts: ManifestLayout[];
   i18n?: I18nManifest;
+  prefetch?: 'hover' | 'viewport' | 'none';
 }

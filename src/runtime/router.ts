@@ -1,4 +1,4 @@
-import { fetchLoaderData, fetchLayoutLoaderData, connectSubscribe, connectLayoutSubscribe, render404 } from './router-data.js';
+import { fetchLoaderData, fetchLayoutLoaderData, prefetchLoaderData, prefetchLayoutLoaderData, connectSubscribe, connectLayoutSubscribe, render404 } from './router-data.js';
 import { hydrateInitialRoute } from './router-hydration.js';
 import { getI18nConfig, getLocale, initI18n, stripLocalePrefix, buildLocalePath } from './i18n.js';
 
@@ -64,6 +64,10 @@ export class NkRouter {
         window.location.href = href;
       }
     };
+    (window as any).__nk_prefetch = (href: string) => {
+      const path = this.stripLocale(href);
+      this.prefetch(path);
+    };
 
     if (hydrate) {
       hydrateInitialRoute(
@@ -120,44 +124,27 @@ export class NkRouter {
 
     this.params = match.params;
 
-    // Lazy-load the page component if not yet registered
-    if (match.route.load && !customElements.get(match.route.tagName)) {
-      await match.route.load();
-    }
-
-    // Load layout components
     const layouts = match.route.layouts || [];
-    for (const layout of layouts) {
-      if (layout.load && !customElements.get(layout.tagName)) {
-        await layout.load();
-      }
-    }
 
-    // Fetch loader data for page
-    let loaderData: any = undefined;
-    if (match.route.hasLoader) {
-      try {
-        loaderData = await fetchLoaderData(pathname, match.params);
-      } catch (err) {
-        console.error('[NkRouter] Loader fetch failed:', err);
-      }
-    }
+    // Load all component JS chunks in parallel
+    await Promise.all([
+      match.route.load && !customElements.get(match.route.tagName) ? match.route.load() : undefined,
+      ...layouts.map(l => l.load && !customElements.get(l.tagName) ? l.load() : undefined),
+    ]);
 
-    // Fetch loader data for layouts
-    const layoutDataList: any[] = [];
-    for (const layout of layouts) {
-      if (layout.hasLoader) {
-        try {
-          const data = await fetchLayoutLoaderData(layout.loaderPath || '');
-          layoutDataList.push(data);
-        } catch (err) {
-          console.error('[NkRouter] Layout loader fetch failed:', err);
-          layoutDataList.push(undefined);
-        }
-      } else {
-        layoutDataList.push(undefined);
-      }
-    }
+    // Fetch all loader data in parallel
+    const loaderPromises: Promise<any>[] = [
+      match.route.hasLoader
+        ? fetchLoaderData(pathname, match.params).catch(err => { console.error('[NkRouter] Loader fetch failed:', err); return undefined; })
+        : Promise.resolve(undefined),
+      ...layouts.map(layout =>
+        layout.hasLoader
+          ? fetchLayoutLoaderData(layout.loaderPath || '').catch(err => { console.error('[NkRouter] Layout loader fetch failed:', err); return undefined; })
+          : Promise.resolve(undefined)
+      ),
+    ];
+
+    const [loaderData, ...layoutDataList] = await Promise.all(loaderPromises);
 
     this.renderRoute(match.route, loaderData, layouts, layoutDataList);
 
@@ -335,6 +322,22 @@ export class NkRouter {
     this.navigate(this.stripLocale(href));
   }
 
+  async prefetch(pathname: string): Promise<void> {
+    const match = this.matchRoute(pathname);
+    if (!match) return;
+
+    const layouts = match.route.layouts || [];
+
+    await Promise.all([
+      // Preload component JS chunks
+      match.route.load && !customElements.get(match.route.tagName) ? match.route.load() : undefined,
+      ...layouts.map(l => l.load && !customElements.get(l.tagName) ? l.load() : undefined),
+      // Prefetch loader data (cached)
+      match.route.hasLoader ? prefetchLoaderData(pathname, match.params).catch(() => {}) : undefined,
+      ...layouts.map(l => l.hasLoader ? prefetchLayoutLoaderData(l.loaderPath || '').catch(() => {}) : undefined),
+    ]);
+  }
+
   /** Strip locale prefix from a path for internal route matching. */
   private stripLocale(path: string): string {
     const config = getI18nConfig();
@@ -356,4 +359,10 @@ export function navigate(href: string): void {
   } else {
     window.location.href = href;
   }
+}
+
+/** Programmatically prefetch a route's JS chunks and loader data. */
+export function prefetch(href: string): void {
+  const pf = (window as any).__nk_prefetch;
+  if (pf) pf(href);
 }

@@ -1,6 +1,51 @@
 import { getI18nConfig, getLocale } from './i18n.js';
 
+const PREFETCH_TTL = 30_000; // 30 seconds
+const prefetchCache = new Map<string, { data: any; timestamp: number }>();
+
+export function getCachedLoaderData(key: string): any | undefined {
+  const entry = prefetchCache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() - entry.timestamp > PREFETCH_TTL) {
+    prefetchCache.delete(key);
+    return undefined;
+  }
+  return entry.data;
+}
+
+function setCachedLoaderData(key: string, data: any): void {
+  prefetchCache.set(key, { data, timestamp: Date.now() });
+}
+
+export async function prefetchLoaderData(pathname: string, params: Record<string, string>): Promise<any> {
+  const cacheKey = `page:${pathname}`;
+  const cached = getCachedLoaderData(cacheKey);
+  if (cached !== undefined) return cached;
+  const data = await fetchLoaderDataRaw(pathname, params);
+  setCachedLoaderData(cacheKey, data);
+  return data;
+}
+
+export async function prefetchLayoutLoaderData(dir: string): Promise<any> {
+  const cacheKey = `layout:${dir}`;
+  const cached = getCachedLoaderData(cacheKey);
+  if (cached !== undefined) return cached;
+  const data = await fetchLayoutLoaderDataRaw(dir);
+  setCachedLoaderData(cacheKey, data);
+  return data;
+}
+
 export async function fetchLoaderData(pathname: string, params: Record<string, string>): Promise<any> {
+  const cacheKey = `page:${pathname}`;
+  const cached = getCachedLoaderData(cacheKey);
+  if (cached !== undefined) {
+    prefetchCache.delete(cacheKey);
+    return cached;
+  }
+  return fetchLoaderDataRaw(pathname, params);
+}
+
+async function fetchLoaderDataRaw(pathname: string, params: Record<string, string>): Promise<any> {
   const url = new URL(`/__nk_loader${pathname}`, location.origin);
   if (Object.keys(params).length > 0) {
     url.searchParams.set('__params', JSON.stringify(params));
@@ -19,6 +64,16 @@ export async function fetchLoaderData(pathname: string, params: Record<string, s
 }
 
 export async function fetchLayoutLoaderData(dir: string): Promise<any> {
+  const cacheKey = `layout:${dir}`;
+  const cached = getCachedLoaderData(cacheKey);
+  if (cached !== undefined) {
+    prefetchCache.delete(cacheKey);
+    return cached;
+  }
+  return fetchLayoutLoaderDataRaw(dir);
+}
+
+async function fetchLayoutLoaderDataRaw(dir: string): Promise<any> {
   const url = new URL(`/__nk_loader/__layout/`, location.origin);
   url.searchParams.set('__dir', dir);
   const config = getI18nConfig();

@@ -10,6 +10,7 @@ export interface IndexHtmlOptions {
   locale?: string;
   i18nConfig?: { locales: string[]; defaultLocale: string; prefixDefault: boolean };
   translations?: Record<string, string>;
+  prefetch?: string;
 }
 
 /**
@@ -46,6 +47,12 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
     i18nScript = `<script type="application/json" id="__nk_i18n__">${JSON.stringify(i18nData).replace(/</g, '\\u003c')}</script>`;
   }
 
+  // Prefetch strategy inline
+  let prefetchScript = '';
+  if (options.prefetch && options.prefetch !== 'hover') {
+    prefetchScript = `<script type="application/json" id="__nk_prefetch__">${options.prefetch}</script>`;
+  }
+
   // i18n module is loaded via imports from router-hydration, no separate script needed
 
   // Hydrate support is always loaded via the app-shell virtual module (first import)
@@ -68,6 +75,7 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
   </style>
 </head>
 <body>
+  ${prefetchScript}
   ${i18nScript}
   ${loaderDataScript}
   ${appTag}
