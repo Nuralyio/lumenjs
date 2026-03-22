@@ -77,7 +77,7 @@ function setupPrefetchObserver(defaultStrategy: PrefetchStrategy): void {
       }
     }, { rootMargin: '200px' });
 
-    const observeLinks = (root: Element | Document) => {
+    const observeLinks = (root: Element | Document | ShadowRoot) => {
       const anchors = root.querySelectorAll('a[href]');
       for (const a of anchors) {
         const anchor = a as HTMLAnchorElement;
@@ -89,12 +89,29 @@ function setupPrefetchObserver(defaultStrategy: PrefetchStrategy): void {
         observedLinks.add(anchor);
         io.observe(anchor);
       }
+      // Walk shadow roots to find links inside web components
+      const els = root.querySelectorAll('*');
+      for (const el of els) {
+        if (el.shadowRoot) observeLinks(el.shadowRoot);
+      }
     };
 
-    // Observe existing links after initial render
-    requestAnimationFrame(() => observeLinks(document));
+    const observeShadowRoot = (sr: ShadowRoot) => {
+      observeLinks(sr);
+      const smo = new MutationObserver(() => observeLinks(sr));
+      smo.observe(sr, { childList: true, subtree: true });
+    };
 
-    // Watch for dynamically added links
+    // Observe existing links after initial render (including shadow roots)
+    requestAnimationFrame(() => {
+      observeLinks(document);
+      // Also observe shadow roots of existing elements
+      document.querySelectorAll('*').forEach(el => {
+        if (el.shadowRoot) observeShadowRoot(el.shadowRoot);
+      });
+    });
+
+    // Watch for dynamically added links and new shadow roots
     const mo = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
@@ -103,7 +120,12 @@ function setupPrefetchObserver(defaultStrategy: PrefetchStrategy): void {
               observeLinks(node.parentElement || document);
             } else {
               observeLinks(node);
+              if (node.shadowRoot) observeShadowRoot(node.shadowRoot);
             }
+            // Check children for shadow roots
+            node.querySelectorAll?.('*').forEach(child => {
+              if (child.shadowRoot) observeShadowRoot(child.shadowRoot);
+            });
           }
         }
       }
