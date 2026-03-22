@@ -70,6 +70,48 @@ describe('scanPages', () => {
     expect(pages[0].hasLoader).toBe(false);
   });
 
+  it('skips non-index files in folder routes (directory with index.ts)', () => {
+    const dir = createTmpDir();
+    fs.mkdirSync(path.join(dir, 'dashboard'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'dashboard', 'index.ts'), 'export class Dashboard {}');
+    fs.writeFileSync(path.join(dir, 'dashboard', 'chart-widget.ts'), 'export class ChartWidget {}');
+    fs.writeFileSync(path.join(dir, 'dashboard', 'stats-card.ts'), 'export class StatsCard {}');
+    const pages = scanPages(dir);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].routePath).toBe('/dashboard');
+  });
+
+  it('registers all files in folders without index.ts (backward compat)', () => {
+    const dir = createTmpDir();
+    fs.mkdirSync(path.join(dir, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'docs', 'getting-started.ts'), 'export class A {}');
+    fs.writeFileSync(path.join(dir, 'docs', 'api-reference.ts'), 'export class B {}');
+    const pages = scanPages(dir);
+    expect(pages).toHaveLength(2);
+    expect(pages.map(p => p.routePath).sort()).toEqual(['/docs/api-reference', '/docs/getting-started']);
+  });
+
+  it('still recurses into subdirectories within folder routes', () => {
+    const dir = createTmpDir();
+    fs.mkdirSync(path.join(dir, 'dashboard', 'settings'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'dashboard', 'index.ts'), 'export class Dashboard {}');
+    fs.writeFileSync(path.join(dir, 'dashboard', 'helper.ts'), 'export class Helper {}');
+    fs.writeFileSync(path.join(dir, 'dashboard', 'settings', 'index.ts'), 'export class Settings {}');
+    const pages = scanPages(dir);
+    expect(pages).toHaveLength(2);
+    expect(pages.map(p => p.routePath).sort()).toEqual(['/dashboard', '/dashboard/settings']);
+  });
+
+  it('handles dynamic folder routes ([id]/index.ts)', () => {
+    const dir = createTmpDir();
+    fs.mkdirSync(path.join(dir, 'users', '[id]'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'users', '[id]', 'index.ts'), 'export class UserDetail {}');
+    fs.writeFileSync(path.join(dir, 'users', '[id]', 'avatar.ts'), 'export class Avatar {}');
+    const pages = scanPages(dir);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].routePath).toBe('/users/:id');
+  });
+
   it('detects hasSubscribe', () => {
     const dir = createTmpDir();
     fs.writeFileSync(path.join(dir, 'index.ts'), 'export function subscribe({ push }) { return () => {}; }\nexport class Page {}');

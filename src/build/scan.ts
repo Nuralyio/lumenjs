@@ -72,11 +72,19 @@ function walkDir(baseDir: string, relativePath: string, entries: PageEntry[], pa
   const fullDir = path.join(baseDir, relativePath);
   const dirEntries = fs.readdirSync(fullDir, { withFileTypes: true });
 
+  // Check if this subdirectory contains an index file (folder route)
+  // Only applies to subdirectories, not the root pages directory
+  const hasIndex = relativePath !== '' && dirEntries.some(
+    e => e.isFile() && /^index\.(ts|js)$/.test(e.name)
+  );
+
   for (const entry of dirEntries) {
     const entryRelative = path.join(relativePath, entry.name);
     if (entry.isDirectory() && !entry.name.startsWith('_')) {
       walkDir(baseDir, entryRelative, entries, pagesDir);
     } else if (entry.isFile() && /\.(ts|js)$/.test(entry.name) && !entry.name.startsWith('_')) {
+      // In a folder route (has index file), only register the index file
+      if (hasIndex && !/^index\.(ts|js)$/.test(entry.name)) continue;
       const filePath = path.join(pagesDir, entryRelative);
       const name = entryRelative.replace(/\.(ts|js)$/, '').replace(/\\/g, '/');
       const routePath = filePathToRoute(entryRelative);
