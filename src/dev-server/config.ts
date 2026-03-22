@@ -26,7 +26,7 @@ export interface ProjectConfig {
 export function readProjectConfig(projectDir: string): ProjectConfig {
   let title = 'LumenJS App';
   let integrations: string[] = [];
-  let prefetch: PrefetchStrategy = 'hover';
+  let prefetch: PrefetchStrategy = 'viewport';
   const configPath = path.join(projectDir, 'lumenjs.config.ts');
   if (fs.existsSync(configPath)) {
     try {
