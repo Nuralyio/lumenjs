@@ -90,14 +90,15 @@ export function streamAiChat(
     onToken: (text: string) => void;
     onDone: (result: { sessionId: string; turnId: string; fullText: string }) => void;
     onError: (message: string) => void;
-  }
+  },
+  model?: 'fast' | 'default',
 ): AbortController {
   const controller = new AbortController();
 
   fetch('/__nk_editor/ai/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode, prompt, context, sessionId }),
+    body: JSON.stringify({ mode, prompt, context, sessionId, model }),
     signal: controller.signal,
   }).then(async (res) => {
     if (!res.ok) {

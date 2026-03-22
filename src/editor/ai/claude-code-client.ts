@@ -8,6 +8,50 @@ import type { AiChatOptions, AiChatResult, AiStatusResult } from './types.js';
 import { SYSTEM_PROMPT, buildPrompt } from './types.js';
 import { execSync } from 'child_process';
 
+// ── SDK Cache & Session Warm-up ──────────────────────────────────
+
+let _sdkCache: { query: (...args: any[]) => any } | null = null;
+let _warmSessionId: string | null = null;
+
+async function getSdk(): Promise<{ query: (...args: any[]) => any }> {
+  if (_sdkCache) return _sdkCache;
+  const sdk = await import('@anthropic-ai/claude-agent-sdk');
+  const query = sdk.query || sdk.default?.query;
+  if (!query) throw new Error('Claude Agent SDK loaded but query() not found');
+  _sdkCache = { query };
+  return _sdkCache;
+}
+
+/**
+ * Warm up by pre-spawning a Claude Code session. The first real request
+ * will resume this session, skipping CLI cold-start entirely.
+ */
+export async function warmUpSession(projectDir: string): Promise<void> {
+  try {
+    const { query } = await getSdk();
+    const stream = query({
+      prompt: 'Ready.',
+      options: {
+        cwd: projectDir,
+        systemPrompt: SYSTEM_PROMPT,
+        allowedTools: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash'],
+        maxTurns: 1,
+        model: 'sonnet',
+        effort: 'low',
+        persistSession: true,
+      },
+    });
+    for await (const msg of stream) {
+      if (msg.session_id) {
+        _warmSessionId = msg.session_id;
+        break;
+      }
+    }
+  } catch {
+    // Non-fatal — first request will just be slower
+  }
+}
+
 /**
  * Stream an AI chat message via Claude Code Agent SDK.
  */
@@ -22,12 +66,7 @@ export function streamAiChat(projectDir: string, options: AiChatOptions): AiChat
 
   const run = async () => {
     try {
-      // Dynamic import — the SDK is an optional dependency
-      const sdk = await import('@anthropic-ai/claude-agent-sdk');
-      const query = sdk.query || sdk.default?.query;
-      if (!query) {
-        throw new Error('Claude Agent SDK loaded but query() not found');
-      }
+      const { query } = await getSdk();
 
       let fullText = '';
 
@@ -35,12 +74,25 @@ export function streamAiChat(projectDir: string, options: AiChatOptions): AiChat
         cwd: projectDir,
         systemPrompt: SYSTEM_PROMPT,
         allowedTools: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash'],
-        maxTurns: 20,
+        maxTurns: 10,
+        persistSession: true,
+        model: 'sonnet',
       };
 
-      // Resume existing session for conversation continuity
+      // Use Sonnet + low effort for fast mode (quick actions like text improvement, spacing)
+      if (options.model === 'fast') {
+        queryOptions.model = 'sonnet';
+        queryOptions.effort = 'low';
+        queryOptions.maxTurns = 5;
+      }
+
+      // Resume existing session, or use pre-warmed session for instant first request
       if (sessionId) {
         queryOptions.resume = sessionId;
+      } else if (_warmSessionId) {
+        queryOptions.resume = _warmSessionId;
+        sessionId = _warmSessionId;
+        _warmSessionId = null;
       }
 
       const stream = query({

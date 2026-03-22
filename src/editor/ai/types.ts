@@ -13,6 +13,8 @@ export interface AiChatOptions {
     sourceContent?: string;
   };
   sessionId?: string;
+  /** 'fast' uses Sonnet for quick edits, 'default' uses the standard model */
+  model?: 'fast' | 'default';
 }
 
 export interface AiChatResult {
@@ -58,6 +60,12 @@ You have full access to the filesystem and can run shell commands.
 When a task requires a new npm package, install it with \`npm install <package>\`.
 After npm install, the dev server will automatically restart to load the new dependency.
 Vite's HMR will pick up file changes automatically — no manual restart needed.
+
+IMPORTANT — Be fast and direct:
+- Make changes immediately — do not explain what you will do before doing it.
+- Read the file, make the edit, done. Minimize tool calls.
+- For simple CSS/text changes, edit directly without reading first if you have the source context.
+- Keep responses under 2 sentences. The user sees the diff, not your explanation.
 `;
 
 export function buildPrompt(options: AiChatOptions): string {
@@ -81,15 +89,48 @@ export function buildPrompt(options: AiChatOptions): string {
     result = enriched;
   }
 
-  // Append i18n context so the AI knows to edit locale files, not templates
+  // Append i18n context — only include keys actually used in the current source file
   if ((context as any)?.i18n?.translations) {
     const i18n = (context as any).i18n;
     const locales = Object.keys(i18n.translations);
-    result += `\n\nThis project uses i18n (locales: ${locales.join(', ')}). Translation files:\n`;
-    for (const [locale, trans] of Object.entries(i18n.translations)) {
-      result += `locales/${locale}.json: ${JSON.stringify(trans, null, 2)}\n`;
+    result += `\n\nThis project uses i18n (locales: ${locales.join(', ')}).`;
+
+    // Extract t('key') calls from source to only send relevant translations
+    const sourceContent: string = (context as any).sourceContent || '';
+    const usedKeys = new Set<string>();
+    const tCallRegex = /t\(['"]([^'"]+)['"]\)/g;
+    let tMatch;
+    while ((tMatch = tCallRegex.exec(sourceContent)) !== null) {
+      usedKeys.add(tMatch[1]);
+    }
+
+    if (usedKeys.size > 0) {
+      result += ` Relevant translation keys from this file:\n`;
+      for (const [locale, trans] of Object.entries(i18n.translations)) {
+        const filtered: Record<string, any> = {};
+        for (const key of usedKeys) {
+          const value = getNestedValue(trans as Record<string, any>, key);
+          if (value !== undefined) filtered[key] = value;
+        }
+        if (Object.keys(filtered).length > 0) {
+          result += `locales/${locale}.json (relevant keys): ${JSON.stringify(filtered, null, 2)}\n`;
+        }
+      }
+    } else {
+      result += ` Edit locale JSON files in locales/ to change text — do not hardcode text in templates.\n`;
     }
   }
 
   return result;
+}
+
+/** Resolve a dot-separated key like 'home.subtitle' from a nested object */
+function getNestedValue(obj: Record<string, any>, key: string): any {
+  const parts = key.split('.');
+  let current: any = obj;
+  for (const part of parts) {
+    if (current == null || typeof current !== 'object') return undefined;
+    current = current[part];
+  }
+  return current;
 }

@@ -2,7 +2,7 @@ import { Plugin } from 'vite';
 import { EditorFileService } from '../../editor/file-service.js';
 import { AstService } from '../../editor/ast-service.js';
 import { AstModification } from '../../editor/ast-modification.js';
-import { streamAiChat, checkAiStatus } from '../../editor/ai/backend.js';
+import { streamAiChat, checkAiStatus, warmUpAiSession } from '../../editor/ai/backend.js';
 import * as snapshotStore from '../../editor/ai/snapshot-store.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 import crypto from 'crypto';
@@ -59,6 +59,9 @@ export function editorApiPlugin(projectDir: string): Plugin {
   return {
     name: 'lumenjs-editor-api',
     configureServer(server) {
+      // Warm up AI session in background so first request is fast
+      warmUpAiSession(projectDir).catch(() => {});
+
       server.middlewares.use(async (req, res, next) => {
         if (!req.url || !req.url.startsWith(EDITOR_PREFIX)) return next();
 
@@ -126,7 +129,7 @@ export function editorApiPlugin(projectDir: string): Plugin {
           // POST /__nk_editor/ai/chat — proxy to OpenCode with SSE streaming
           if (rest === 'ai/chat' && req.method === 'POST') {
             const body = JSON.parse(await readBody(req));
-            const { mode, prompt, context, sessionId } = body;
+            const { mode, prompt, context, sessionId, model } = body;
 
             if (!prompt) {
               sendError(res, 400, 'Missing prompt');
@@ -134,15 +137,21 @@ export function editorApiPlugin(projectDir: string): Plugin {
             }
 
             // Snapshot files before AI modifies them
+            // For element mode, only snapshot the source file (much faster)
+            // For project mode, snapshot all files
             const turnId = crypto.randomUUID();
             try {
-              const files = fileService.listFiles();
               const fileContents = new Map<string, string>();
-              for (const f of files) {
+              if (mode === 'element' && context?.sourceFile) {
                 try {
-                  fileContents.set(f, fileService.readFile(f));
-                } catch {
-                  // Skip unreadable files
+                  fileContents.set(context.sourceFile, fileService.readFile(context.sourceFile));
+                } catch { /* skip */ }
+              } else {
+                const files = fileService.listFiles();
+                for (const f of files) {
+                  try {
+                    fileContents.set(f, fileService.readFile(f));
+                  } catch { /* skip */ }
                 }
               }
               snapshotStore.save(turnId, fileContents);
@@ -154,7 +163,21 @@ export function editorApiPlugin(projectDir: string): Plugin {
             let enrichedContext = context || {};
             if (mode === 'element' && context?.sourceFile) {
               try {
-                const sourceContent = fileService.readFile(context.sourceFile);
+                const fullContent = fileService.readFile(context.sourceFile);
+                let sourceContent = fullContent;
+
+                // Trim to ±20 lines around the target line to reduce token usage
+                if (context.sourceLine && typeof context.sourceLine === 'number') {
+                  const lines = fullContent.split('\n');
+                  const start = Math.max(0, context.sourceLine - 20);
+                  const end = Math.min(lines.length, context.sourceLine + 20);
+                  const trimmed: string[] = [];
+                  if (start > 0) trimmed.push(`// ... (lines 1-${start} omitted)`);
+                  trimmed.push(...lines.slice(start, end));
+                  if (end < lines.length) trimmed.push(`// ... (lines ${end + 1}-${lines.length} omitted)`);
+                  sourceContent = trimmed.join('\n');
+                }
+
                 enrichedContext = { ...context, sourceContent };
               } catch {
                 // File might not exist, continue without content
@@ -191,6 +214,7 @@ export function editorApiPlugin(projectDir: string): Plugin {
               prompt,
               context: enrichedContext,
               sessionId,
+              model: model || 'default',
             });
 
             // Handle client disconnect

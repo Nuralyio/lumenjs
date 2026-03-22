@@ -84,6 +84,23 @@ export function streamAiChat(projectDir: string, options: AiChatOptions): AiChat
 }
 
 /**
+ * Warm up the AI backend session in the background.
+ * Call on editor startup so the first user request is fast.
+ */
+export async function warmUpAiSession(projectDir: string): Promise<void> {
+  const backend = await detectBackend();
+  if (backend === 'claude-code') {
+    try {
+      const cc = await import('./claude-code-client.js');
+      await cc.warmUpSession(projectDir);
+      console.log('[LumenJS] AI session warmed up');
+    } catch {
+      // Non-fatal
+    }
+  }
+}
+
+/**
  * Check if any AI backend is available.
  */
 export async function checkAiStatus(): Promise<AiStatusResult> {

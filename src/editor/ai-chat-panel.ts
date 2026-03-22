@@ -24,6 +24,7 @@ let wasDragged = false;
 let sessionId: string | undefined;
 let activeController: AbortController | null = null;
 let aiConfigured = false;
+let nextModel: 'fast' | 'default' = 'default';
 
 export function createAiChatPanel(): HTMLDivElement {
   panel = document.createElement('div');
@@ -189,6 +190,7 @@ export function createAiChatPanel(): HTMLDivElement {
       inputEl.style.height = 'auto';
       inputEl.style.height = Math.min(inputEl.scrollHeight, 60) + 'px';
       sendBtn.disabled = false;
+      nextModel = 'fast';
       sendMessage();
     });
   });
@@ -446,6 +448,9 @@ function sendMessage(): void {
   const streamMsg = createStreamingMessage();
   const textEl = streamMsg.querySelector('.nk-ai-msg-text') as HTMLElement;
 
+  const modelForRequest = nextModel;
+  nextModel = 'default';
+
   activeController = streamAiChat('element', text, context, sessionId, {
     onToken: (token) => {
       typing.remove();
@@ -467,5 +472,5 @@ function sendMessage(): void {
       addAssistantError(message);
       activeController = null;
     },
-  });
+  }, modelForRequest);
 }
