@@ -8,6 +8,7 @@ import { hidePropertiesPanel } from './properties-panel.js';
 import { hideAiChatPanel } from './ai-chat-panel.js';
 import { hideOverlay } from './overlay-utils.js';
 import { hideTextToolbar } from './text-toolbar.js';
+import { CodeJar } from 'codejar';
 
 const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
@@ -16,6 +17,72 @@ let filePanel: HTMLDivElement;
 let isFilePanelOpen = false;
 let isEditorMode = true;
 let currentEditorFile: string | null = null;
+let jar: CodeJar | null = null;
+
+/* ── Lightweight syntax highlighter for CodeJar ── */
+
+const KW = new Set([
+  'async','await','break','case','catch','class','const','continue','debugger',
+  'default','delete','do','else','enum','export','extends','finally','for',
+  'from','function','if','implements','import','in','instanceof','interface',
+  'let','new','of','return','static','super','switch','this','throw','try',
+  'type','typeof','var','void','while','with','yield',
+]);
+const LIT = new Set(['true','false','null','undefined','NaN','Infinity']);
+
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function highlightCode(el: HTMLElement) {
+  const src = el.textContent || '';
+  let out = '', i = 0;
+  while (i < src.length) {
+    // Line comment
+    if (src[i] === '/' && src[i + 1] === '/') {
+      const e = src.indexOf('\n', i); const end = e === -1 ? src.length : e;
+      out += `<span class="nk-hl-c">${esc(src.slice(i, end))}</span>`;
+      i = end; continue;
+    }
+    // Block comment
+    if (src[i] === '/' && src[i + 1] === '*') {
+      const e = src.indexOf('*/', i + 2); const end = e === -1 ? src.length : e + 2;
+      out += `<span class="nk-hl-c">${esc(src.slice(i, end))}</span>`;
+      i = end; continue;
+    }
+    // String
+    if (src[i] === '"' || src[i] === "'" || src[i] === '`') {
+      const q = src[i]; let j = i + 1;
+      while (j < src.length) {
+        if (src[j] === '\\') { j += 2; continue; }
+        if (src[j] === q) { j++; break; }
+        if (q !== '`' && src[j] === '\n') break;
+        j++;
+      }
+      out += `<span class="nk-hl-s">${esc(src.slice(i, j))}</span>`;
+      i = j; continue;
+    }
+    // Word (keyword / literal / identifier)
+    if (/[a-zA-Z_$]/.test(src[i])) {
+      let j = i;
+      while (j < src.length && /[\w$]/.test(src[j])) j++;
+      const w = src.slice(i, j);
+      out += KW.has(w) ? `<span class="nk-hl-k">${w}</span>`
+           : LIT.has(w) ? `<span class="nk-hl-l">${w}</span>`
+           : esc(w);
+      i = j; continue;
+    }
+    // Number
+    if (/\d/.test(src[i])) {
+      let j = i;
+      while (j < src.length && /[\d.xXa-fA-FeEnb_]/.test(src[j])) j++;
+      out += `<span class="nk-hl-n">${esc(src.slice(i, j))}</span>`;
+      i = j; continue;
+    }
+    out += esc(src[i]); i++;
+  }
+  el.innerHTML = out;
+}
 
 // These are set by standalone-overlay during init
 let selectOverlayRef: HTMLDivElement;
@@ -228,12 +295,16 @@ export function createToolbar(): HTMLDivElement {
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1;
     }
     .nk-fe-btns { display: flex; gap: 6px; flex-shrink: 0; }
-    .nk-fe-textarea {
+    .nk-fe-editor {
       flex: 1; width: 100%; background: #0f0d1a; color: #e2e8f0; border: none; padding: 12px;
       font-family: 'SF Mono', ui-monospace, monospace; font-size: 13px; line-height: 1.6;
-      resize: none; outline: none; tab-size: 2; min-height: 250px;
+      overflow: auto; outline: none; tab-size: 2; min-height: 250px;
       -webkit-overflow-scrolling: touch;
     }
+    .nk-hl-k { color: #ff7b72; }
+    .nk-hl-s { color: #a5d6ff; }
+    .nk-hl-c { color: #8b949e; font-style: italic; }
+    .nk-hl-n, .nk-hl-l { color: #79c0ff; }
     .nk-fe-save {
       padding: 6px 14px; background: #7c3aed; color: white; border: none; border-radius: 6px;
       cursor: pointer; font-size: 12px; font-family: inherit; font-weight: 500;
@@ -265,7 +336,7 @@ export function createToolbar(): HTMLDivElement {
       #nk-file-editor {
         left: 0; max-height: 60vh;
       }
-      .nk-fe-textarea { font-size: 14px; min-height: 200px; }
+      .nk-fe-editor { font-size: 14px; min-height: 200px; }
     }
 
     /* Push page content down so toolbar doesn't cover it */
@@ -306,9 +377,33 @@ export function createFilePanel(): HTMLDivElement {
         <button class="nk-fe-cancel" id="nk-fe-close">Close</button>
       </div>
     </div>
-    <textarea class="nk-fe-textarea" id="nk-fe-textarea" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+    <div class="nk-fe-editor" id="nk-fe-editor"></div>
   `;
+
   document.body.appendChild(editor);
+
+  // Initialize CodeJar with syntax highlighting and auto-save
+  let saveDebounce: ReturnType<typeof setTimeout> | null = null;
+  const editorEl = editor.querySelector('#nk-fe-editor') as HTMLDivElement;
+  jar = CodeJar(editorEl, highlightCode, { tab: '  ', spellcheck: false });
+  jar.onUpdate((code) => {
+    if (saveDebounce) clearTimeout(saveDebounce);
+    saveDebounce = setTimeout(() => {
+      if (currentEditorFile) {
+        const saveBtn = document.getElementById('nk-fe-save') as HTMLButtonElement;
+        saveBtn.textContent = 'Saving...';
+        writeFile(currentEditorFile, code).then(() => {
+          saveBtn.textContent = 'Saved!';
+          saveBtn.style.background = '#22c55e';
+          setTimeout(() => { saveBtn.textContent = 'Save'; saveBtn.style.background = ''; }, 1500);
+        }).catch(() => {
+          saveBtn.textContent = 'Error!';
+          saveBtn.style.background = '#ef4444';
+          setTimeout(() => { saveBtn.textContent = 'Save'; saveBtn.style.background = ''; }, 2000);
+        });
+      }
+    }, 1000);
+  });
 
   // Tab switching
   let pagesLoaded = false;
@@ -415,7 +510,6 @@ export async function loadFileList() {
 async function openFileEditor(filePath: string) {
   const editorPanel = document.getElementById('nk-file-editor')!;
   const pathEl = document.getElementById('nk-fe-path')!;
-  const textarea = document.getElementById('nk-fe-textarea') as HTMLTextAreaElement;
 
   // On mobile, close the file list to make room for the editor
   if (window.innerWidth <= 640) {
@@ -426,22 +520,21 @@ async function openFileEditor(filePath: string) {
     const data = await readFile(filePath);
     currentEditorFile = filePath;
     pathEl.textContent = filePath;
-    textarea.value = data.content;
+    jar!.updateCode(data.content);
     editorPanel.classList.add('open');
   } catch {
     pathEl.textContent = filePath;
-    textarea.value = '// Error loading file';
+    jar!.updateCode('// Error loading file');
     editorPanel.classList.add('open');
   }
 }
 
 export async function saveCurrentFile() {
-  if (!currentEditorFile) return;
-  const textarea = document.getElementById('nk-fe-textarea') as HTMLTextAreaElement;
+  if (!currentEditorFile || !jar) return;
   const saveBtn = document.getElementById('nk-fe-save') as HTMLButtonElement;
   try {
     saveBtn.textContent = 'Saving...';
-    await writeFile(currentEditorFile, textarea.value);
+    await writeFile(currentEditorFile, jar.toString());
     saveBtn.textContent = 'Saved!';
     saveBtn.style.background = '#22c55e';
     setTimeout(() => {
