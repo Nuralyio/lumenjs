@@ -5,6 +5,7 @@ import { getProjectDir } from './context.js';
 import { readProjectConfig } from '../dev-server/config.js';
 import { autoMigrate } from './auto-migrate.js';
 import { getRegisteredTables } from './table.js';
+import { autoSeed } from './seed.js';
 
 export { defineTable, getRegisteredTables } from './table.js';
 export type { TableDefinition, TableColumn } from './table.js';
@@ -70,6 +71,9 @@ export function useDb(): LumenDb {
 
   // Run pending migrations
   runMigrations(db, projectDir);
+
+  // Auto-seed on first creation
+  autoSeed(db, projectDir);
 
   return _instance;
 }

@@ -15,9 +15,10 @@ const USAGE = `Usage:
   lumenjs dev    [--project <dir>] [--port <port>] [--base <path>] [--editor-mode]
   lumenjs build  [--project <dir>] [--out <dir>]
   lumenjs serve  [--project <dir>] [--port <port>]
-  lumenjs add    <integration>`;
+  lumenjs add    <integration>
+  lumenjs db seed [--force] [--project <dir>]`;
 
-if (!command || !['create', 'dev', 'build', 'serve', 'add'].includes(command)) {
+if (!command || !['create', 'dev', 'build', 'serve', 'add', 'db'].includes(command)) {
   console.error(USAGE);
   process.exit(1);
 }
@@ -71,6 +72,18 @@ async function main() {
     console.log(`  Port: ${port}`);
 
     await serveProject({ projectDir, port });
+  } else if (command === 'db') {
+    const subcommand = args[1];
+    if (subcommand === 'seed') {
+      const { setProjectDir } = await import('./db/context.js');
+      const { runSeed } = await import('./db/seed.js');
+      setProjectDir(projectDir);
+      const force = args.includes('--force');
+      await runSeed(projectDir, force);
+    } else {
+      console.error(`Unknown db subcommand: ${subcommand}\n\n${USAGE}`);
+      process.exit(1);
+    }
   }
 }
 
