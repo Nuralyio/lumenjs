@@ -2,6 +2,7 @@ import { getI18nConfig, getLocale } from './i18n.js';
 
 const PREFETCH_TTL = 30_000; // 30 seconds
 const prefetchCache = new Map<string, { data: any; timestamp: number }>();
+const inflightRequests = new Map<string, Promise<any>>();
 
 export function getCachedLoaderData(key: string): any | undefined {
   const entry = prefetchCache.get(key);
@@ -54,13 +55,18 @@ async function fetchLoaderDataRaw(pathname: string, params: Record<string, strin
   if (config) {
     url.searchParams.set('__locale', getLocale());
   }
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    throw new Error(`Loader returned ${res.status}`);
-  }
-  const data = await res.json();
-  if (data?.__nk_no_loader) return undefined;
-  return data;
+  const key = url.toString();
+  const inflight = inflightRequests.get(key);
+  if (inflight) return inflight;
+  const promise = fetch(key)
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`Loader returned ${res.status}`);
+      const data = await res.json();
+      return data?.__nk_no_loader ? undefined : data;
+    })
+    .finally(() => inflightRequests.delete(key));
+  inflightRequests.set(key, promise);
+  return promise;
 }
 
 export async function fetchLayoutLoaderData(dir: string): Promise<any> {
@@ -80,13 +86,18 @@ async function fetchLayoutLoaderDataRaw(dir: string): Promise<any> {
   if (config) {
     url.searchParams.set('__locale', getLocale());
   }
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    throw new Error(`Layout loader returned ${res.status}`);
-  }
-  const data = await res.json();
-  if (data?.__nk_no_loader) return undefined;
-  return data;
+  const key = url.toString();
+  const inflight = inflightRequests.get(key);
+  if (inflight) return inflight;
+  const promise = fetch(key)
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`Layout loader returned ${res.status}`);
+      const data = await res.json();
+      return data?.__nk_no_loader ? undefined : data;
+    })
+    .finally(() => inflightRequests.delete(key));
+  inflightRequests.set(key, promise);
+  return promise;
 }
 
 export function connectSubscribe(pathname: string, params: Record<string, string>): EventSource {
