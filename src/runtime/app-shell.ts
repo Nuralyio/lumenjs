@@ -9,7 +9,7 @@ function getDefaultStrategy(): PrefetchStrategy {
     const val = el.textContent?.trim();
     if (val === 'hover' || val === 'viewport' || val === 'none') return val;
   }
-  return 'viewport';
+  return 'hover';
 }
 
 function getAnchorHref(anchor: HTMLAnchorElement): string | null {
