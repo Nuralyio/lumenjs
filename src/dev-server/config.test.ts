@@ -17,6 +17,7 @@ describe('readProjectConfig', () => {
     expect(config.title).toBe('LumenJS App');
     expect(config.integrations).toEqual([]);
     expect(config.i18n).toBeUndefined();
+    expect(config.prefetch).toBe('hover');
   });
 
   it('reads title from config', () => {

@@ -17,7 +17,7 @@ export interface ProjectConfig {
   title: string;
   integrations: string[];
   i18n?: I18nConfig;
-  prefetch?: PrefetchStrategy;
+  prefetch: PrefetchStrategy;
 }
 
 /**
@@ -26,7 +26,7 @@ export interface ProjectConfig {
 export function readProjectConfig(projectDir: string): ProjectConfig {
   let title = 'LumenJS App';
   let integrations: string[] = [];
-  let prefetch: PrefetchStrategy | undefined;
+  let prefetch: PrefetchStrategy = 'hover';
   const configPath = path.join(projectDir, 'lumenjs.config.ts');
   if (fs.existsSync(configPath)) {
     try {
@@ -76,7 +76,7 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
     } catch { /* ignore */ }
   }
 
-  return { title, integrations, ...(i18n ? { i18n } : {}), ...(prefetch ? { prefetch } : {}) };
+  return { title, integrations, prefetch, ...(i18n ? { i18n } : {}) };
 }
 
 /**

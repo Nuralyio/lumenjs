@@ -203,7 +203,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
       hasSubscribe: e.hasSubscribe,
     })),
     ...(i18nConfig ? { i18n: i18nConfig } : {}),
-    ...(prefetchStrategy ? { prefetch: prefetchStrategy } : {}),
+    prefetch: prefetchStrategy,
   };
 
   fs.writeFileSync(
