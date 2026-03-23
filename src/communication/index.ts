@@ -26,6 +26,8 @@ export type {
   CallParticipant,
   SignalOffer,
   SignalIceCandidate,
+  SignalIceRestart,
+  ConnectionQualityReport,
   CallInitiate,
   CallResponse,
   CallHangup,

@@ -23,6 +23,8 @@ import {
   handleSignalOffer,
   handleSignalAnswer,
   handleSignalIceCandidate,
+  handleSignalIceRestart,
+  handleCallQualityReport,
   type SignalingContext,
 } from './signaling.js';
 import {
@@ -139,6 +141,8 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
     ctx.on('signal:offer', (data) => handleSignalOffer(signalingCtx, data));
     ctx.on('signal:answer', (data) => handleSignalAnswer(signalingCtx, data));
     ctx.on('signal:ice-candidate', (data) => handleSignalIceCandidate(signalingCtx, data));
+    ctx.on('signal:ice-restart', (data) => handleSignalIceRestart(signalingCtx, data));
+    ctx.on('call:quality-report', (data) => handleCallQualityReport(signalingCtx, data));
 
     // ── E2E Encryption ─────────────────────────────────────────
 

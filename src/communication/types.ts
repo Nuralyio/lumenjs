@@ -172,6 +172,8 @@ export interface SignalOffer {
   toUserId: string;
   type: 'offer' | 'answer';
   sdp: string;
+  /** Indicates this offer is a renegotiation (e.g., adding a screen share track mid-call) */
+  renegotiation?: boolean;
 }
 
 export interface SignalIceCandidate {
@@ -181,6 +183,27 @@ export interface SignalIceCandidate {
   candidate: string;
   sdpMLineIndex: number | null;
   sdpMid: string | null;
+}
+
+export interface SignalIceRestart {
+  callId: string;
+  fromUserId: string;
+  toUserId: string;
+}
+
+export interface ConnectionQualityReport {
+  callId: string;
+  userId: string;
+  /** Round-trip time in ms */
+  rtt?: number;
+  /** Packet loss percentage (0-100) */
+  packetLoss?: number;
+  /** Jitter in ms */
+  jitter?: number;
+  /** Quality level derived from metrics */
+  quality: 'excellent' | 'good' | 'fair' | 'poor';
+  /** Estimated available bandwidth in kbps */
+  availableBandwidth?: number;
 }
 
 export interface CallInitiate {
@@ -281,6 +304,8 @@ export interface CommunicationClientEvents {
   'signal:offer': (data: SignalOffer) => void;
   'signal:answer': (data: SignalOffer) => void;
   'signal:ice-candidate': (data: SignalIceCandidate) => void;
+  'signal:ice-restart': (data: SignalIceRestart) => void;
+  'call:quality-report': (data: ConnectionQualityReport) => void;
   'encryption:upload-keys': (data: KeyBundle) => void;
   'encryption:request-keys': (data: KeyExchangeRequest) => void;
   'encryption:session-init': (data: { recipientId: string; sessionId: string; envelope: EncryptedEnvelope }) => void;
@@ -302,6 +327,8 @@ export interface CommunicationServerEvents {
   'signal:offer': (data: SignalOffer) => void;
   'signal:answer': (data: SignalOffer) => void;
   'signal:ice-candidate': (data: SignalIceCandidate) => void;
+  'signal:ice-restart': (data: SignalIceRestart) => void;
+  'call:quality-changed': (data: ConnectionQualityReport) => void;
   'encryption:keys-response': (data: KeyExchangeResponse) => void;
   'encryption:session-established': (data: { sessionId: string; senderId: string }) => void;
   'encryption:session-init': (data: { senderId: string; sessionId: string; envelope: EncryptedEnvelope }) => void;

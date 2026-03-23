@@ -1,4 +1,4 @@
-import type { Call, CallType, CallEndReason, CallParticipant, SignalOffer, SignalIceCandidate } from './types.js';
+import type { Call, CallType, CallEndReason, CallParticipant, SignalOffer, SignalIceCandidate, SignalIceRestart, ConnectionQualityReport } from './types.js';
 import type { CommunicationStore } from './store.js';
 
 /** Context for signaling handlers */
@@ -217,4 +217,19 @@ export function handleSignalAnswer(ctx: SignalingContext, data: SignalOffer): vo
 
 export function handleSignalIceCandidate(ctx: SignalingContext, data: SignalIceCandidate): void {
   emitToUser(ctx, data.toUserId, { event: 'signal:ice-candidate', data });
+}
+
+export function handleSignalIceRestart(ctx: SignalingContext, data: SignalIceRestart): void {
+  emitToUser(ctx, data.toUserId, { event: 'signal:ice-restart', data });
+}
+
+export function handleCallQualityReport(ctx: SignalingContext, data: ConnectionQualityReport): void {
+  const call = ctx.store.getCall(data.callId);
+  if (!call) return;
+
+  // Broadcast quality report to all other participants in the call
+  for (const p of call.participants) {
+    if (p.userId === ctx.userId) continue;
+    emitToUser(ctx, p.userId, { event: 'call:quality-changed', data });
+  }
 }
