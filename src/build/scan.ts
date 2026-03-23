@@ -11,6 +11,7 @@ export interface PageEntry {
   hasAuth: boolean;
   hasStandalone: boolean;
   prerender: boolean;
+}
 
 export interface LayoutEntry {
   dir: string;
