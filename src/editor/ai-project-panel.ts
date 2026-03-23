@@ -5,6 +5,7 @@
  */
 
 import { streamAiChat, rollbackAiTurn, checkAiStatus } from './editor-api-client.js';
+import { renderMarkdown } from './ai-markdown.js';
 
 const PROJECT_SUGGESTIONS = [
   { label: 'Add a page', prompt: 'Add a new page to the project' },
@@ -83,6 +84,27 @@ export function createAiProjectPanel(): HTMLDivElement {
     }
     .nk-aip-msg.assistant {
       align-self: flex-start; background: #2d2a3e; color: #e2e8f0; border-bottom-left-radius: 4px;
+    }
+    .nk-aip-msg.assistant p { margin: 0 0 6px 0; }
+    .nk-aip-msg.assistant p:last-child { margin-bottom: 0; }
+    .nk-aip-msg.assistant ul, .nk-aip-msg.assistant ol { margin: 4px 0; padding-left: 18px; }
+    .nk-aip-msg.assistant li { margin: 2px 0; }
+    .nk-aip-msg.assistant strong { font-weight: 600; }
+    .nk-ai-code {
+      background: #1a1a2e; padding: 1px 4px; border-radius: 3px;
+      font-family: 'SF Mono', ui-monospace, monospace; font-size: 11px;
+    }
+    .nk-ai-pre {
+      background: #1a1a2e; padding: 8px; border-radius: 6px;
+      overflow-x: auto; margin: 4px 0; position: relative;
+    }
+    .nk-ai-pre code {
+      font-family: 'SF Mono', ui-monospace, monospace; font-size: 11px;
+      background: none; padding: 0; white-space: pre;
+    }
+    .nk-ai-code-lang {
+      position: absolute; top: 4px; right: 6px;
+      font-size: 9px; color: #64748b; font-family: system-ui, sans-serif;
     }
     .nk-aip-typing {
       align-self: flex-start; padding: 8px 16px; background: #2d2a3e; border-radius: 12px;
@@ -309,19 +331,20 @@ function sendMessage(): void {
 
   const streamMsg = createStreamingMessage();
   const textEl = streamMsg.querySelector('.nk-aip-msg-text') as HTMLElement;
+  let rawText = '';
 
   activeController = streamAiChat('project', text, {}, sessionId, {
     onToken: (token) => {
       typing.remove();
-      textEl.textContent += token;
+      rawText += token;
+      textEl.innerHTML = renderMarkdown(rawText);
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
     },
     onDone: (result) => {
       typing.remove();
       sessionId = result.sessionId;
-      if (!textEl.textContent) {
-        textEl.textContent = result.fullText || 'Done.';
-      }
+      const finalText = rawText || result.fullText || 'Done.';
+      textEl.innerHTML = renderMarkdown(finalText);
       finalizeAssistantMessage(streamMsg, result.turnId);
       activeController = null;
     },
