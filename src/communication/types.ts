@@ -301,6 +301,8 @@ export interface CommunicationClientEvents {
   'call:respond': (data: CallResponse) => void;
   'call:hangup': (data: CallHangup) => void;
   'call:media-toggle': (data: CallMediaToggle) => void;
+  'call:add-participant': (data: { callId: string; userId: string }) => void;
+  'call:remove-participant': (data: { callId: string; userId: string }) => void;
   'signal:offer': (data: SignalOffer) => void;
   'signal:answer': (data: SignalOffer) => void;
   'signal:ice-candidate': (data: SignalIceCandidate) => void;

@@ -20,6 +20,8 @@ import {
   handleCallRespond,
   handleCallHangup,
   handleCallMediaToggle,
+  handleCallAddParticipant,
+  handleCallRemoveParticipant,
   handleSignalOffer,
   handleSignalAnswer,
   handleSignalIceCandidate,
@@ -135,6 +137,8 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
     ctx.on('call:respond', (data) => handleCallRespond(signalingCtx, data));
     ctx.on('call:hangup', (data) => handleCallHangup(signalingCtx, data));
     ctx.on('call:media-toggle', (data) => handleCallMediaToggle(signalingCtx, data));
+    ctx.on('call:add-participant', (data) => handleCallAddParticipant(signalingCtx, data));
+    ctx.on('call:remove-participant', (data) => handleCallRemoveParticipant(signalingCtx, data));
 
     // ── WebRTC Signaling ─────────────────────────────────────
 

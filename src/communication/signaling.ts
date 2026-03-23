@@ -205,6 +205,80 @@ export function handleCallMediaToggle(
   }
 }
 
+// ── Mid-Call Participant Management ──────────────────────────────
+
+export function handleCallAddParticipant(
+  ctx: SignalingContext,
+  data: { callId: string; userId: string },
+): void {
+  const call = ctx.store.getCall(data.callId);
+  if (!call) return;
+
+  // Only existing participants can add someone
+  const isParticipant = call.participants.some(p => p.userId === ctx.userId);
+  if (!isParticipant) return;
+
+  // Don't add someone already in the call
+  if (call.participants.some(p => p.userId === data.userId)) return;
+
+  // Check if the target user is already in another call
+  const targetActiveCall = ctx.store.getActiveCallForUser(data.userId);
+  if (targetActiveCall) {
+    emitToUser(ctx, ctx.userId, {
+      event: 'call:state-changed',
+      data: { callId: data.callId, state: call.state, error: 'user_busy' },
+    });
+    return;
+  }
+
+  // Add to calleeIds so they are tracked
+  if (!call.calleeIds.includes(data.userId)) {
+    call.calleeIds.push(data.userId);
+  }
+
+  // Send incoming call notification to the new user
+  emitToUser(ctx, data.userId, { event: 'call:incoming', data: call });
+}
+
+export function handleCallRemoveParticipant(
+  ctx: SignalingContext,
+  data: { callId: string; userId: string },
+): void {
+  const call = ctx.store.getCall(data.callId);
+  if (!call) return;
+
+  // Only the caller (owner) or admins can kick participants
+  if (ctx.userId !== call.callerId) return;
+
+  // Can't remove yourself (use hangup instead)
+  if (data.userId === ctx.userId) return;
+
+  // Check the target is actually in the call
+  const targetParticipant = call.participants.find(p => p.userId === data.userId);
+  if (!targetParticipant) return;
+
+  ctx.store.removeCallParticipant(data.callId, data.userId);
+
+  // Notify all remaining participants
+  for (const p of call.participants) {
+    if (p.userId === data.userId) continue;
+    emitToUser(ctx, p.userId, {
+      event: 'call:participant-left',
+      data: { callId: data.callId, userId: data.userId },
+    });
+  }
+
+  // Notify the removed user
+  emitToUser(ctx, data.userId, {
+    event: 'call:participant-left',
+    data: { callId: data.callId, userId: data.userId },
+  });
+  emitToUser(ctx, data.userId, {
+    event: 'call:state-changed',
+    data: { callId: data.callId, state: 'ended', endReason: 'completed' },
+  });
+}
+
 // ── WebRTC Signal Relay ─────────────────────────────────────────
 
 export function handleSignalOffer(ctx: SignalingContext, data: SignalOffer): void {
