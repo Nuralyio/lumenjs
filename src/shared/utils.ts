@@ -173,6 +173,20 @@ export function fileHasSubscribe(filePath: string): boolean {
 }
 
 /**
+ * Check if a page file exports an `auth` constant (before the class definition).
+ */
+export function fileHasAuth(filePath: string): boolean {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const classStart = content.search(/export\s+class\s+\w+/);
+    const match = /export\s+const\s+auth\s*=/.exec(content);
+    if (!match) return false;
+    if (classStart >= 0 && match.index > classStart) return false;
+    return true;
+  } catch { return false; }
+}
+
+/**
  * Convert a file path (relative to pages/) to a route path.
  */
 export function filePathToRoute(filePath: string): string {

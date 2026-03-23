@@ -17,7 +17,8 @@ export async function handleLayoutLoaderRequest(
   serverDir: string,
   queryString: string | undefined,
   headers: http.IncomingHttpHeaders,
-  res: http.ServerResponse
+  res: http.ServerResponse,
+  user?: any,
 ): Promise<void> {
   const query: Record<string, string> = {};
   if (queryString) {
@@ -56,7 +57,7 @@ export async function handleLayoutLoaderRequest(
     const locale = query.__locale;
     delete query.__locale;
 
-    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers, locale });
+    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers, locale, user: user ?? null });
     if (isRedirectResponse(result)) {
       res.writeHead(result.status || 302, { Location: result.location });
       res.end();
@@ -83,7 +84,8 @@ export async function handleLayoutSubscribeRequest(
   serverDir: string,
   queryString: string | undefined,
   headers: http.IncomingHttpHeaders,
-  res: http.ServerResponse
+  res: http.ServerResponse,
+  user?: any,
 ): Promise<void> {
   const query: Record<string, string> = {};
   if (queryString) {
@@ -127,7 +129,7 @@ export async function handleLayoutSubscribeRequest(
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
 
-    const cleanup = mod.subscribe({ params: {}, push, headers, locale });
+    const cleanup = mod.subscribe({ params: {}, push, headers, locale, user: user ?? null });
     res.on('close', () => {
       if (typeof cleanup === 'function') cleanup();
     });
@@ -147,7 +149,8 @@ export async function handleSubscribeRequest(
   pathname: string,
   queryString: string | undefined,
   headers: http.IncomingHttpHeaders,
-  res: http.ServerResponse
+  res: http.ServerResponse,
+  user?: any,
 ): Promise<void> {
   const pagePath = pathname.replace('/__nk_subscribe', '') || '/';
 
@@ -198,7 +201,7 @@ export async function handleSubscribeRequest(
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
 
-    const cleanup = mod.subscribe({ params: matched.params, push, headers, locale });
+    const cleanup = mod.subscribe({ params: matched.params, push, headers, locale, user: user ?? null });
     res.on('close', () => {
       if (typeof cleanup === 'function') cleanup();
     });
@@ -218,7 +221,8 @@ export async function handleLoaderRequest(
   pathname: string,
   queryString: string | undefined,
   headers: http.IncomingHttpHeaders,
-  res: http.ServerResponse
+  res: http.ServerResponse,
+  user?: any,
 ): Promise<void> {
   const pagePath = pathname.replace('/__nk_loader', '') || '/';
 
@@ -263,7 +267,7 @@ export async function handleLoaderRequest(
     const locale = query.__locale;
     delete query.__locale;
 
-    const result = await mod.loader({ params: matched.params, query, url: pagePath, headers, locale });
+    const result = await mod.loader({ params: matched.params, query, url: pagePath, headers, locale, user: user ?? null });
     if (isRedirectResponse(result)) {
       res.writeHead(result.status || 302, { Location: result.location });
       res.end();

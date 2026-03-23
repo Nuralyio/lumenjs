@@ -10,6 +10,8 @@ export interface ManifestRoute {
   module: string;
   hasLoader: boolean;
   hasSubscribe: boolean;
+  hasAuth?: boolean;
+  authRoles?: string[];
   tagName?: string;
   layouts?: string[];
 }
@@ -25,5 +27,6 @@ export interface BuildManifest {
   apiRoutes: ManifestRoute[];
   layouts: ManifestLayout[];
   i18n?: I18nManifest;
+  auth?: { configModule: string };
   prefetch: 'hover' | 'viewport' | 'none';
 }

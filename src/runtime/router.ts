@@ -124,6 +124,20 @@ export class NkRouter {
 
     this.params = match.params;
 
+    // Auth guard: SPA-navigate unauthenticated users to login page
+    if ((match.route as any).__nk_has_auth) {
+      try {
+        const { isAuthenticated } = await import('@lumenjs/auth');
+        if (!isAuthenticated()) {
+          const loginPath = '/auth/login';
+          const loginUrl = `${loginPath}?returnTo=${encodeURIComponent(pathname)}`;
+          history.pushState(null, '', loginUrl);
+          this.navigate(loginPath, false);
+          return;
+        }
+      } catch {}
+    }
+
     const layouts = match.route.layouts || [];
 
     // Load all component JS chunks in parallel

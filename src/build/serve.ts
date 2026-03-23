@@ -13,6 +13,9 @@ import { handleI18nRequest } from './serve-i18n.js';
 import { resolveLocale } from '../dev-server/middleware/locale.js';
 import { runMiddlewareChain, extractMiddleware, ConnectMiddleware } from '../shared/middleware-runner.js';
 import { getMiddlewareDirsForPathname, MiddlewareEntry } from './scan.js';
+import { createAuthMiddleware } from '../auth/middleware.js';
+import { handleAuthRoutes } from '../auth/routes.js';
+import { loadAuthConfigProd } from '../auth/config.js';
 
 export interface ServeOptions {
   projectDir: string;
@@ -80,12 +83,37 @@ export async function serveProject(options: ServeOptions): Promise<void> {
     ? manifest.middlewares.map(e => ({ dir: e.dir, filePath: '' }))
     : [];
 
+  // Load auth config if present
+  let authConfig: any = null;
+  let authMiddleware: any = null;
+  if (manifest.auth) {
+    try {
+      authConfig = await loadAuthConfigProd(serverDir, manifest.auth.configModule);
+      authMiddleware = createAuthMiddleware(authConfig);
+      console.log('[LumenJS] Auth middleware loaded.');
+    } catch (err) {
+      console.error('[LumenJS] Failed to load auth config:', err);
+    }
+  }
+
   const server = http.createServer(async (req, res) => {
     const url = req.url || '/';
     const [pathname, queryString] = url.split('?');
     const method = req.method || 'GET';
 
     try {
+      // -2. Auth routes (must handle /__nk_auth/* before other /__nk_ exclusions)
+      if (authConfig && pathname.startsWith('/__nk_auth/')) {
+        const handled = await handleAuthRoutes(authConfig, req, res);
+        if (handled) return;
+      }
+
+      // -1. Auth session middleware (attach req.nkAuth before user middleware)
+      if (authMiddleware && !pathname.includes('.') && !pathname.startsWith('/@')) {
+        await new Promise<void>(resolve => authMiddleware(req, res, resolve));
+        if (res.writableEnded) return;
+      }
+
       // 0. Run user middleware chain
       if (middlewareModules.size > 0 && !pathname.includes('.') && !pathname.startsWith('/__nk_')) {
         const matching = getMiddlewareDirsForPathname(pathname, middlewareEntries);
@@ -121,25 +149,26 @@ export async function serveProject(options: ServeOptions): Promise<void> {
 
       // 4. Layout subscribe endpoint (SSE)
       if (pathname === '/__nk_subscribe/__layout/' || pathname === '/__nk_subscribe/__layout') {
-        await handleLayoutSubscribeRequest(manifest, serverDir, queryString, req.headers, res);
+        const authUser = (req as any).nkAuth?.user ?? undefined;
+        await handleLayoutSubscribeRequest(manifest, serverDir, queryString, req.headers, res, authUser);
         return;
       }
 
       // 5. Subscribe endpoint (SSE)
       if (pathname.startsWith('/__nk_subscribe/')) {
-        await handleSubscribeRequest(manifest, serverDir, pagesDir, pathname, queryString, req.headers, res);
+        await handleSubscribeRequest(manifest, serverDir, pagesDir, pathname, queryString, req.headers, res, (req as any).nkAuth?.user ?? undefined);
         return;
       }
 
       // 6. Layout loader endpoint
       if (pathname === '/__nk_loader/__layout/' || pathname === '/__nk_loader/__layout') {
-        await handleLayoutLoaderRequest(manifest, serverDir, queryString, req.headers, res);
+        await handleLayoutLoaderRequest(manifest, serverDir, queryString, req.headers, res, (req as any).nkAuth?.user ?? undefined);
         return;
       }
 
       // 7. Loader endpoint for client-side navigation
       if (pathname.startsWith('/__nk_loader/')) {
-        await handleLoaderRequest(manifest, serverDir, pagesDir, pathname, queryString, req.headers, res);
+        await handleLoaderRequest(manifest, serverDir, pagesDir, pathname, queryString, req.headers, res, (req as any).nkAuth?.user ?? undefined);
         return;
       }
 

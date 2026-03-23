@@ -36,6 +36,10 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   const layoutEntries = scanLayouts(pagesDir);
   const apiEntries = scanApiRoutes(apiDir);
 
+  // Check for auth config
+  const authConfigPath = path.join(projectDir, 'lumenjs.auth.ts');
+  const hasAuthConfig = fs.existsSync(authConfigPath);
+
   // --- Client build ---
   console.log('[LumenJS] Building client bundle...');
 
@@ -95,6 +99,10 @@ export async function buildProject(options: BuildOptions): Promise<void> {
 
   for (const entry of apiEntries) {
     serverEntries[`api/${entry.name}`] = entry.filePath;
+  }
+
+  if (hasAuthConfig) {
+    serverEntries['auth-config'] = authConfigPath;
   }
 
   // Create SSR runtime entry — bundles @lit-labs/ssr alongside Lit so all
@@ -188,6 +196,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
         hasSubscribe: e.hasSubscribe,
         tagName: filePathToTagName(relPath),
         ...(routeLayouts.length > 0 ? { layouts: routeLayouts } : {}),
+        ...(e.hasAuth ? { hasAuth: true } : {}),
       };
     }),
     apiRoutes: apiEntries.map(e => ({
@@ -203,6 +212,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
       hasSubscribe: e.hasSubscribe,
     })),
     ...(i18nConfig ? { i18n: i18nConfig } : {}),
+    ...(hasAuthConfig ? { auth: { configModule: 'auth-config.js' } } : {}),
     prefetch: prefetchStrategy,
   };
 

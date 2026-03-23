@@ -37,7 +37,7 @@ export async function handlePageRoute(
         // Run loader
         let loaderData: any = undefined;
         if (mod.loader && typeof mod.loader === 'function') {
-          loaderData = await mod.loader({ params: matched.params, query: {}, url: pathname, headers: req.headers });
+          loaderData = await mod.loader({ params: matched.params, query: {}, url: pathname, headers: req.headers, user: (req as any).nkAuth?.user ?? null });
           if (isRedirectResponse(loaderData)) {
             res.writeHead(loaderData.status || 302, { Location: loaderData.location });
             res.end();
@@ -64,7 +64,7 @@ export async function handlePageRoute(
             if (fs.existsSync(layoutModulePath)) {
               const layoutMod = await import(layoutModulePath);
               if (layoutMod.loader && typeof layoutMod.loader === 'function') {
-                layoutLoaderData = await layoutMod.loader({ params: {}, query: {}, url: pathname, headers: req.headers });
+                layoutLoaderData = await layoutMod.loader({ params: {}, query: {}, url: pathname, headers: req.headers, user: (req as any).nkAuth?.user ?? null });
                 if (isRedirectResponse(layoutLoaderData)) {
                   res.writeHead(layoutLoaderData.status || 302, { Location: layoutLoaderData.location });
                   res.end();
@@ -127,12 +127,18 @@ export async function handlePageRoute(
               : '';
             const hydrateScript = `<script type="module">import '@lit-labs/ssr-client/lit-element-hydrate-support.js';</script>`;
 
+            // Auth: inline user data for client hydration
+            const authUser = (req as any).nkAuth?.user ?? null;
+            const authScript = authUser
+              ? `<script type="application/json" id="__nk_auth__">${JSON.stringify(authUser).replace(/</g, '\\u003c')}</script>`
+              : '';
+
             let html_out = indexHtmlShell;
             // Inject hydrate support BEFORE the first module script so it loads before Lit
             html_out = html_out.replace('<script type="module"', `${hydrateScript}\n  <script type="module"`);
             html_out = html_out.replace(
               /<nk-app><\/nk-app>/,
-              `${loaderDataScript}<nk-app data-nk-ssr><div id="nk-router-outlet">${ssrHtml}</div></nk-app>`
+              `${authScript}${loaderDataScript}<nk-app data-nk-ssr><div id="nk-router-outlet">${ssrHtml}</div></nk-app>`
             );
 
             sendCompressed(req, res, 200, 'text/html; charset=utf-8', html_out);
@@ -148,7 +154,11 @@ export async function handlePageRoute(
             ? { page: loaderData, layouts: layoutsData }
             : loaderData;
           const loaderDataScript = `<script type="application/json" id="__nk_ssr_data__">${JSON.stringify(ssrDataObj).replace(/</g, '\\u003c')}</script>`;
-          let html_out = indexHtmlShell.replace('<nk-app>', `${loaderDataScript}<nk-app>`);
+          const authUserFb = (req as any).nkAuth?.user ?? null;
+          const authScriptFb = authUserFb
+            ? `<script type="application/json" id="__nk_auth__">${JSON.stringify(authUserFb).replace(/</g, '\\u003c')}</script>`
+            : '';
+          let html_out = indexHtmlShell.replace('<nk-app>', `${authScriptFb}${loaderDataScript}<nk-app>`);
           sendCompressed(req, res, 200, 'text/html; charset=utf-8', html_out);
           return;
         }

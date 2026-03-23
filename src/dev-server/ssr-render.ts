@@ -18,8 +18,8 @@ export interface LayoutSSRData {
  * Returns pre-rendered HTML and loader data, or null on failure (falls back to CSR).
  */
 export async function ssrRenderPage(
-  server: ViteDevServer, pagesDir: string, pathname: string, headers?: Record<string, string | string[] | undefined>, locale?: string
-): Promise<{ html: string; loaderData: any; layoutsData?: LayoutSSRData[]; redirect?: { location: string; status: number } } | null> {
+  server: ViteDevServer, pagesDir: string, pathname: string, headers?: Record<string, string | string[] | undefined>, locale?: string, user?: any
+): Promise<{ html: string; loaderData: any; layoutsData?: LayoutSSRData[]; redirect?: { location: string; status: number }; authUser?: any } | null> {
   try {
     const filePath = resolvePageFile(pagesDir, pathname);
     if (!filePath) return null;
@@ -47,6 +47,14 @@ export async function ssrRenderPage(
       }
     }
 
+    // Initialize auth in the SSR context
+    if (user) {
+      try {
+        const authMod = await server.ssrLoadModule('@nuraly/lumenjs-auth');
+        if (authMod?.initAuth) authMod.initAuth(user);
+      } catch {}
+    }
+
     // Invalidate SSR module cache so we always get fresh content after file edits.
     // Also clear the custom element from the SSR registry so the new class is used.
     const g = globalThis as any;
@@ -63,7 +71,7 @@ export async function ssrRenderPage(
     // Run loader if present
     let loaderData: any = undefined;
     if (mod.loader && typeof mod.loader === 'function') {
-      loaderData = await mod.loader({ params, query: {}, url: pathname, headers: headers || {}, locale });
+      loaderData = await mod.loader({ params, query: {}, url: pathname, headers: headers || {}, locale, user: user ?? null });
       if (loaderData && typeof loaderData === 'object' && loaderData.__nk_redirect) {
         return { html: '', loaderData: null, redirect: { location: loaderData.location, status: loaderData.status || 302 } };
       }
@@ -90,7 +98,7 @@ export async function ssrRenderPage(
       let layoutLoaderData: any = undefined;
 
       if (layoutMod.loader && typeof layoutMod.loader === 'function') {
-        layoutLoaderData = await layoutMod.loader({ params: {}, query: {}, url: pathname, headers: headers || {}, locale });
+        layoutLoaderData = await layoutMod.loader({ params: {}, query: {}, url: pathname, headers: headers || {}, locale, user: user ?? null });
         if (layoutLoaderData && typeof layoutLoaderData === 'object' && layoutLoaderData.__nk_redirect) {
           return { html: '', loaderData: null, redirect: { location: layoutLoaderData.location, status: layoutLoaderData.status || 302 } };
         }
@@ -141,7 +149,7 @@ export async function ssrRenderPage(
       }
     }
 
-    return { html: htmlStr, loaderData, layoutsData: layoutsData.length > 0 ? layoutsData : undefined };
+    return { html: htmlStr, loaderData, layoutsData: layoutsData.length > 0 ? layoutsData : undefined, authUser: user ?? undefined };
   } catch (err) {
     console.error('[LumenJS] SSR render failed, falling back to CSR:', err);
     return null;

@@ -11,6 +11,7 @@ export interface IndexHtmlOptions {
   i18nConfig?: { locales: string[]; defaultLocale: string; prefixDefault: boolean };
   translations?: Record<string, string>;
   prefetch?: string;
+  authUser?: any;
 }
 
 /**
@@ -47,6 +48,12 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
     i18nScript = `<script type="application/json" id="__nk_i18n__">${JSON.stringify(i18nData).replace(/</g, '\\u003c')}</script>`;
   }
 
+  // Auth: inline user data for client hydration
+  let authScript = '';
+  if (options.authUser) {
+    authScript = `<script type="application/json" id="__nk_auth__">${JSON.stringify(options.authUser).replace(/</g, '\\u003c')}</script>`;
+  }
+
   // Prefetch strategy inline
   let prefetchScript = '';
   if (options.prefetch && options.prefetch !== 'hover') {
@@ -77,6 +84,7 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
 <body>
   ${prefetchScript}
   ${i18nScript}
+  ${authScript}
   ${loaderDataScript}
   ${appTag}
   <script type="module" src="/@lumenjs/app-shell"></script>

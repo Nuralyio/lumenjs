@@ -18,6 +18,7 @@ import { sourceAnnotatorPlugin } from './plugins/vite-plugin-source-annotator.js
 import { editorApiPlugin } from './plugins/vite-plugin-editor-api.js';
 import { virtualModulesPlugin } from './plugins/vite-plugin-virtual-modules.js';
 import { i18nPlugin, loadTranslationsFromDisk } from './plugins/vite-plugin-i18n.js';
+import { authPlugin } from './plugins/vite-plugin-auth.js';
 import { resolveLocale } from './middleware/locale.js';
 import { scanMiddleware, getMiddlewareDirsForPathname } from '../build/scan.js';
 import { runMiddlewareChain, extractMiddleware, ConnectMiddleware } from '../shared/middleware-runner.js';
@@ -62,6 +63,8 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
     alias: {
       ...aliases,
       '@lumenjs/i18n': path.join(runtimeDir, 'i18n.js'),
+      '@lumenjs/auth': path.join(runtimeDir, 'auth.js'),
+      '@nuraly/lumenjs-auth': path.join(runtimeDir, 'auth.js'),
     },
     conditions: isDev ? ['development', 'browser'] : ['browser'],
     // Note: resolve.dedupe is NOT used — it resolves via Node's algorithm
@@ -138,6 +141,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       litHmrPlugin(projectDir),
       ...(i18nConfig ? [i18nPlugin(projectDir, i18nConfig)] : []),
       ...(editorMode ? [sourceAnnotatorPlugin(projectDir), editorApiPlugin(projectDir)] : []),
+      ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
       {
         // Clear SSR module cache on file changes so the next SSR request uses fresh code.
         // Without this, HMR updates the client but SSR keeps serving stale modules.
@@ -236,7 +240,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
               }
 
               const SSR_PLACEHOLDER = '<!--__NK_SSR_CONTENT__-->';
-              ssrRenderPage(server, pagesDir, pathname, req.headers as Record<string, string | string[] | undefined>, locale).then(async ssrResult => {
+              ssrRenderPage(server, pagesDir, pathname, req.headers as Record<string, string | string[] | undefined>, locale, (req as any).nkAuth?.user ?? undefined).then(async ssrResult => {
                 if (ssrResult?.redirect) {
                   res.writeHead(ssrResult.redirect.status, { Location: ssrResult.redirect.location });
                   res.end();
@@ -253,6 +257,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                   i18nConfig: i18nConfig || undefined,
                   translations,
                   prefetch: prefetchStrategy,
+                  authUser: ssrResult?.authUser ?? (req as any).nkAuth?.user ?? undefined,
                 });
                 const transformed = await server.transformIndexHtml(req.url!, shellHtml);
                 const finalHtml = ssrResult
@@ -281,6 +286,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     optimizeDeps: {
       exclude: [
         '@lumenjs/i18n',
+        '@nuraly/lumenjs-auth',
         // Lit packages must NOT be pre-bundled — pre-bundling creates separate
         // module entries (/.vite/deps/) alongside raw /@fs/ files, causing
         // multiple lit-html instances. Instead, resolve.dedupe forces all lit

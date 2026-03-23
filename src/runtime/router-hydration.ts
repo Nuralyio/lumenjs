@@ -22,6 +22,16 @@ export async function hydrateInitialRoute(
     i18nScript.remove();
   }
 
+  // Read auth data and init before route matching
+  const authScript = document.getElementById('__nk_auth__');
+  if (authScript) {
+    try {
+      const { initAuth } = await import('@lumenjs/auth');
+      initAuth(JSON.parse(authScript.textContent || ''));
+    } catch {}
+    authScript.remove();
+  }
+
   // Strip locale prefix for route matching (routes are locale-agnostic)
   const config = getI18nConfig();
   const matchPath = config ? stripLocalePrefix(location.pathname) : location.pathname;

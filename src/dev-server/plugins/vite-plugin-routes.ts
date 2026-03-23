@@ -1,7 +1,7 @@
 import { Plugin } from 'vite';
 import fs from 'fs';
 import path from 'path';
-import { dirToLayoutTagName, fileHasLoader, fileHasSubscribe, filePathToRoute, filePathToTagName } from '../../shared/utils.js';
+import { dirToLayoutTagName, fileHasLoader, fileHasSubscribe, fileHasAuth, filePathToRoute, filePathToTagName } from '../../shared/utils.js';
 
 export interface RouteEntry {
   path: string;
@@ -127,6 +127,7 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
           .map(r => {
             const hasLoader = fileHasLoader(r.componentPath);
             const hasSubscribe = fileHasSubscribe(r.componentPath);
+            const hasAuth = fileHasAuth(r.componentPath);
             const componentPath = r.componentPath.replace(/\\/g, '/');
             const chain = getLayoutChain(r.componentPath, layouts);
 
@@ -141,7 +142,7 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
               layoutsStr = `, layouts: [${items.join(', ')}]`;
             }
 
-            return `  { path: ${JSON.stringify(r.path)}, tagName: ${JSON.stringify(r.tagName)}${hasLoader ? ', hasLoader: true' : ''}${hasSubscribe ? ', hasSubscribe: true' : ''}, load: () => import('${componentPath}')${layoutsStr} }`;
+            return `  { path: ${JSON.stringify(r.path)}, tagName: ${JSON.stringify(r.tagName)}${hasLoader ? ', hasLoader: true' : ''}${hasSubscribe ? ', hasSubscribe: true' : ''}${hasAuth ? ', __nk_has_auth: true' : ''}, load: () => import('${componentPath}')${layoutsStr} }`;
           })
           .join(',\n');
 

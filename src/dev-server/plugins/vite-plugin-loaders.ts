@@ -98,7 +98,7 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
             res.write(`data: ${JSON.stringify(data)}\n\n`);
           };
 
-          const cleanup = mod.subscribe({ params, push, headers: req.headers, locale });
+          const cleanup = mod.subscribe({ params, push, headers: req.headers, locale, user: (req as any).nkAuth?.user ?? null });
 
           res.on('close', () => {
             if (typeof cleanup === 'function') cleanup();
@@ -179,7 +179,7 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
           const locale = query.__locale;
           delete query.__locale;
 
-          const result = await mod.loader({ params, query, url: pagePath, headers: req.headers, locale });
+          const result = await mod.loader({ params, query, url: pagePath, headers: req.headers, locale, user: (req as any).nkAuth?.user ?? null });
 
           if (isRedirectResponse(result)) {
             res.statusCode = result.status || 302;
@@ -304,7 +304,7 @@ async function handleLayoutLoader(
     }
     const locale = query.__locale;
 
-    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers: req.headers, locale });
+    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers: req.headers, locale, user: (req as any).nkAuth?.user ?? null });
 
     if (isRedirectResponse(result)) {
       res.statusCode = result.status || 302;
@@ -509,7 +509,7 @@ async function handleLayoutSubscribe(
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
 
-    const cleanup = mod.subscribe({ params: {}, push, headers: req.headers, locale });
+    const cleanup = mod.subscribe({ params: {}, push, headers: req.headers, locale, user: (req as any).nkAuth?.user ?? null });
 
     res.on('close', () => {
       if (typeof cleanup === 'function') cleanup();
