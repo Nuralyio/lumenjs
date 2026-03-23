@@ -24,10 +24,12 @@ export interface HandlerContext {
 
 export function handleConversationJoin(ctx: HandlerContext, data: { conversationId: string }): void {
   ctx.joinRoom(`conv:${data.conversationId}`);
+  ctx.store.addConversationMember(data.conversationId, ctx.userId);
 }
 
 export function handleConversationLeave(ctx: HandlerContext, data: { conversationId: string }): void {
   ctx.leaveRoom(`conv:${data.conversationId}`);
+  ctx.store.removeConversationMember(data.conversationId, ctx.userId);
 }
 
 // ── Messages ────────────────────────────────────────────────────
@@ -100,8 +102,28 @@ export function handleMessageSend(
   // Clear typing indicator since the user just sent a message
   ctx.store.clearTyping(data.conversationId, ctx.userId);
 
+  // Notify sender that the message has been persisted
+  ctx.push({ event: 'message:status', data: { messageId: message.id, status: 'sent' as const } });
+
   // Broadcast to all participants in the conversation
   ctx.broadcastAll(`conv:${data.conversationId}`, { event: 'message:new', data: message });
+
+  // Check if any recipient in the conversation has a connected socket
+  const members = ctx.store.getConversationMembers(data.conversationId);
+  const hasOnlineRecipient = Array.from(members).some(
+    (uid) => uid !== ctx.userId && ctx.store.isUserOnline(uid),
+  );
+
+  if (hasOnlineRecipient) {
+    if (ctx.db) {
+      ctx.db.run(
+        `UPDATE messages SET status = 'delivered' WHERE id = ? AND status = 'sent'`,
+        message.id,
+      );
+    }
+    message.status = 'delivered';
+    ctx.push({ event: 'message:status', data: { messageId: message.id, status: 'delivered' as const } });
+  }
 }
 
 export function handleMessageRead(
@@ -130,6 +152,12 @@ export function handleMessageRead(
   ctx.broadcastAll(`conv:${data.conversationId}`, {
     event: 'read-receipt:update',
     data: { conversationId: data.conversationId, messageId: data.messageId, readBy: receipt },
+  });
+
+  // Emit message:status so clients can update delivery indicators
+  ctx.broadcastAll(`conv:${data.conversationId}`, {
+    event: 'message:status',
+    data: { messageId: data.messageId, status: 'read' as const },
   });
 }
 
@@ -267,6 +295,7 @@ export function handleDisconnect(ctx: HandlerContext, socketId: string): void {
 
   // If user has no more connected sockets, set presence to offline
   if (!ctx.store.isUserOnline(userId)) {
+    ctx.store.removeUserFromAllConversations(userId);
     const entry = ctx.store.setPresence(userId, 'offline');
     ctx.push({
       event: 'presence:changed',

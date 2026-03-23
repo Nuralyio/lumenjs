@@ -33,6 +33,8 @@ export class CommunicationStore {
   private socketUser = new Map<string, string>();
   /** userId → public key bundle for E2E encryption */
   private keyBundles = new Map<string, KeyBundle>();
+  /** conversationId → set of user IDs currently in the room */
+  private conversationMembers = new Map<string, Set<string>>();
 
   // ── User-Socket Mapping ───────────────────────────────────────
 
@@ -191,6 +193,40 @@ export class CommunicationStore {
     }
     return undefined;
   }
+  // ── Conversation Membership ─────────────────────────────────────
+
+  addConversationMember(conversationId: string, userId: string): void {
+    let members = this.conversationMembers.get(conversationId);
+    if (!members) {
+      members = new Set();
+      this.conversationMembers.set(conversationId, members);
+    }
+    members.add(userId);
+  }
+
+  removeConversationMember(conversationId: string, userId: string): void {
+    const members = this.conversationMembers.get(conversationId);
+    if (!members) return;
+    members.delete(userId);
+    if (members.size === 0) this.conversationMembers.delete(conversationId);
+  }
+
+  getConversationMembers(conversationId: string): Set<string> {
+    return this.conversationMembers.get(conversationId) || new Set();
+  }
+
+  removeUserFromAllConversations(userId: string): string[] {
+    const removed: string[] = [];
+    for (const [convId, members] of this.conversationMembers) {
+      if (members.has(userId)) {
+        members.delete(userId);
+        removed.push(convId);
+      }
+      if (members.size === 0) this.conversationMembers.delete(convId);
+    }
+    return removed;
+  }
+
   // ── E2E Encryption Key Bundles ──────────────────────────────────
 
   setKeyBundle(userId: string, bundle: KeyBundle): void {
