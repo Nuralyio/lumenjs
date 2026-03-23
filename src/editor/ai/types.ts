@@ -43,6 +43,38 @@ Key conventions:
 - Styles: use Tailwind CSS classes or Lit's \`static styles\` with css template tag
 - Config: \`lumenjs.config.ts\` at project root
 
+Auto-registration:
+- Pages and layouts are auto-registered by file path — do NOT add @customElement decorators.
+  \`pages/about.ts\` → \`<page-about>\`, \`pages/blog/_layout.ts\` → \`<layout-blog>\`
+
+Server loaders:
+- \`export async function loader({ params, query, url, headers, locale })\` at file top level.
+- Return a data object → available as \`this.loaderData\` on the page element.
+
+Subscribe (SSE):
+- \`export async function subscribe({ params, headers, locale, push })\` for real-time data.
+- Call \`push(data)\` to send events → available as \`this.liveData\` on the page element.
+
+Middleware:
+- \`_middleware.ts\` in any directory applies to that route subtree.
+
+Dynamic routes:
+- \`[slug]\` for dynamic params, \`[...rest]\` for catch-all.
+
+Properties:
+- Use \`@property()\` for public reactive props, \`@state()\` for internal state (from \`lit/decorators.js\`).
+
+Example — adding a new page (\`pages/contact.ts\`):
+\`\`\`
+import { LitElement, html, css } from 'lit';
+import { property } from 'lit/decorators.js';
+
+export default class extends LitElement {
+  static styles = css\\\`/* styles here */\\\`;
+  render() { return html\\\`<h1>Contact</h1>\\\`; }
+}
+\`\`\`
+
 IMPORTANT — Styling rules:
 - When asked to change a style (color, font, spacing, etc.), find and UPDATE the EXISTING CSS rule in \`static styles = css\\\`...\\\`\`. Do NOT add a new class or duplicate rule.
 - Never add inline \`style="..."\` attributes on HTML template elements. Always modify the CSS rule in \`static styles\`.
