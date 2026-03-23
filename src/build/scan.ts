@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { fileHasLoader, fileHasSubscribe, fileHasAuth, filePathToRoute } from '../shared/utils.js';
+import { fileHasLoader, fileHasSubscribe, fileHasAuth, fileHasStandalone, filePathToRoute } from '../shared/utils.js';
 
 export interface PageEntry {
   name: string;
@@ -9,6 +9,7 @@ export interface PageEntry {
   hasLoader: boolean;
   hasSubscribe: boolean;
   hasAuth: boolean;
+  hasStandalone: boolean;
 }
 
 export interface LayoutEntry {
@@ -92,7 +93,8 @@ function walkDir(baseDir: string, relativePath: string, entries: PageEntry[], pa
       const hasLoader = fileHasLoader(filePath);
       const hasSubscribe = fileHasSubscribe(filePath);
       const hasAuth = fileHasAuth(filePath);
-      entries.push({ name, filePath, routePath, hasLoader, hasSubscribe, hasAuth });
+      const hasStandalone = fileHasStandalone(filePath);
+      entries.push({ name, filePath, routePath, hasLoader, hasSubscribe, hasAuth, hasStandalone });
     }
   }
 }

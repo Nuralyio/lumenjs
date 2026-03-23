@@ -1,7 +1,7 @@
 import { Plugin } from 'vite';
 import fs from 'fs';
 import path from 'path';
-import { dirToLayoutTagName, fileHasLoader, fileHasSubscribe, fileHasAuth, filePathToRoute, filePathToTagName } from '../../shared/utils.js';
+import { dirToLayoutTagName, fileHasLoader, fileHasSubscribe, fileHasAuth, fileHasStandalone, filePathToRoute, filePathToTagName } from '../../shared/utils.js';
 
 export interface RouteEntry {
   path: string;
@@ -128,8 +128,10 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
             const hasLoader = fileHasLoader(r.componentPath);
             const hasSubscribe = fileHasSubscribe(r.componentPath);
             const hasAuth = fileHasAuth(r.componentPath);
+            const isStandalone = fileHasStandalone(r.componentPath);
             const componentPath = r.componentPath.replace(/\\/g, '/');
-            const chain = getLayoutChain(r.componentPath, layouts);
+            // Standalone pages skip all layouts
+            const chain = isStandalone ? [] : getLayoutChain(r.componentPath, layouts);
 
             let layoutsStr = '';
             if (chain.length > 0) {

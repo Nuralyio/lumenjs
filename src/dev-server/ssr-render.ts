@@ -81,8 +81,8 @@ export async function ssrRenderPage(
     const relPath = path.relative(pagesDir, filePath).replace(/\\/g, '/');
     const tagName = filePathToTagName(relPath);
 
-    // Discover layout chain for this page
-    const layoutChain = discoverLayoutChain(pagesDir, filePath);
+    // Standalone pages skip all layouts
+    const layoutChain = mod.standalone ? [] : discoverLayoutChain(pagesDir, filePath);
     const layoutsData: LayoutSSRData[] = [];
 
     // Load layout modules and run their loaders

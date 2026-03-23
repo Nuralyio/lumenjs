@@ -187,6 +187,20 @@ export function fileHasAuth(filePath: string): boolean {
 }
 
 /**
+ * Check if a page exports `standalone = true` (renders without any layout).
+ */
+export function fileHasStandalone(filePath: string): boolean {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const classStart = content.search(/export\s+class\s+\w+/);
+    const match = /export\s+const\s+standalone\s*=/.exec(content);
+    if (!match) return false;
+    if (classStart >= 0 && match.index > classStart) return false;
+    return true;
+  } catch { return false; }
+}
+
+/**
  * Convert a file path (relative to pages/) to a route path.
  */
 export function filePathToRoute(filePath: string): string {

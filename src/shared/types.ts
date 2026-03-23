@@ -12,6 +12,7 @@ export interface ManifestRoute {
   hasSubscribe: boolean;
   hasAuth?: boolean;
   authRoles?: string[];
+  hasStandalone?: boolean;
   tagName?: string;
   layouts?: string[];
 }

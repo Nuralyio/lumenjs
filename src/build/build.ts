@@ -187,7 +187,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   // --- Write manifest ---
   const manifest: BuildManifest = {
     routes: pageEntries.map(e => {
-      const routeLayouts = getLayoutDirsForPage(e.filePath, pagesDir, layoutEntries);
+      const routeLayouts = e.hasStandalone ? [] : getLayoutDirsForPage(e.filePath, pagesDir, layoutEntries);
       const relPath = path.relative(pagesDir, e.filePath).replace(/\\/g, '/');
       return {
         path: e.routePath,
@@ -197,6 +197,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
         tagName: filePathToTagName(relPath),
         ...(routeLayouts.length > 0 ? { layouts: routeLayouts } : {}),
         ...(e.hasAuth ? { hasAuth: true } : {}),
+        ...(e.hasStandalone ? { hasStandalone: true } : {}),
       };
     }),
     apiRoutes: apiEntries.map(e => ({
