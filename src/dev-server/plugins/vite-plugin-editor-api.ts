@@ -146,6 +146,14 @@ export function editorApiPlugin(projectDir: string): Plugin {
                 try {
                   fileContents.set(context.sourceFile, fileService.readFile(context.sourceFile));
                 } catch { /* skip */ }
+                // Multi-element: also snapshot additional source files
+                if (context.sourceFiles && Array.isArray(context.sourceFiles)) {
+                  for (const sf of context.sourceFiles) {
+                    if (!fileContents.has(sf)) {
+                      try { fileContents.set(sf, fileService.readFile(sf)); } catch { /* skip */ }
+                    }
+                  }
+                }
               } else {
                 const files = fileService.listFiles();
                 for (const f of files) {
@@ -181,6 +189,20 @@ export function editorApiPlugin(projectDir: string): Plugin {
                 enrichedContext = { ...context, sourceContent };
               } catch {
                 // File might not exist, continue without content
+              }
+
+              // Multi-element: read additional source files beyond the primary
+              if (context.sourceFiles && Array.isArray(context.sourceFiles)) {
+                const additionalSources: Record<string, string> = {};
+                for (const sf of context.sourceFiles) {
+                  if (sf === context.sourceFile) continue; // already read above
+                  try {
+                    additionalSources[sf] = fileService.readFile(sf);
+                  } catch { /* skip */ }
+                }
+                if (Object.keys(additionalSources).length > 0) {
+                  enrichedContext = { ...enrichedContext, additionalSources };
+                }
               }
             }
 

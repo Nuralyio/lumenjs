@@ -13,7 +13,7 @@
 import { findAnnotatedElement, parseSourceAttr, startAnnotator } from './element-annotator.js';
 import { setupInlineTextEdit, triggerInlineEdit } from './inline-text-edit.js';
 import { createPropertiesPanel, showPropertiesForElement, hidePropertiesPanel, isPropertiesPanelOpen } from './properties-panel.js';
-import { createAiChatPanel, showAiChatForElement, hideAiChatPanel, isAiChatPanelOpen, updateAiChatPosition, updateAiChatTarget } from './ai-chat-panel.js';
+import { createAiChatPanel, showAiChatForElement, showAiChatForElements, hideAiChatPanel, isAiChatPanelOpen, updateAiChatPosition, updateAiChatTarget } from './ai-chat-panel.js';
 import { createAiProjectPanel, showAiProjectPanel, hideAiProjectPanel, isAiProjectPanelOpen, sendProjectMessage } from './ai-project-panel.js';
 import { deepElementFromPoint, createOverlay, positionOverlay, hideOverlay } from './overlay-utils.js';
 import {
@@ -35,20 +35,86 @@ let aiChatPanel: HTMLDivElement;
 let aiProjectPanel: HTMLDivElement;
 const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
+// Multi-selection state
+let multiSelectedElements: HTMLElement[] = [];
+let multiSelectOverlays: HTMLDivElement[] = [];
+
 // Shared ref for text-toolbar to access selectedElement
 const selectedElementRef = {
   get current() { return selectedElement; },
   set current(val: HTMLElement | null) { selectedElement = val; },
 };
 
+function clearMultiSelection() {
+  for (const ov of multiSelectOverlays) {
+    hideOverlay(ov);
+    ov.remove();
+  }
+  multiSelectOverlays = [];
+  multiSelectedElements = [];
+}
+
 function deselect() {
-  if (selectedElement) {
+  if (selectedElement || multiSelectedElements.length > 0) {
     selectedElement = null;
+    clearMultiSelection();
     hideOverlay(selectOverlay);
     hideTextToolbar();
     hidePropertiesPanel();
     hideAiChatPanel();
     updateSelectionInfo(null);
+  }
+}
+
+/** Select a single element (clearing multi-selection). */
+function selectSingle(el: HTMLElement) {
+  clearMultiSelection();
+  selectedElement = el;
+  positionOverlay(selectOverlay, el);
+  hideOverlay(hoverOverlay);
+  updateSelectionInfo(el);
+  showTextToolbarForElement(el);
+  showPropertiesForElement(el);
+  showAiChatForElement(el);
+}
+
+/** Toggle an element in/out of multi-selection (Shift+click). */
+function toggleMultiSelect(el: HTMLElement) {
+  hideTextToolbar();
+
+  // If this is the first shift-click and we already have a single selection,
+  // move that single selection into the multi-select array
+  if (multiSelectedElements.length === 0 && selectedElement) {
+    multiSelectedElements.push(selectedElement);
+    const ov = createOverlay('#3b82f6', 'solid');
+    positionOverlay(ov, selectedElement);
+    multiSelectOverlays.push(ov);
+  }
+
+  const idx = multiSelectedElements.indexOf(el);
+  if (idx >= 0) {
+    // Remove from multi-selection
+    multiSelectedElements.splice(idx, 1);
+    const ov = multiSelectOverlays.splice(idx, 1)[0];
+    if (ov) { hideOverlay(ov); ov.remove(); }
+  } else {
+    // Add to multi-selection
+    multiSelectedElements.push(el);
+    const ov = createOverlay('#3b82f6', 'solid');
+    positionOverlay(ov, el);
+    multiSelectOverlays.push(ov);
+  }
+
+  // Update primary selected element to the first in the list
+  if (multiSelectedElements.length > 0) {
+    selectedElement = multiSelectedElements[0];
+    // Hide the single-select overlay; multi-select overlays handle it
+    hideOverlay(selectOverlay);
+    hideOverlay(hoverOverlay);
+    updateSelectionInfo(selectedElement);
+    showAiChatForElements(multiSelectedElements);
+  } else {
+    deselect();
   }
 }
 
@@ -203,16 +269,14 @@ export function initStandaloneEditor() {
 
     event.preventDefault();
     event.stopPropagation();
-    selectedElement = selectEl;
-    positionOverlay(selectOverlay, selectEl);
-    hideOverlay(hoverOverlay);
-    updateSelectionInfo(selectEl);
-    showTextToolbarForElement(selectEl);
-    showPropertiesForElement(selectEl);
-    showAiChatForElement(selectEl);
+    if (event.shiftKey) {
+      toggleMultiSelect(selectEl);
+    } else {
+      selectSingle(selectEl);
+    }
   }, true);
 
-  // Click to select (desktop)
+  // Click to select (desktop) — supports Shift+click for multi-select
   let clickTimer: ReturnType<typeof setTimeout> | null = null;
 
   document.addEventListener('click', (event) => {
@@ -266,14 +330,13 @@ export function initStandaloneEditor() {
 
     if (clickTimer) clearTimeout(clickTimer);
     const selectEl = targetEl;
+    const isShift = event.shiftKey;
     clickTimer = setTimeout(() => {
-      selectedElement = selectEl;
-      positionOverlay(selectOverlay, selectEl);
-      hideOverlay(hoverOverlay);
-      updateSelectionInfo(selectEl);
-      showTextToolbarForElement(selectEl);
-      showPropertiesForElement(selectEl);
-      showAiChatForElement(selectEl);
+      if (isShift) {
+        toggleMultiSelect(selectEl);
+      } else {
+        selectSingle(selectEl);
+      }
     }, 200);
   }, true);
 
@@ -446,6 +509,12 @@ export function initStandaloneEditor() {
       positionOverlay(selectOverlay, selectedElement);
       const textTb = document.getElementById('nk-text-toolbar');
       if (textTb && textTb.style.display !== 'none') positionTextToolbar(selectedElement);
+    }
+    // Reposition multi-select overlays
+    for (let i = 0; i < multiSelectedElements.length; i++) {
+      if (multiSelectedElements[i].isConnected && multiSelectOverlays[i]) {
+        positionOverlay(multiSelectOverlays[i], multiSelectedElements[i]);
+      }
     }
     updateAiChatPosition();
   };

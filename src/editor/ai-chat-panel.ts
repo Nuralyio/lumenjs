@@ -6,7 +6,7 @@
 import { streamAiChat, rollbackAiTurn, checkAiStatus } from './editor-api-client.js';
 import { renderMarkdown } from './ai-markdown.js';
 
-const QUICK_ACTIONS = [
+const BASE_QUICK_ACTIONS = [
   { label: 'Improve text', prompt: 'Improve the text to be more professional' },
   { label: 'Animation', prompt: 'Add a subtle CSS animation to this element' },
   { label: 'Responsive', prompt: 'Make this element responsive for mobile' },
@@ -15,12 +15,55 @@ const QUICK_ACTIONS = [
   { label: 'Simplify', prompt: 'Simplify and clean up this element' },
 ];
 
+/** Returns context-aware quick actions based on the selected element(s). */
+function getContextQuickActions(targets: HTMLElement[]): Array<{ label: string; prompt: string }> {
+  const actions: Array<{ label: string; prompt: string }> = [];
+  if (targets.length === 0) return actions;
+
+  // Multi-element context actions
+  if (targets.length > 1) {
+    actions.push({ label: 'Make consistent', prompt: 'Make these elements visually consistent with each other' });
+    actions.push({ label: 'Align', prompt: 'Align these elements properly in a row or column' });
+    return actions;
+  }
+
+  const el = targets[0];
+  const tag = el.tagName.toLowerCase();
+
+  // Image elements
+  if (tag === 'img' || tag === 'picture' || tag === 'svg') {
+    actions.push({ label: 'Add alt text', prompt: 'Add descriptive alt text to this image for accessibility' });
+    actions.push({ label: 'Lazy-load', prompt: 'Add lazy-loading to this image for better performance' });
+  }
+
+  // Text elements
+  if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'label'].includes(tag)) {
+    actions.push({ label: 'Improve copy', prompt: 'Improve the copy/text content to be more engaging' });
+    actions.push({ label: 'Make i18n', prompt: 'Make this text translatable using i18n' });
+  }
+
+  // List elements
+  if (['ul', 'ol', 'dl'].includes(tag)) {
+    actions.push({ label: 'Add items', prompt: 'Add more list items following the same pattern' });
+    actions.push({ label: 'Make sortable', prompt: 'Make this list sortable with drag and drop' });
+  }
+
+  // Form elements
+  if (['form', 'input', 'textarea', 'select', 'button'].includes(tag)) {
+    actions.push({ label: 'Add validation', prompt: 'Add proper form validation to this element' });
+    actions.push({ label: 'Improve a11y', prompt: 'Improve accessibility: add labels, ARIA attributes, and keyboard support' });
+  }
+
+  return actions;
+}
+
 let panel: HTMLDivElement;
 let messagesContainer: HTMLDivElement;
 let inputEl: HTMLTextAreaElement;
 let sendBtn: HTMLButtonElement;
 let contextBadge: HTMLSpanElement;
-let currentTarget: HTMLElement | null = null;
+let quickActionsContainer: HTMLDivElement;
+let currentTargets: HTMLElement[] = [];
 let wasDragged = false;
 let sessionId: string | undefined;
 let activeController: AbortController | null = null;
@@ -38,9 +81,7 @@ export function createAiChatPanel(): HTMLDivElement {
       <button class="nk-ai-close" title="Close">✕</button>
     </div>
     <div class="nk-ai-messages"></div>
-    <div class="nk-ai-quick-actions">
-      ${QUICK_ACTIONS.map(a => `<button class="nk-ai-pill" data-prompt="${a.prompt.replace(/"/g, '&quot;')}">${a.label}</button>`).join('')}
-    </div>
+    <div class="nk-ai-quick-actions"></div>
     <div class="nk-ai-input-row">
       <textarea class="nk-ai-input" placeholder="Ask AI..." rows="1"></textarea>
       <button class="nk-ai-send" disabled title="Send">▶</button>
@@ -182,6 +223,7 @@ export function createAiChatPanel(): HTMLDivElement {
   inputEl = panel.querySelector('.nk-ai-input') as HTMLTextAreaElement;
   sendBtn = panel.querySelector('.nk-ai-send') as HTMLButtonElement;
   contextBadge = panel.querySelector('.nk-ai-context') as HTMLSpanElement;
+  quickActionsContainer = panel.querySelector('.nk-ai-quick-actions') as HTMLDivElement;
 
   // Close
   panel.querySelector('.nk-ai-close')!.addEventListener('click', () => hideAiChatPanel());
@@ -204,18 +246,8 @@ export function createAiChatPanel(): HTMLDivElement {
     }
   });
 
-  // Quick action pills
-  panel.querySelectorAll('.nk-ai-pill').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const prompt = (btn as HTMLElement).dataset.prompt || '';
-      inputEl.value = prompt;
-      inputEl.style.height = 'auto';
-      inputEl.style.height = Math.min(inputEl.scrollHeight, 60) + 'px';
-      sendBtn.disabled = false;
-      nextModel = 'fast';
-      sendMessage();
-    });
-  });
+  // Render initial quick action pills
+  renderQuickActions([]);
 
   // Drag via header
   const header = panel.querySelector('.nk-ai-header') as HTMLElement;
@@ -268,6 +300,28 @@ export function createAiChatPanel(): HTMLDivElement {
   return panel;
 }
 
+/** Render quick action pills (base + context-aware) into the container. */
+function renderQuickActions(targets: HTMLElement[]): void {
+  const contextActions = getContextQuickActions(targets);
+  const allActions = [...contextActions, ...BASE_QUICK_ACTIONS];
+
+  quickActionsContainer.innerHTML = allActions
+    .map(a => `<button class="nk-ai-pill" data-prompt="${a.prompt.replace(/"/g, '&quot;')}">${a.label}</button>`)
+    .join('');
+
+  quickActionsContainer.querySelectorAll('.nk-ai-pill').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const prompt = (btn as HTMLElement).dataset.prompt || '';
+      inputEl.value = prompt;
+      inputEl.style.height = 'auto';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 60) + 'px';
+      sendBtn.disabled = false;
+      nextModel = 'fast';
+      sendMessage();
+    });
+  });
+}
+
 /** Position the bubble centered below the element (skips if user dragged) */
 function positionBubble(el: HTMLElement): void {
   if (wasDragged) return;
@@ -296,28 +350,42 @@ function positionBubble(el: HTMLElement): void {
 }
 
 export function showAiChatForElement(el: HTMLElement): void {
-  // Reset drag position when selecting a different element
-  if (currentTarget !== el) wasDragged = false;
-  currentTarget = el;
-  const tag = el.tagName.toLowerCase();
-  const source = el.getAttribute('data-nk-source');
-  let ctx = `<${tag}>`;
-  if (source) {
-    const parts = source.split(':');
-    if (parts.length >= 2) {
-      ctx += ` ${parts[0]}:${parts[1]}`;
+  showAiChatForElements([el]);
+}
+
+export function showAiChatForElements(els: HTMLElement[]): void {
+  if (els.length === 0) return;
+
+  // Reset drag position when selection changes
+  const primary = els[0];
+  if (currentTargets.length !== els.length || currentTargets[0] !== primary) wasDragged = false;
+  currentTargets = els;
+
+  // Update context badge
+  if (els.length === 1) {
+    const tag = primary.tagName.toLowerCase();
+    const source = primary.getAttribute('data-nk-source');
+    let ctx = `<${tag}>`;
+    if (source) {
+      const parts = source.split(':');
+      if (parts.length >= 2) ctx += ` ${parts[0]}:${parts[1]}`;
     }
+    contextBadge.textContent = ctx;
+  } else {
+    contextBadge.textContent = `${els.length} elements selected`;
   }
-  contextBadge.textContent = ctx;
+
+  // Re-render quick actions based on current selection
+  renderQuickActions(els);
 
   // Position first, then make visible — prevents flash at default position
-  positionBubble(el);
+  positionBubble(primary);
   panel.classList.add('open');
 }
 
 /** Update target reference after HMR and reanchor the panel to the new element */
 export function updateAiChatTarget(el: HTMLElement): void {
-  currentTarget = el;
+  currentTargets = [el];
   const tag = el.tagName.toLowerCase();
   const source = el.getAttribute('data-nk-source');
   let ctx = `<${tag}>`;
@@ -326,13 +394,14 @@ export function updateAiChatTarget(el: HTMLElement): void {
     if (parts.length >= 2) ctx += ` ${parts[0]}:${parts[1]}`;
   }
   contextBadge.textContent = ctx;
+  renderQuickActions(currentTargets);
   // Reposition to the new element (unless user has manually dragged)
   positionBubble(el);
 }
 
 export function hideAiChatPanel(): void {
   panel.classList.remove('open');
-  currentTarget = null;
+  currentTargets = [];
 }
 
 export function isAiChatPanelOpen(): boolean {
@@ -341,8 +410,9 @@ export function isAiChatPanelOpen(): boolean {
 
 /** Reposition on scroll/resize if open (skips if element was disconnected by HMR) */
 export function updateAiChatPosition(): void {
-  if (currentTarget && currentTarget.isConnected && isAiChatPanelOpen()) {
-    positionBubble(currentTarget);
+  const primary = currentTargets[0];
+  if (primary && primary.isConnected && isAiChatPanelOpen()) {
+    positionBubble(primary);
   }
 }
 
@@ -421,6 +491,64 @@ function showTypingIndicator(): HTMLDivElement {
   return indicator;
 }
 
+/** Gather rich context for a single element: tag, source, attrs, parents, siblings, styles. */
+function gatherElementContext(el: HTMLElement): Record<string, any> {
+  const ctx: Record<string, any> = {};
+  ctx.elementTag = el.tagName.toLowerCase();
+
+  const source = el.getAttribute('data-nk-source');
+  if (source) {
+    const parts = source.split(':');
+    ctx.sourceFile = parts[0];
+    if (parts[1]) ctx.sourceLine = parseInt(parts[1], 10);
+  }
+
+  // Relevant attributes
+  const attrs: Record<string, string> = {};
+  for (const attr of el.attributes) {
+    if (!attr.name.startsWith('data-nk-') && attr.name !== 'class' && attr.name !== 'style') {
+      attrs[attr.name] = attr.value;
+    }
+  }
+  if (Object.keys(attrs).length > 0) ctx.elementAttributes = attrs;
+
+  // Parent chain (up to 5 ancestors) for layout context
+  const parents: string[] = [];
+  let p = el.parentElement;
+  while (p && p !== document.body && parents.length < 5) {
+    const tag = p.tagName.toLowerCase();
+    const src = p.getAttribute('data-nk-source');
+    parents.push(src ? `<${tag}> (${src})` : `<${tag}>`);
+    p = p.parentElement;
+  }
+  if (parents.length > 0) ctx.parentChain = parents;
+
+  // Immediate siblings (up to 10) for structural context
+  const siblings: string[] = [];
+  for (const sib of el.parentElement?.children || []) {
+    if (sib !== el && siblings.length < 10) {
+      siblings.push(`<${sib.tagName.toLowerCase()}>`);
+    }
+  }
+  if (siblings.length > 0) ctx.siblings = siblings;
+
+  // Key computed styles for visual context
+  try {
+    const cs = window.getComputedStyle(el);
+    ctx.computedStyles = {
+      display: cs.display,
+      position: cs.position,
+      fontSize: cs.fontSize,
+      color: cs.color,
+      backgroundColor: cs.backgroundColor,
+      padding: cs.padding,
+      margin: cs.margin,
+    };
+  } catch { /* non-fatal */ }
+
+  return ctx;
+}
+
 function sendMessage(): void {
   const text = inputEl.value.trim();
   if (!text) return;
@@ -447,24 +575,25 @@ function sendMessage(): void {
 
   const typing = showTypingIndicator();
 
-  // Gather context from the selected element
+  // Gather context from the selected element(s)
   const context: Record<string, any> = {};
-  if (currentTarget) {
-    context.elementTag = currentTarget.tagName.toLowerCase();
-    const source = currentTarget.getAttribute('data-nk-source');
-    if (source) {
-      const parts = source.split(':');
-      context.sourceFile = parts[0];
-      if (parts[1]) context.sourceLine = parseInt(parts[1], 10);
-    }
-    // Gather relevant attributes
-    const attrs: Record<string, string> = {};
-    for (const attr of currentTarget.attributes) {
-      if (!attr.name.startsWith('data-nk-') && attr.name !== 'class' && attr.name !== 'style') {
-        attrs[attr.name] = attr.value;
+  if (currentTargets.length > 0) {
+    const elements = currentTargets.map(gatherElementContext);
+    if (elements.length === 1) {
+      // Single element — flatten into context for backward compatibility
+      Object.assign(context, elements[0]);
+    } else {
+      // Multi-element — send as array
+      context.elements = elements;
+      // Also set the primary element's source for file snapshotting
+      if (elements[0].sourceFile) {
+        context.sourceFile = elements[0].sourceFile;
+        context.sourceLine = elements[0].sourceLine;
       }
+      // Collect all unique source files for multi-file enrichment
+      const sourceFiles = [...new Set(elements.map(e => e.sourceFile).filter(Boolean))];
+      if (sourceFiles.length > 0) context.sourceFiles = sourceFiles;
     }
-    if (Object.keys(attrs).length > 0) context.elementAttributes = attrs;
   }
 
   const streamMsg = createStreamingMessage();
