@@ -181,7 +181,24 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         locale = result.locale;
       }
 
-      // 7. Page routes — SSR render
+      // 7. Check for pre-rendered HTML file
+      const prerenderFile = path.join(clientDir, resolvedPathname === '/' ? '' : resolvedPathname, 'index.html');
+      if (resolvedPathname !== '/' && fs.existsSync(prerenderFile)) {
+        const prerenderHtml = fs.readFileSync(prerenderFile, 'utf-8');
+        sendCompressed(req, res, 200, 'text/html; charset=utf-8', prerenderHtml);
+        return;
+      }
+
+      // Check if the root index.html is a pre-rendered page (has data-nk-ssr attribute)
+      if (resolvedPathname === '/') {
+        const rootRoute = manifest.routes.find(r => r.path === '/');
+        if (rootRoute?.prerender) {
+          sendCompressed(req, res, 200, 'text/html; charset=utf-8', indexHtmlShell);
+          return;
+        }
+      }
+
+      // 8. Page routes — SSR render
       await handlePageRoute(manifest, serverDir, pagesDir, resolvedPathname, queryString, indexHtmlShell, title, ssrRuntime, req, res);
     } catch (err: any) {
       console.error('[LumenJS] Request error:', err);

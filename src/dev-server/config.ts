@@ -18,6 +18,7 @@ export interface ProjectConfig {
   integrations: string[];
   i18n?: I18nConfig;
   prefetch: PrefetchStrategy;
+  prerender?: boolean;
 }
 
 /**
@@ -50,6 +51,18 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
     } catch { /* use defaults */ }
   }
 
+  // Parse global prerender flag
+  let prerender: boolean | undefined;
+  if (fs.existsSync(configPath)) {
+    try {
+      const configContent = fs.readFileSync(configPath, 'utf-8');
+      const prerenderMatch = configContent.match(/prerender\s*:\s*(true|false)/);
+      if (prerenderMatch) {
+        prerender = prerenderMatch[1] === 'true';
+      }
+    } catch { /* ignore */ }
+  }
+
   // Parse i18n config (reuse the same file read)
   let i18n: I18nConfig | undefined;
   if (fs.existsSync(configPath)) {
@@ -76,7 +89,7 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
     } catch { /* ignore */ }
   }
 
-  return { title, integrations, prefetch, ...(i18n ? { i18n } : {}) };
+  return { title, integrations, prefetch, ...(i18n ? { i18n } : {}), ...(prerender ? { prerender } : {}) };
 }
 
 /**

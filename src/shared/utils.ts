@@ -153,6 +153,16 @@ function hasTopLevelExport(content: string, fnName: string): boolean {
 }
 
 /**
+ * Check if a page file exports `export const prerender = true`.
+ */
+export function fileHasPrerender(filePath: string): boolean {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return /export\s+const\s+prerender\s*=\s*true/.test(content);
+  } catch { return false; }
+}
+
+/**
  * Check if a page/layout file exports a loader() function.
  */
 export function fileHasLoader(filePath: string): boolean {

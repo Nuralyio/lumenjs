@@ -15,6 +15,7 @@ export interface ManifestRoute {
   hasStandalone?: boolean;
   tagName?: string;
   layouts?: string[];
+  prerender?: boolean;
 }
 
 export interface I18nManifest {
