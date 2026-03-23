@@ -135,11 +135,12 @@ describe('handlers', () => {
   });
 
   describe('presence', () => {
-    it('sets presence and pushes update', () => {
+    it('sets presence and broadcasts to conversation rooms', () => {
       const ctx = createMockCtx();
+      ctx.store.joinConversation('user-1', 'c1');
       handlePresenceUpdate(ctx, { status: 'away' });
       expect(ctx.store.getPresence('user-1')?.status).toBe('away');
-      expect(ctx.push).toHaveBeenCalledWith(expect.objectContaining({
+      expect(ctx.broadcastAll).toHaveBeenCalledWith('conv:c1', expect.objectContaining({
         event: 'presence:changed',
         data: expect.objectContaining({ userId: 'user-1', status: 'away' }),
       }));

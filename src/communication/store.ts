@@ -37,6 +37,8 @@ export class CommunicationStore {
   private userSockets = new Map<string, Set<string>>();
   /** socketId → userId (reverse lookup) */
   private socketUser = new Map<string, string>();
+  /** userId → set of conversation IDs the user has joined */
+  private userConversations = new Map<string, Set<string>>();
   /** userId → public key bundle for E2E encryption */
   private keyBundles = new Map<string, KeyBundle>();
   /** userId → rate limit tracking */
@@ -81,6 +83,28 @@ export class CommunicationStore {
   isUserOnline(userId: string): boolean {
     const sockets = this.userSockets.get(userId);
     return !!sockets && sockets.size > 0;
+  }
+
+  // ── Conversation Membership ────────────────────────────────────
+
+  joinConversation(userId: string, conversationId: string): void {
+    let convs = this.userConversations.get(userId);
+    if (!convs) {
+      convs = new Set();
+      this.userConversations.set(userId, convs);
+    }
+    convs.add(conversationId);
+  }
+
+  leaveConversation(userId: string, conversationId: string): void {
+    const convs = this.userConversations.get(userId);
+    if (!convs) return;
+    convs.delete(conversationId);
+    if (convs.size === 0) this.userConversations.delete(userId);
+  }
+
+  getUserConversations(userId: string): Set<string> {
+    return this.userConversations.get(userId) || new Set();
   }
 
   // ── Presence ──────────────────────────────────────────────────

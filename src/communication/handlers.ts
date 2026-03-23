@@ -104,11 +104,13 @@ export function handleConversationCreate(
 export function handleConversationJoin(ctx: HandlerContext, data: { conversationId: string }): void {
   ctx.joinRoom(`conv:${data.conversationId}`);
   ctx.store.addConversationMember(data.conversationId, ctx.userId);
+  ctx.store.joinConversation(ctx.userId, data.conversationId);
 }
 
 export function handleConversationLeave(ctx: HandlerContext, data: { conversationId: string }): void {
   ctx.leaveRoom(`conv:${data.conversationId}`);
   ctx.store.removeConversationMember(data.conversationId, ctx.userId);
+  ctx.store.leaveConversation(ctx.userId, data.conversationId);
 }
 
 export function handleConversationArchive(
@@ -494,14 +496,35 @@ export function handleTypingStop(ctx: HandlerContext, data: { conversationId: st
 
 // ── Presence ────────────────────────────────────────────────────
 
-export function handlePresenceUpdate(ctx: HandlerContext, data: { status: PresenceStatus }): void {
-  const entry = ctx.store.setPresence(ctx.userId, data.status);
+/** Broadcast online status to all conversation rooms when a user connects */
+export function handleConnect(ctx: HandlerContext): void {
+  const conversations = ctx.store.getUserConversations(ctx.userId);
+  if (conversations.size === 0) return;
 
-  // Broadcast to all rooms the user is part of — the socket.io broadcast handles this
-  ctx.push({
+  const entry = ctx.store.getPresence(ctx.userId);
+  if (!entry) return;
+
+  const payload = {
     event: 'presence:changed',
     data: { userId: ctx.userId, status: entry.status, lastSeen: entry.lastSeen },
-  });
+  };
+
+  for (const convId of conversations) {
+    ctx.broadcastAll(`conv:${convId}`, payload);
+  }
+}
+
+export function handlePresenceUpdate(ctx: HandlerContext, data: { status: PresenceStatus }): void {
+  const entry = ctx.store.setPresence(ctx.userId, data.status);
+  const payload = {
+    event: 'presence:changed',
+    data: { userId: ctx.userId, status: entry.status, lastSeen: entry.lastSeen },
+  };
+
+  // Broadcast to all conversation rooms the user has joined
+  for (const convId of ctx.store.getUserConversations(ctx.userId)) {
+    ctx.broadcastAll(`conv:${convId}`, payload);
+  }
 }
 
 /** Called on disconnect to clean up user state */
@@ -518,13 +541,19 @@ export function handleDisconnect(ctx: HandlerContext, socketId: string): void {
     });
   }
 
-  // If user has no more connected sockets, set presence to offline
+  // If user has no more connected sockets, set presence to offline and broadcast
   if (!ctx.store.isUserOnline(userId)) {
-    ctx.store.removeUserFromAllConversations(userId);
     const entry = ctx.store.setPresence(userId, 'offline');
-    ctx.push({
+    const payload = {
       event: 'presence:changed',
       data: { userId, status: 'offline', lastSeen: entry.lastSeen },
-    });
+    };
+
+    // Broadcast offline to all conversation rooms before cleaning up membership
+    for (const convId of ctx.store.getUserConversations(userId)) {
+      ctx.broadcastAll(`conv:${convId}`, payload);
+    }
+
+    ctx.store.removeUserFromAllConversations(userId);
   }
 }

@@ -17,6 +17,7 @@ import {
   handleTypingStart,
   handleTypingStop,
   handlePresenceUpdate,
+  handleConnect,
   handleDisconnect,
   type HandlerContext,
 } from './handlers.js';
@@ -99,7 +100,8 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
 
     const socketId: string = ctx.socket?.id || crypto.randomUUID();
 
-    // Register socket
+    // Register socket and check if this is the user's first connection
+    const isFirstSocket = !store.isUserOnline(userId);
     store.mapUserSocket(userId, socketId);
     store.setPresence(userId, 'online');
 
@@ -138,6 +140,11 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
       },
       broadcastAll: ctx.room.broadcastAll,
     };
+
+    // Broadcast online status if this is the user's first socket
+    if (isFirstSocket) {
+      handleConnect(handlerCtx);
+    }
 
     // ── Chat Events ──────────────────────────────────────────
 
