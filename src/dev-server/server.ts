@@ -20,6 +20,7 @@ import { virtualModulesPlugin } from './plugins/vite-plugin-virtual-modules.js';
 import { i18nPlugin, loadTranslationsFromDisk } from './plugins/vite-plugin-i18n.js';
 import { authPlugin } from './plugins/vite-plugin-auth.js';
 import { communicationPlugin } from './plugins/vite-plugin-communication.js';
+import { lumenSocketIOPlugin } from './plugins/vite-plugin-socketio.js';
 import { resolveLocale } from './middleware/locale.js';
 import { scanMiddleware, getMiddlewareDirsForPathname } from '../build/scan.js';
 import { runMiddlewareChain, extractMiddleware, ConnectMiddleware } from '../shared/middleware-runner.js';
@@ -145,6 +146,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       ...(editorMode ? [sourceAnnotatorPlugin(projectDir), editorApiPlugin(projectDir)] : []),
       ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
       ...(integrations.includes('communication') ? [communicationPlugin(projectDir)] : []),
+      lumenSocketIOPlugin(pagesDir),
       {
         // Clear SSR module cache on file changes so the next SSR request uses fresh code.
         // Without this, HMR updates the client but SSR keeps serving stale modules.

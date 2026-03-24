@@ -187,6 +187,16 @@ export function fileHasAuth(filePath: string): boolean {
 }
 
 /**
+ * Check if a page file exports a `socket` function or constant.
+ */
+export function fileHasSocket(filePath: string): boolean {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return /export\s+(function|const)\s+socket[\s(=]/.test(content);
+  } catch { return false; }
+}
+
+/**
  * Check if a page exports `standalone = true` (renders without any layout).
  */
 export function fileHasStandalone(filePath: string): boolean {
