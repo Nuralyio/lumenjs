@@ -63,6 +63,66 @@ export function markRead(conversationId: string, messageId: string): void {
   emit('message:read', { conversationId, messageId });
 }
 
+/** React to a message with an emoji (toggle) */
+export function reactToMessage(messageId: string, conversationId: string, emoji: string): void {
+  emit('message:react', { messageId, conversationId, emoji });
+}
+
+/** Edit a message */
+export function editMessage(messageId: string, conversationId: string, content: string): void {
+  emit('message:edit', { messageId, conversationId, content });
+}
+
+/** Delete a message */
+export function deleteMessage(messageId: string, conversationId: string): void {
+  emit('message:delete', { messageId, conversationId });
+}
+
+/** Listen for reaction updates */
+export function onReactionUpdate(handler: (data: { messageId: string; reactions: any[] }) => void): () => void {
+  addHandler('message:reaction-update', handler);
+  return () => removeHandler('message:reaction-update', handler);
+}
+
+/** Listen for message edits */
+export function onMessageUpdated(handler: (data: { messageId: string; content: string; updatedAt: string }) => void): () => void {
+  addHandler('message:updated', handler);
+  return () => removeHandler('message:updated', handler);
+}
+
+/** Listen for message deletions */
+export function onMessageDeleted(handler: (data: { messageId: string; conversationId: string }) => void): () => void {
+  addHandler('message:deleted', handler);
+  return () => removeHandler('message:deleted', handler);
+}
+
+/** Upload a file (returns attachment metadata) */
+export async function uploadFile(file: Blob, filename: string, encrypted = false): Promise<{ id: string; url: string; size: number }> {
+  const res = await fetch('/__nk_comm/upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-Filename': filename,
+      ...(encrypted ? { 'X-Encrypted': '1' } : {}),
+    },
+    body: file,
+  });
+  if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+  return res.json();
+}
+
+/** Fetch link previews for a text */
+export async function fetchLinkPreviews(text: string): Promise<any[]> {
+  const res = await fetch('/__nk_comm/link-preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.previews || [];
+}
+
 /** Start typing indicator */
 export function startTyping(conversationId: string): void {
   emit('typing:start', { conversationId });

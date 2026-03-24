@@ -5,6 +5,9 @@ import {
   handleConversationLeave,
   handleMessageSend,
   handleMessageRead,
+  handleMessageReact,
+  handleMessageEdit,
+  handleMessageDelete,
   handleTypingStart,
   handleTypingStop,
   handlePresenceUpdate,
@@ -74,6 +77,38 @@ describe('handlers', () => {
       expect(ctx.broadcastAll).toHaveBeenCalledWith('conv:c1', expect.objectContaining({
         event: 'read-receipt:update',
         data: expect.objectContaining({ conversationId: 'c1', messageId: 'm1' }),
+      }));
+    });
+  });
+
+  describe('reactions', () => {
+    it('broadcasts reaction without DB', () => {
+      const ctx = createMockCtx();
+      handleMessageReact(ctx, { messageId: 'm1', conversationId: 'c1', emoji: '👍' });
+      expect(ctx.broadcastAll).toHaveBeenCalledWith('conv:c1', expect.objectContaining({
+        event: 'message:reaction-update',
+      }));
+    });
+  });
+
+  describe('message edit', () => {
+    it('broadcasts edit without DB', () => {
+      const ctx = createMockCtx();
+      handleMessageEdit(ctx, { messageId: 'm1', conversationId: 'c1', content: 'edited text' });
+      expect(ctx.broadcastAll).toHaveBeenCalledWith('conv:c1', expect.objectContaining({
+        event: 'message:updated',
+        data: expect.objectContaining({ messageId: 'm1', content: 'edited text' }),
+      }));
+    });
+  });
+
+  describe('message delete', () => {
+    it('broadcasts deletion without DB', () => {
+      const ctx = createMockCtx();
+      handleMessageDelete(ctx, { messageId: 'm1', conversationId: 'c1' });
+      expect(ctx.broadcastAll).toHaveBeenCalledWith('conv:c1', expect.objectContaining({
+        event: 'message:deleted',
+        data: expect.objectContaining({ messageId: 'm1', conversationId: 'c1' }),
       }));
     });
   });

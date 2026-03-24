@@ -1,9 +1,12 @@
 import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 import { Plugin } from 'vite';
 import { setProjectDir } from '../../db/context.js';
 import { useDb } from '../../db/index.js';
 import { ensureCommunicationTables } from '../../communication/schema.js';
 import { createCommunicationApiHandlers } from '../../communication/server.js';
+import { fetchLinkPreview, extractUrls } from '../../communication/link-preview.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 
 /**
@@ -90,6 +93,64 @@ export function communicationPlugin(projectDir: string): Plugin {
             const params = new URL(url, 'http://localhost').searchParams;
             const data = commApi.searchMessages(params.get('q') || '');
             sendJson(res, 200, data);
+            return;
+          }
+
+          // POST /__nk_comm/upload — file upload
+          if (rest === 'upload' && req.method === 'POST') {
+            if (!userId) { sendJson(res, 401, { error: 'Unauthorized' }); return; }
+            const uploadDir = path.join(projectDir, 'data', 'uploads');
+            if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+            const chunks: Buffer[] = [];
+            req.on('data', (c: Buffer) => chunks.push(c));
+            req.on('end', () => {
+              const body = Buffer.concat(chunks);
+              const id = crypto.randomUUID();
+              const contentType = req.headers['content-type'] || '';
+
+              // Simple raw upload (client sends encrypted blob or raw file)
+              const ext = contentType.includes('image') ? '.bin' : '.bin';
+              const filePath = path.join(uploadDir, `${id}${ext}`);
+              fs.writeFileSync(filePath, body);
+
+              const fileUrl = `/__nk_comm/files/${id}`;
+              if (db) {
+                db.run('INSERT INTO attachments (id, filename, mimetype, size, url, uploaded_by, encrypted) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                  id, req.headers['x-filename'] || `file-${id}`, contentType, body.length, fileUrl, userId, req.headers['x-encrypted'] === '1' ? 1 : 0);
+              }
+              sendJson(res, 201, { id, url: fileUrl, size: body.length });
+            });
+            return;
+          }
+
+          // GET /__nk_comm/files/:id — serve uploaded file
+          if (rest.startsWith('files/') && req.method === 'GET') {
+            const fileId = rest.slice('files/'.length);
+            const uploadDir = path.join(projectDir, 'data', 'uploads');
+            const filePath = path.join(uploadDir, `${fileId}.bin`);
+            if (!fs.existsSync(filePath)) { sendJson(res, 404, { error: 'File not found' }); return; }
+            const stat = fs.statSync(filePath);
+            let contentType = 'application/octet-stream';
+            if (db) {
+              const att = db.get('SELECT mimetype FROM attachments WHERE id = ?', fileId);
+              if (att) contentType = (att as any).mimetype;
+            }
+            res.writeHead(200, { 'Content-Type': contentType, 'Content-Length': stat.size, 'Cache-Control': 'public, max-age=86400' });
+            fs.createReadStream(filePath).pipe(res);
+            return;
+          }
+
+          // POST /__nk_comm/link-preview — fetch link preview
+          if (rest === 'link-preview' && req.method === 'POST') {
+            const body = JSON.parse(await readBody(req));
+            const urls = extractUrls(body.text || '');
+            const previews = [];
+            for (const u of urls) {
+              const preview = await fetchLinkPreview(u, db);
+              if (preview) previews.push(preview);
+            }
+            sendJson(res, 200, { previews });
             return;
           }
 

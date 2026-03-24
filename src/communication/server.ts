@@ -6,6 +6,9 @@ import {
   handleConversationLeave,
   handleMessageSend,
   handleMessageRead,
+  handleMessageReact,
+  handleMessageEdit,
+  handleMessageDelete,
   handleTypingStart,
   handleTypingStop,
   handlePresenceUpdate,
@@ -116,6 +119,9 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
     ctx.on('conversation:join', (data) => handleConversationJoin(handlerCtx, data));
     ctx.on('conversation:leave', (data) => handleConversationLeave(handlerCtx, data));
     ctx.on('message:send', (data) => handleMessageSend(handlerCtx, data));
+    ctx.on('message:react', (data) => handleMessageReact(handlerCtx, data));
+    ctx.on('message:edit', (data) => handleMessageEdit(handlerCtx, data));
+    ctx.on('message:delete', (data) => handleMessageDelete(handlerCtx, data));
     ctx.on('message:read', (data) => handleMessageRead(handlerCtx, data));
     ctx.on('typing:start', (data) => handleTypingStart(handlerCtx, data));
     ctx.on('typing:stop', (data) => handleTypingStop(handlerCtx, data));

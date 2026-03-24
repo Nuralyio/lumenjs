@@ -66,7 +66,39 @@ export function ensureCommunicationTables(db: Db): void {
       FOREIGN KEY (user_id) REFERENCES encryption_keys(user_id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS message_reactions (
+      message_id INTEGER NOT NULL,
+      user_id TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (message_id, user_id, emoji),
+      FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS attachments (
+      id TEXT PRIMARY KEY,
+      filename TEXT NOT NULL,
+      mimetype TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      thumbnail_url TEXT,
+      uploaded_by TEXT NOT NULL,
+      encrypted INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS link_previews (
+      url_hash TEXT PRIMARY KEY,
+      url TEXT NOT NULL,
+      title TEXT,
+      description TEXT,
+      image TEXT,
+      domain TEXT,
+      fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_participants_user ON conversation_participants(user_id);
+    CREATE INDEX IF NOT EXISTS idx_reactions_message ON message_reactions(message_id);
   `);
 }

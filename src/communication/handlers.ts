@@ -133,6 +133,86 @@ export function handleMessageRead(
   });
 }
 
+// ── Message Reactions ────────────────────────────────────────────
+
+export function handleMessageReact(
+  ctx: HandlerContext,
+  data: { messageId: string; conversationId: string; emoji: string },
+): void {
+  if (ctx.db) {
+    // Toggle: if already reacted with this emoji, remove it
+    const existing = ctx.db.get(
+      'SELECT 1 FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?',
+      data.messageId, ctx.userId, data.emoji,
+    );
+    if (existing) {
+      ctx.db.run('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?', data.messageId, ctx.userId, data.emoji);
+    } else {
+      ctx.db.run('INSERT INTO message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)', data.messageId, ctx.userId, data.emoji);
+    }
+
+    // Fetch all reactions for this message
+    const reactions = ctx.db.all(
+      'SELECT emoji, COUNT(*) as count, GROUP_CONCAT(user_id) as users FROM message_reactions WHERE message_id = ? GROUP BY emoji',
+      data.messageId,
+    );
+    ctx.broadcastAll(`conv:${data.conversationId}`, {
+      event: 'message:reaction-update',
+      data: { messageId: data.messageId, reactions: reactions.map((r: any) => ({ emoji: r.emoji, count: r.count, users: r.users.split(',') })) },
+    });
+  } else {
+    // Without DB, just broadcast the reaction event
+    ctx.broadcastAll(`conv:${data.conversationId}`, {
+      event: 'message:reaction-update',
+      data: { messageId: data.messageId, reactions: [{ emoji: data.emoji, count: 1, users: [ctx.userId] }] },
+    });
+  }
+}
+
+// ── Message Edit ────────────────────────────────────────────────
+
+export function handleMessageEdit(
+  ctx: HandlerContext,
+  data: { messageId: string; conversationId: string; content: string },
+): void {
+  const now = new Date().toISOString();
+
+  if (ctx.db) {
+    // Only allow sender to edit
+    const msg = ctx.db.get('SELECT sender_id FROM messages WHERE id = ?', data.messageId);
+    if (!msg || (msg as any).sender_id !== ctx.userId) return;
+
+    ctx.db.run('UPDATE messages SET content = ?, updated_at = ? WHERE id = ? AND sender_id = ?',
+      data.content, now, data.messageId, ctx.userId);
+  }
+
+  ctx.broadcastAll(`conv:${data.conversationId}`, {
+    event: 'message:updated',
+    data: { messageId: data.messageId, content: data.content, updatedAt: now, editedBy: ctx.userId },
+  });
+}
+
+// ── Message Delete ──────────────────────────────────────────────
+
+export function handleMessageDelete(
+  ctx: HandlerContext,
+  data: { messageId: string; conversationId: string },
+): void {
+  if (ctx.db) {
+    // Only allow sender to delete
+    const msg = ctx.db.get('SELECT sender_id FROM messages WHERE id = ?', data.messageId);
+    if (!msg || (msg as any).sender_id !== ctx.userId) return;
+
+    ctx.db.run("UPDATE messages SET content = '', type = 'system', updated_at = ? WHERE id = ? AND sender_id = ?",
+      new Date().toISOString(), data.messageId, ctx.userId);
+  }
+
+  ctx.broadcastAll(`conv:${data.conversationId}`, {
+    event: 'message:deleted',
+    data: { messageId: data.messageId, conversationId: data.conversationId, deletedBy: ctx.userId },
+  });
+}
+
 // ── Typing ──────────────────────────────────────────────────────
 
 export function handleTypingStart(ctx: HandlerContext, data: { conversationId: string }): void {
