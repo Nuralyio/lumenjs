@@ -31,10 +31,9 @@ function sendJson(res: ServerResponse, status: number, data: any): void {
   res.end(JSON.stringify(data));
 }
 
-/** Check if request wants token-based auth (mobile) */
-function isTokenMode(url: URL, req: IncomingMessage): boolean {
-  return url.searchParams.get('mode') === 'token' ||
-    (req.headers.accept?.includes('application/json') === true && !req.headers.cookie);
+/** Check if request wants token-based auth (mobile) — only with explicit ?mode=token */
+function isTokenMode(url: URL, _req: IncomingMessage): boolean {
+  return url.searchParams.get('mode') === 'token';
 }
 
 /**
