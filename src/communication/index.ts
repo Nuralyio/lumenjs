@@ -62,3 +62,7 @@ export type { EncryptionContext } from './encryption.js';
 
 export { createCommunicationHandler, createCommunicationApiHandlers } from './server.js';
 export type { CommunicationHandlerOptions } from './server.js';
+
+// ── Schema ────────────────────────────────────────────────────────
+
+export { ensureCommunicationTables } from './schema.js';

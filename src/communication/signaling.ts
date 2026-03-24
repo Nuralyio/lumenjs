@@ -65,9 +65,9 @@ export function handleCallInitiate(
 
   // Notify each callee with incoming call
   for (const calleeId of data.calleeIds) {
-    // Check if callee is busy
+    // Check if callee is busy (exclude the current call being initiated)
     const calleeActiveCall = ctx.store.getActiveCallForUser(calleeId);
-    if (calleeActiveCall) {
+    if (calleeActiveCall && calleeActiveCall.id !== callId) {
       emitToUser(ctx, ctx.userId, {
         event: 'call:state-changed',
         data: { callId, state: 'ended', endReason: 'busy' },

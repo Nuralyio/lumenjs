@@ -18,12 +18,13 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     'router-hydration': 'router-hydration.js',
     'i18n': 'i18n.js',
     'auth': 'auth.js',
+    'communication': 'communication.js',
     'hydrate-support': '__virtual__',
   };
 
   // Modules resolved via resolve.alias instead of virtual module.
   // They still appear in the map so relative import rewrites work.
-  const aliasedModules = new Set(['i18n', 'auth']);
+  const aliasedModules = new Set(['i18n', 'auth', 'communication']);
 
   const editorModules: Record<string, string> = {
     'editor-bridge': 'editor-bridge.js',

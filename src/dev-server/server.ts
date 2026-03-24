@@ -19,6 +19,7 @@ import { editorApiPlugin } from './plugins/vite-plugin-editor-api.js';
 import { virtualModulesPlugin } from './plugins/vite-plugin-virtual-modules.js';
 import { i18nPlugin, loadTranslationsFromDisk } from './plugins/vite-plugin-i18n.js';
 import { authPlugin } from './plugins/vite-plugin-auth.js';
+import { communicationPlugin } from './plugins/vite-plugin-communication.js';
 import { resolveLocale } from './middleware/locale.js';
 import { scanMiddleware, getMiddlewareDirsForPathname } from '../build/scan.js';
 import { runMiddlewareChain, extractMiddleware, ConnectMiddleware } from '../shared/middleware-runner.js';
@@ -65,6 +66,7 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
       '@lumenjs/i18n': path.join(runtimeDir, 'i18n.js'),
       '@lumenjs/auth': path.join(runtimeDir, 'auth.js'),
       '@nuraly/lumenjs-auth': path.join(runtimeDir, 'auth.js'),
+      '@lumenjs/communication': path.join(runtimeDir, 'communication.js'),
     },
     conditions: isDev ? ['development', 'browser'] : ['browser'],
     // Note: resolve.dedupe is NOT used — it resolves via Node's algorithm
@@ -142,6 +144,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       ...(i18nConfig ? [i18nPlugin(projectDir, i18nConfig)] : []),
       ...(editorMode ? [sourceAnnotatorPlugin(projectDir), editorApiPlugin(projectDir)] : []),
       ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
+      ...(integrations.includes('communication') ? [communicationPlugin(projectDir)] : []),
       {
         // Clear SSR module cache on file changes so the next SSR request uses fresh code.
         // Without this, HMR updates the client but SSR keeps serving stale modules.
