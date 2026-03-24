@@ -84,8 +84,20 @@ export class NkRouter {
       const path = this.stripLocale(location.pathname);
       this.setupSubscriptions(path);
     } else {
-      const path = this.stripLocale(location.pathname);
-      this.navigate(path, false);
+      // Initialize auth from inlined data before navigating (CSR path)
+      const authScript = document.getElementById('__nk_auth__');
+      if (authScript) {
+        import('@lumenjs/auth').then(({ initAuth }) => {
+          try { initAuth(JSON.parse(authScript.textContent || '')); } catch {}
+          authScript.remove();
+        }).catch(() => {}).finally(() => {
+          const path = this.stripLocale(location.pathname);
+          this.navigate(path, false);
+        });
+      } else {
+        const path = this.stripLocale(location.pathname);
+        this.navigate(path, false);
+      }
     }
   }
 

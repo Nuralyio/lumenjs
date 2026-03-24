@@ -69,6 +69,7 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
       '@lumenjs/auth': path.join(runtimeDir, 'auth.js'),
       '@nuraly/lumenjs-auth': path.join(runtimeDir, 'auth.js'),
       '@lumenjs/communication': path.join(runtimeDir, 'communication.js'),
+      '@lumenjs/webrtc': path.join(runtimeDir, 'webrtc.js'),
       '@lumenjs/db': path.join(distDir, 'db', 'client.js'),
     },
     conditions: isDev ? ['development', 'browser'] : ['browser'],
@@ -145,8 +146,8 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     },
     resolve: shared.resolve,
     plugins: [
-      ...shared.plugins,
       ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
+      ...shared.plugins,
       ...(integrations.includes('communication') ? [communicationPlugin(projectDir)] : []),
       lumenApiRoutesPlugin(apiDir, projectDir),
       litHmrPlugin(projectDir),

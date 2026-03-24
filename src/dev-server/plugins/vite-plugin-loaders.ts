@@ -179,7 +179,30 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
           const locale = query.__locale;
           delete query.__locale;
 
-          const result = await mod.loader({ params, query, url: pagePath, headers: req.headers, locale, user: (req as any).nkAuth?.user ?? null });
+          // If auth middleware hasn't populated nkAuth, try to parse it from cookie
+          let user = (req as any).nkAuth?.user ?? null;
+          if (!user && req.headers.cookie) {
+            try {
+              const authConfigPath = path.join(pagesDir, '..', 'lumenjs.auth.ts');
+              if (fs.existsSync(authConfigPath)) {
+                const { loadAuthConfig } = await import('../../auth/config.js');
+                const authCfg = await loadAuthConfig(path.join(pagesDir, '..'), server.ssrLoadModule.bind(server));
+                if (authCfg) {
+                  const { parseSessionCookie, decryptSession } = await import('../../auth/session.js');
+                  const cookieVal = parseSessionCookie(req.headers.cookie, authCfg.session.cookieName);
+                  if (cookieVal) {
+                    const session = await decryptSession(cookieVal, authCfg.session.secret);
+                    if (session?.user) {
+                      user = session.user;
+                      (req as any).nkAuth = { user: session.user, session };
+                    }
+                  }
+                }
+              }
+            } catch {}
+          }
+
+          const result = await mod.loader({ params, query, url: pagePath, headers: req.headers, locale, user });
 
           if (isRedirectResponse(result)) {
             res.statusCode = result.status || 302;
