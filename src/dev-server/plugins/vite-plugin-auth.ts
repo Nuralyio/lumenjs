@@ -6,6 +6,7 @@ import { createAuthMiddleware } from '../../auth/middleware.js';
 import { handleAuthRoutes } from '../../auth/routes.js';
 import { enforceGuard } from '../../auth/guard.js';
 import { hasNativeAuth } from '../../auth/config.js';
+import { loadEmailConfig, sendEmail, renderEmailTemplate } from '../../email/index.js';
 import { setProjectDir } from '../../db/context.js';
 import { useDb } from '../../db/index.js';
 import { ensureUsersTable } from '../../auth/native-auth.js';
@@ -26,6 +27,31 @@ export function authPlugin(projectDir: string): Plugin {
         if (!authConfig) {
           try {
             authConfig = await loadAuthConfig(projectDir, server.ssrLoadModule.bind(server));
+            // Auto-wire email sending if email plugin is configured and auth has no custom onEvent
+            if (authConfig && !authConfig.onEvent) {
+              try {
+                const emailConfig = await loadEmailConfig(projectDir, server.ssrLoadModule.bind(server));
+                if (emailConfig) {
+                  const { readProjectConfig } = await import('../../dev-server/config.js');
+                  const appName = readProjectConfig(projectDir).title;
+                  authConfig.onEvent = async (event) => {
+                    try {
+                      const data = { appName, url: event.type === 'password-changed' ? '' : (event as any).url, email: event.email };
+                      if (event.type === 'verification-email') {
+                        const html = renderEmailTemplate(emailConfig, 'verify-email', data);
+                        if (html) await sendEmail(emailConfig, { to: event.email, subject: `Verify your email - ${appName}`, html });
+                      } else if (event.type === 'password-reset') {
+                        const html = renderEmailTemplate(emailConfig, 'password-reset', data);
+                        if (html) await sendEmail(emailConfig, { to: event.email, subject: `Reset your password - ${appName}`, html });
+                      }
+                    } catch (emailErr) {
+                      console.error('[LumenJS Email] Failed to send:', (emailErr as any)?.message);
+                    }
+                  };
+                  console.log('[LumenJS] Email auto-wired with auth module');
+                }
+              } catch {}
+            }
             // Initialize DB for native auth
             if (authConfig && hasNativeAuth(authConfig) && !db) {
               try {

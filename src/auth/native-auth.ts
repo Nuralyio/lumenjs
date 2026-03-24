@@ -50,10 +50,13 @@ export function ensureUsersTable(db: Db): void {
     email TEXT NOT NULL UNIQUE,
     name TEXT,
     password_hash TEXT NOT NULL,
+    email_verified INTEGER NOT NULL DEFAULT 0,
     roles TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
+  // Add email_verified column if table already exists without it
+  try { db.exec('ALTER TABLE _nk_auth_users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0'); } catch {};
 }
 
 /**
@@ -167,4 +170,74 @@ export function linkOidcUser(db: Db, oidcUser: AuthUser): AuthUser {
   );
 
   return { ...oidcUser, sub: id };
+}
+
+// ── Email Verification ──────────────────────────────────────────
+
+/**
+ * Generate an HMAC-signed email verification token.
+ * Format: userId.expiry.signature (base64url)
+ */
+export function generateVerificationToken(userId: string, secret: string, ttlSeconds: number = 86400): string {
+  const expiry = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const payload = `${userId}.${expiry}`;
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  return `${Buffer.from(payload).toString('base64url')}.${sig}`;
+}
+
+/**
+ * Verify and decode an email verification token.
+ * Returns userId or null if invalid/expired.
+ */
+export function verifyVerificationToken(token: string, secret: string): string | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 2) return null;
+    const payload = Buffer.from(parts[0], 'base64url').toString('utf8');
+    const expectedSig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+    if (!crypto.timingSafeEqual(Buffer.from(parts[1]), Buffer.from(expectedSig))) return null;
+    const [userId, expiryStr] = payload.split('.');
+    if (parseInt(expiryStr) < Math.floor(Date.now() / 1000)) return null;
+    return userId;
+  } catch { return null; }
+}
+
+/** Mark a user's email as verified. */
+export function verifyUserEmail(db: Db, userId: string): boolean {
+  const result = db.run('UPDATE _nk_auth_users SET email_verified = 1, updated_at = datetime("now") WHERE id = ?', userId);
+  return result.changes > 0;
+}
+
+/** Check if a user's email is verified. */
+export function isEmailVerified(db: Db, userId: string): boolean {
+  const row = db.get<any>('SELECT email_verified FROM _nk_auth_users WHERE id = ?', userId);
+  return row?.email_verified === 1;
+}
+
+// ── Password Reset ──────────────────────────────────────────────
+
+/**
+ * Generate an HMAC-signed password reset token.
+ * Same format as verification token but shorter TTL (1 hour).
+ */
+export function generateResetToken(userId: string, secret: string, ttlSeconds: number = 3600): string {
+  return generateVerificationToken(userId, secret, ttlSeconds);
+}
+
+/** Verify a password reset token. Returns userId or null. */
+export function verifyResetToken(token: string, secret: string): string | null {
+  return verifyVerificationToken(token, secret);
+}
+
+/** Update a user's password. */
+export async function updatePassword(db: Db, userId: string, newPassword: string, minLength: number = 8): Promise<void> {
+  if (newPassword.length < minLength) throw new Error(`Password must be at least ${minLength} characters`);
+  const hash = await hashPassword(newPassword);
+  db.run('UPDATE _nk_auth_users SET password_hash = ?, updated_at = datetime("now") WHERE id = ?', hash, userId);
+}
+
+/** Find a user by email. Returns { id, email, name } or null. */
+export function findUserIdByEmail(db: Db, email: string): string | null {
+  const row = db.get<any>('SELECT id FROM _nk_auth_users WHERE email = ?', email);
+  return row?.id || null;
 }

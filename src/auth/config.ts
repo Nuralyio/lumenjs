@@ -63,6 +63,7 @@ function validate(config: any): ResolvedAuthConfig {
     routes: { ...ROUTE_DEFAULTS, ...config.routes },
     guards: { ...GUARD_DEFAULTS, ...config.guards },
     token: { ...TOKEN_DEFAULTS, ...config.token },
+    ...(config.onEvent ? { onEvent: config.onEvent } : {}),
   };
 }
 

@@ -16,7 +16,15 @@ export interface NativeProvider {
   minPasswordLength?: number;
   /** Allow user registration. Default: true */
   allowRegistration?: boolean;
+  /** Require email verification before login. Default: false */
+  requireEmailVerification?: boolean;
 }
+
+/** Auth event types for hooks (email sending, logging, etc.) */
+export type AuthEvent =
+  | { type: 'verification-email'; email: string; token: string; url: string }
+  | { type: 'password-reset'; email: string; token: string; url: string }
+  | { type: 'password-changed'; email: string; userId: string };
 
 export type AuthProvider = OIDCProvider | NativeProvider;
 
@@ -58,6 +66,8 @@ export interface AuthConfig {
     /** Refresh token TTL in seconds. Default: 604800 (7 days) */
     refreshTokenTTL?: number;
   };
+  /** Hook called for auth events (send verification emails, password reset emails, etc.) */
+  onEvent?: (event: AuthEvent) => void | Promise<void>;
 }
 
 // ── Resolved Config (internal, after validation) ─────────────────
@@ -87,6 +97,7 @@ export interface ResolvedAuthConfig {
     accessTokenTTL: number;
     refreshTokenTTL: number;
   };
+  onEvent?: (event: AuthEvent) => void | Promise<void>;
 }
 
 // ── Token Response ───────────────────────────────────────────────

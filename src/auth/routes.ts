@@ -128,6 +128,21 @@ export async function handleAuthRoutes(
     return true;
   }
 
+  // ── Verify email ───────────────────────────────────────────────
+  if (pathname === '/__nk_auth/verify-email' && req.method === 'GET') {
+    return handleVerifyEmail(config, url, res, db);
+  }
+
+  // ── Forgot password (request reset) ───────────────────────────
+  if (pathname === '/__nk_auth/forgot-password' && req.method === 'POST') {
+    return handleForgotPassword(config, req, res, db);
+  }
+
+  // ── Reset password (with token) ───────────────────────────────
+  if (pathname === '/__nk_auth/reset-password' && req.method === 'POST') {
+    return handleResetPassword(config, req, res, db);
+  }
+
   // ── Refresh — exchange refresh token for new access token ─────
   if (pathname === '/__nk_auth/refresh' && req.method === 'POST') {
     return handleTokenRefresh(config, req, res, db);
@@ -164,10 +179,16 @@ async function handleNativeLogin(
     return true;
   }
 
-  const { authenticateUser } = await import('./native-auth.js');
+  const { authenticateUser, isEmailVerified } = await import('./native-auth.js');
   const user = await authenticateUser(db, email, password);
   if (!user) {
     sendJson(res, 401, { error: 'Invalid credentials' });
+    return true;
+  }
+
+  // Check email verification if required
+  if (nativeProvider.requireEmailVerification && !isEmailVerified(db, user.sub)) {
+    sendJson(res, 403, { error: 'Please verify your email before signing in', code: 'EMAIL_NOT_VERIFIED' });
     return true;
   }
 
@@ -234,9 +255,23 @@ async function handleNativeSignup(
   }
 
   try {
-    const { registerUser, ensureUsersTable } = await import('./native-auth.js');
+    const { registerUser, ensureUsersTable, generateVerificationToken } = await import('./native-auth.js');
     ensureUsersTable(db);
     const user = await registerUser(db, email, password, name, nativeProvider);
+
+    // Send verification email if required
+    if (nativeProvider.requireEmailVerification && config.onEvent) {
+      const token = generateVerificationToken(user.sub, config.session.secret);
+      const origin = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;
+      const verifyUrl = `${origin}/__nk_auth/verify-email?token=${encodeURIComponent(token)}`;
+      try { await config.onEvent({ type: 'verification-email', email, token, url: verifyUrl }); } catch {}
+    }
+
+    // If email verification required, don't auto-login
+    if (nativeProvider.requireEmailVerification) {
+      sendJson(res, 201, { user, message: 'Account created. Please check your email to verify.' });
+      return true;
+    }
 
     // Auto-login after signup
     const sessionData = {
@@ -398,6 +433,127 @@ async function handleLogout(
 
   res.writeHead(302, { Location: redirectUrl, 'Set-Cookie': clearCookie });
   res.end();
+  return true;
+}
+
+// ── Verify Email ────────────────────────────────────────────────
+
+async function handleVerifyEmail(
+  config: ResolvedAuthConfig,
+  url: URL,
+  res: ServerResponse,
+  db?: any,
+): Promise<boolean> {
+  const token = url.searchParams.get('token');
+
+  // If no DB or no token, redirect to verify page which shows proper UI
+  if (!db || !token) {
+    res.writeHead(302, { Location: `/auth/verify${token ? '?token=' + encodeURIComponent(token) : '?error=missing'}` });
+    res.end();
+    return true;
+  }
+
+  const { verifyVerificationToken, verifyUserEmail } = await import('./native-auth.js');
+  const userId = verifyVerificationToken(token, config.session.secret);
+  if (!userId) {
+    res.writeHead(302, { Location: '/auth/verify?error=invalid' });
+    res.end();
+    return true;
+  }
+
+  const verified = verifyUserEmail(db, userId);
+  if (!verified) {
+    res.writeHead(302, { Location: '/auth/verify?error=not_found' });
+    res.end();
+    return true;
+  }
+
+  // Redirect to login page with success message
+  res.writeHead(302, { Location: `${config.routes.loginPage}?verified=true` });
+  res.end();
+  return true;
+}
+
+// ── Forgot Password ─────────────────────────────────────────────
+
+async function handleForgotPassword(
+  config: ResolvedAuthConfig,
+  req: IncomingMessage,
+  res: ServerResponse,
+  db?: any,
+): Promise<boolean> {
+  if (!db) {
+    sendJson(res, 400, { error: 'Native auth not configured' });
+    return true;
+  }
+
+  const body = JSON.parse(await readBody(req));
+  const { email } = body;
+  if (!email) {
+    sendJson(res, 400, { error: 'Email required' });
+    return true;
+  }
+
+  const { findUserIdByEmail, generateResetToken } = await import('./native-auth.js');
+  const userId = findUserIdByEmail(db, email);
+
+  // Always return success (don't reveal if email exists)
+  if (userId && config.onEvent) {
+    const token = generateResetToken(userId, config.session.secret);
+    const origin = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;
+    const resetUrl = `${origin}/__nk_auth/reset-password?token=${encodeURIComponent(token)}`;
+    try { await config.onEvent({ type: 'password-reset', email, token, url: resetUrl }); } catch {}
+  }
+
+  sendJson(res, 200, { message: 'If an account with that email exists, a password reset link has been sent.' });
+  return true;
+}
+
+// ── Reset Password ──────────────────────────────────────────────
+
+async function handleResetPassword(
+  config: ResolvedAuthConfig,
+  req: IncomingMessage,
+  res: ServerResponse,
+  db?: any,
+): Promise<boolean> {
+  if (!db) {
+    sendJson(res, 400, { error: 'Native auth not configured' });
+    return true;
+  }
+
+  const body = JSON.parse(await readBody(req));
+  const { token, password } = body;
+
+  if (!token || !password) {
+    sendJson(res, 400, { error: 'Token and password required' });
+    return true;
+  }
+
+  const { verifyResetToken, updatePassword } = await import('./native-auth.js');
+  const userId = verifyResetToken(token, config.session.secret);
+  if (!userId) {
+    sendJson(res, 400, { error: 'Invalid or expired reset link' });
+    return true;
+  }
+
+  const nativeProvider = getNativeProvider(config);
+  const minLength = nativeProvider?.minPasswordLength ?? 8;
+
+  try {
+    await updatePassword(db, userId, password, minLength);
+  } catch (err: any) {
+    sendJson(res, 400, { error: err.message });
+    return true;
+  }
+
+  // Notify via event hook
+  const row = db.get('SELECT email FROM _nk_auth_users WHERE id = ?', userId);
+  if (row && config.onEvent) {
+    try { await config.onEvent({ type: 'password-changed', email: row.email, userId }); } catch {}
+  }
+
+  sendJson(res, 200, { message: 'Password has been reset. You can now sign in.' });
   return true;
 }
 

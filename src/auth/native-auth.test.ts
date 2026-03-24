@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { hashPassword, verifyPassword } from './native-auth.js';
+import {
+  hashPassword,
+  verifyPassword,
+  generateVerificationToken,
+  verifyVerificationToken,
+  generateResetToken,
+  verifyResetToken,
+} from './native-auth.js';
+
+const SECRET = 'test-secret-for-native-auth';
 
 describe('native-auth', () => {
   describe('password hashing', () => {
@@ -23,7 +32,6 @@ describe('native-auth', () => {
       const hash2 = await hashPassword('same-password');
       expect(hash1).not.toBe(hash2);
 
-      // Both should still verify
       expect(await verifyPassword('same-password', hash1)).toBe(true);
       expect(await verifyPassword('same-password', hash2)).toBe(true);
     });
@@ -31,6 +39,45 @@ describe('native-auth', () => {
     it('returns false for malformed hash', async () => {
       const valid = await verifyPassword('password', 'not-a-valid-hash');
       expect(valid).toBe(false);
+    });
+  });
+
+  describe('email verification tokens', () => {
+    it('generates and verifies a token', () => {
+      const token = generateVerificationToken('user-123', SECRET, 3600);
+      expect(typeof token).toBe('string');
+      expect(token).toContain('.');
+
+      const userId = verifyVerificationToken(token, SECRET);
+      expect(userId).toBe('user-123');
+    });
+
+    it('rejects token with wrong secret', () => {
+      const token = generateVerificationToken('user-123', SECRET, 3600);
+      expect(verifyVerificationToken(token, 'wrong-secret')).toBeNull();
+    });
+
+    it('rejects expired token', () => {
+      const token = generateVerificationToken('user-123', SECRET, -1);
+      expect(verifyVerificationToken(token, SECRET)).toBeNull();
+    });
+
+    it('rejects malformed token', () => {
+      expect(verifyVerificationToken('garbage', SECRET)).toBeNull();
+      expect(verifyVerificationToken('', SECRET)).toBeNull();
+    });
+  });
+
+  describe('password reset tokens', () => {
+    it('generates and verifies a reset token', () => {
+      const token = generateResetToken('user-456', SECRET, 3600);
+      const userId = verifyResetToken(token, SECRET);
+      expect(userId).toBe('user-456');
+    });
+
+    it('rejects expired reset token', () => {
+      const token = generateResetToken('user-456', SECRET, -1);
+      expect(verifyResetToken(token, SECRET)).toBeNull();
     });
   });
 });
