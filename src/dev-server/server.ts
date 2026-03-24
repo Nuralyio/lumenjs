@@ -146,12 +146,12 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     resolve: shared.resolve,
     plugins: [
       ...shared.plugins,
+      ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
+      ...(integrations.includes('communication') ? [communicationPlugin(projectDir)] : []),
       lumenApiRoutesPlugin(apiDir, projectDir),
       litHmrPlugin(projectDir),
       ...(i18nConfig ? [i18nPlugin(projectDir, i18nConfig)] : []),
       ...(editorMode ? [sourceAnnotatorPlugin(projectDir), editorApiPlugin(projectDir)] : []),
-      ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
-      ...(integrations.includes('communication') ? [communicationPlugin(projectDir)] : []),
       lumenSocketIOPlugin(pagesDir),
       {
         // Clear SSR module cache on file changes so the next SSR request uses fresh code.

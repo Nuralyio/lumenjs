@@ -85,6 +85,7 @@ export function lumenApiRoutesPlugin(apiDir: string, projectDir?: string): Plugi
             files,
             headers: req.headers,
             projectDir: projectDir || path.dirname(apiDir),
+            nkAuth: (req as any).nkAuth || null,
           };
 
           const result = await handler(nkRequest);
