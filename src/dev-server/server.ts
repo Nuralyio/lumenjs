@@ -22,6 +22,7 @@ import { authPlugin } from './plugins/vite-plugin-auth.js';
 import { communicationPlugin } from './plugins/vite-plugin-communication.js';
 import { lumenSocketIOPlugin } from './plugins/vite-plugin-socketio.js';
 import { resolveLocale } from './middleware/locale.js';
+import { setProjectDir } from '../db/context.js';
 import { scanMiddleware, getMiddlewareDirsForPathname } from '../build/scan.js';
 import { runMiddlewareChain, extractMiddleware, ConnectMiddleware } from '../shared/middleware-runner.js';
 
@@ -50,7 +51,7 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
   const isDev = mode === 'development';
   const pagesDir = path.join(projectDir, 'pages');
   const lumenNodeModules = getLumenJSNodeModules();
-  const { runtimeDir, editorDir } = getLumenJSDirs();
+  const { distDir, runtimeDir, editorDir } = getLumenJSDirs();
 
   // Resolve NuralyUI paths for aliases (only when nuralyui integration is enabled)
   const aliases: Record<string, string> = {};
@@ -68,6 +69,7 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
       '@lumenjs/auth': path.join(runtimeDir, 'auth.js'),
       '@nuraly/lumenjs-auth': path.join(runtimeDir, 'auth.js'),
       '@lumenjs/communication': path.join(runtimeDir, 'communication.js'),
+      '@lumenjs/db': path.join(distDir, 'db', 'client.js'),
     },
     conditions: isDev ? ['development', 'browser'] : ['browser'],
     // Note: resolve.dedupe is NOT used — it resolves via Node's algorithm
@@ -121,6 +123,10 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
 
   const config = readProjectConfig(projectDir);
   const { title, integrations, i18n: i18nConfig, prefetch: prefetchStrategy } = config;
+  // Set project dir for DB context (used by loaders, API routes, plugins)
+  setProjectDir(projectDir);
+  process.env.LUMENJS_PROJECT_DIR = projectDir;
+
   const shared = getSharedViteConfig(projectDir, { integrations });
 
   const server = await createViteServer({
@@ -303,7 +309,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     },
     ssr: {
       noExternal: true,
-      external: ['node-domexception', 'socket.io-client', 'xmlhttprequest-ssl', 'engine.io-client'],
+      external: ['node-domexception', 'socket.io-client', 'xmlhttprequest-ssl', 'engine.io-client', 'better-sqlite3', '@lumenjs/db'],
       resolve: {
         conditions: ['node', 'import'],
       },
