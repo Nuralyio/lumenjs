@@ -1,4 +1,4 @@
-import type { Message, MessageAttachment, PresenceStatus, ReadReceipt, EncryptedEnvelope } from './types.js';
+import type { Message, MessageAttachment, MessageForward, PresenceStatus, ReadReceipt, EncryptedEnvelope, Conversation } from './types.js';
 import type { CommunicationStore } from './store.js';
 import type { LumenDb } from '../db/index.js';
 
@@ -16,11 +16,88 @@ export interface HandlerContext {
   joinRoom: (room: string) => void;
   /** Leave a socket room */
   leaveRoom: (room: string) => void;
+  /** Emit data to all sockets for a specific user */
+  emitToUser?: (userId: string, data: any) => void;
   /** LumenJS database instance (optional — only if app has DB set up) */
   db?: LumenDb;
 }
 
 // ── Conversation ────────────────────────────────────────────────
+
+export function handleConversationCreate(
+  ctx: HandlerContext,
+  data: { type: 'direct' | 'group'; name?: string; participantIds: string[] },
+): void {
+  const now = new Date().toISOString();
+
+  let conversation: Conversation;
+
+  if (ctx.db) {
+    const convId = crypto.randomUUID();
+    ctx.db.run(
+      `INSERT INTO conversations (id, type, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+      convId, data.type, data.name || null, now, now,
+    );
+
+    // Add the creator as a participant with 'owner' role
+    const allParticipantIds = [ctx.userId, ...data.participantIds.filter(id => id !== ctx.userId)];
+    for (const uid of allParticipantIds) {
+      const role = uid === ctx.userId ? 'owner' : 'member';
+      ctx.db.run(
+        `INSERT INTO conversation_participants (conversation_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)`,
+        convId, uid, role, now,
+      );
+    }
+
+    conversation = {
+      id: convId,
+      type: data.type,
+      name: data.name,
+      participants: allParticipantIds.map(uid => ({
+        userId: uid,
+        displayName: '',
+        role: uid === ctx.userId ? 'owner' as const : 'member' as const,
+        joinedAt: now,
+        presence: ctx.store.getPresence(uid)?.status || 'offline',
+      })),
+      createdAt: now,
+      updatedAt: now,
+      unreadCount: 0,
+    };
+  } else {
+    const allParticipantIds = [ctx.userId, ...data.participantIds.filter(id => id !== ctx.userId)];
+    conversation = {
+      id: crypto.randomUUID(),
+      type: data.type,
+      name: data.name,
+      participants: allParticipantIds.map(uid => ({
+        userId: uid,
+        displayName: '',
+        role: uid === ctx.userId ? 'owner' as const : 'member' as const,
+        joinedAt: now,
+        presence: ctx.store.getPresence(uid)?.status || 'offline',
+      })),
+      createdAt: now,
+      updatedAt: now,
+      unreadCount: 0,
+    };
+  }
+
+  // Auto-join the creator to the conversation room
+  ctx.joinRoom(`conv:${conversation.id}`);
+
+  // Notify the creator
+  ctx.push({ event: 'conversation:new', data: conversation });
+
+  // Notify other participants (they haven't joined the room yet)
+  if (ctx.emitToUser) {
+    for (const uid of data.participantIds) {
+      if (uid !== ctx.userId) {
+        ctx.emitToUser(uid, { event: 'conversation:new', data: conversation });
+      }
+    }
+  }
+}
 
 export function handleConversationJoin(ctx: HandlerContext, data: { conversationId: string }): void {
   ctx.joinRoom(`conv:${data.conversationId}`);
@@ -30,6 +107,59 @@ export function handleConversationJoin(ctx: HandlerContext, data: { conversation
 export function handleConversationLeave(ctx: HandlerContext, data: { conversationId: string }): void {
   ctx.leaveRoom(`conv:${data.conversationId}`);
   ctx.store.removeConversationMember(data.conversationId, ctx.userId);
+}
+
+export function handleConversationArchive(
+  ctx: HandlerContext,
+  data: { conversationId: string; archived: boolean },
+): void {
+  if (ctx.db) {
+    ctx.db.run(
+      `UPDATE conversations SET archived = ?, updated_at = ? WHERE id = ?`,
+      data.archived ? 1 : 0, new Date().toISOString(), data.conversationId,
+    );
+  }
+
+  ctx.broadcastAll(`conv:${data.conversationId}`, {
+    event: 'conversation:updated',
+    data: { id: data.conversationId, archived: data.archived },
+  });
+}
+
+export function handleConversationMute(
+  ctx: HandlerContext,
+  data: { conversationId: string; muted: boolean },
+): void {
+  if (ctx.db) {
+    ctx.db.run(
+      `UPDATE conversation_participants SET muted = ?, updated_at = ? WHERE conversation_id = ? AND user_id = ?`,
+      data.muted ? 1 : 0, new Date().toISOString(), data.conversationId, ctx.userId,
+    );
+  }
+
+  // Only notify the requesting user — mute is per-user
+  ctx.push({
+    event: 'conversation:updated',
+    data: { id: data.conversationId, muted: data.muted },
+  });
+}
+
+export function handleConversationPin(
+  ctx: HandlerContext,
+  data: { conversationId: string; pinned: boolean },
+): void {
+  if (ctx.db) {
+    ctx.db.run(
+      `UPDATE conversation_participants SET pinned = ?, updated_at = ? WHERE conversation_id = ? AND user_id = ?`,
+      data.pinned ? 1 : 0, new Date().toISOString(), data.conversationId, ctx.userId,
+    );
+  }
+
+  // Only notify the requesting user — pin is per-user
+  ctx.push({
+    event: 'conversation:updated',
+    data: { id: data.conversationId, pinned: data.pinned },
+  });
 }
 
 // ── Messages ────────────────────────────────────────────────────
@@ -239,6 +369,75 @@ export function handleMessageDelete(
     event: 'message:deleted',
     data: { messageId: data.messageId, conversationId: data.conversationId, deletedBy: ctx.userId },
   });
+}
+
+// ── Message Forward ─────────────────────────────────────────────
+
+export function handleMessageForward(
+  ctx: HandlerContext,
+  data: MessageForward,
+): void {
+  const now = new Date().toISOString();
+
+  if (ctx.db) {
+    // Fetch the original message
+    const original = ctx.db.get(`SELECT * FROM messages WHERE id = ?`, data.messageId) as any;
+    if (!original) return;
+
+    // Insert a forwarded copy into the target conversation
+    const result = ctx.db.run(
+      `INSERT INTO messages (conversation_id, sender_id, content, type, status, encrypted, created_at, forwarded_from_conversation_id, forwarded_from_message_id)
+       VALUES (?, ?, ?, ?, 'sent', ?, ?, ?, ?)`,
+      data.toConversationId,
+      ctx.userId,
+      original.content,
+      original.type,
+      original.encrypted || 0,
+      now,
+      data.fromConversationId,
+      data.messageId,
+    );
+
+    const forwarded: Message & { forwardedFrom?: { conversationId: string; messageId: string } } = {
+      id: String(result.lastInsertRowid),
+      conversationId: data.toConversationId,
+      senderId: ctx.userId,
+      content: original.content,
+      type: original.type,
+      createdAt: now,
+      status: 'sent',
+      readBy: [],
+      encrypted: !!original.encrypted,
+      forwardedFrom: {
+        conversationId: data.fromConversationId,
+        messageId: data.messageId,
+      },
+    };
+
+    ctx.db.run(
+      `UPDATE conversations SET updated_at = ? WHERE id = ?`,
+      now, data.toConversationId,
+    );
+
+    ctx.broadcastAll(`conv:${data.toConversationId}`, { event: 'message:forwarded', data: forwarded });
+  } else {
+    const forwarded: Message & { forwardedFrom?: { conversationId: string; messageId: string } } = {
+      id: crypto.randomUUID(),
+      conversationId: data.toConversationId,
+      senderId: ctx.userId,
+      content: '',
+      type: 'text',
+      createdAt: now,
+      status: 'sent',
+      readBy: [],
+      forwardedFrom: {
+        conversationId: data.fromConversationId,
+        messageId: data.messageId,
+      },
+    };
+
+    ctx.broadcastAll(`conv:${data.toConversationId}`, { event: 'message:forwarded', data: forwarded });
+  }
 }
 
 // ── Typing ──────────────────────────────────────────────────────

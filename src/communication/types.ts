@@ -61,6 +61,7 @@ export interface Conversation {
   unreadCount: number;
   pinned?: boolean;
   muted?: boolean;
+  archived?: boolean;
 }
 
 export interface Participant {
@@ -121,6 +122,12 @@ export interface TypingIndicator {
   conversationId: string;
   userId: string;
   isTyping: boolean;
+}
+
+export interface MessageForward {
+  messageId: string;
+  fromConversationId: string;
+  toConversationId: string;
 }
 
 // ── Calls (WebRTC Signaling) ──────────────────────────────────────
@@ -295,8 +302,13 @@ export interface CommunicationClientEvents {
   'typing:start': (data: { conversationId: string }) => void;
   'typing:stop': (data: { conversationId: string }) => void;
   'presence:update': (data: { status: PresenceStatus }) => void;
+  'conversation:create': (data: { type: 'direct' | 'group'; name?: string; participantIds: string[] }) => void;
   'conversation:join': (data: { conversationId: string }) => void;
   'conversation:leave': (data: { conversationId: string }) => void;
+  'conversation:archive': (data: { conversationId: string; archived: boolean }) => void;
+  'conversation:mute': (data: { conversationId: string; muted: boolean }) => void;
+  'conversation:pin': (data: { conversationId: string; pinned: boolean }) => void;
+  'message:forward': (data: MessageForward) => void;
   'call:initiate': (data: CallInitiate) => void;
   'call:respond': (data: CallResponse) => void;
   'call:hangup': (data: CallHangup) => void;
@@ -320,6 +332,8 @@ export interface CommunicationServerEvents {
   'typing:update': (data: TypingIndicator) => void;
   'presence:changed': (data: PresenceUpdate) => void;
   'conversation:updated': (data: Conversation) => void;
+  'conversation:new': (data: Conversation) => void;
+  'message:forwarded': (data: Message & { forwardedFrom?: { conversationId: string; messageId: string } }) => void;
   'read-receipt:update': (data: { conversationId: string; messageId: string; readBy: ReadReceipt }) => void;
   'call:incoming': (data: Call) => void;
   'call:state-changed': (data: { callId: string; state: CallState; endReason?: CallEndReason }) => void;

@@ -2,13 +2,18 @@ import type { CommunicationConfig } from './types.js';
 import type { LumenDb } from '../db/index.js';
 import { useCommunicationStore } from './store.js';
 import {
+  handleConversationCreate,
   handleConversationJoin,
   handleConversationLeave,
+  handleConversationArchive,
+  handleConversationMute,
+  handleConversationPin,
   handleMessageSend,
   handleMessageRead,
   handleMessageReact,
   handleMessageEdit,
   handleMessageDelete,
+  handleMessageForward,
   handleTypingStart,
   handleTypingStop,
   handlePresenceUpdate,
@@ -101,6 +106,15 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
       broadcast: ctx.room.broadcast,
       joinRoom: ctx.room.join,
       leaveRoom: ctx.room.leave,
+      emitToUser: (targetUserId: string, data: any) => {
+        const sockets = store.getSocketsForUser(targetUserId);
+        const io = ctx.socket?.nsp;
+        if (io) {
+          for (const sid of sockets) {
+            io.to(sid).emit('nk:data', data);
+          }
+        }
+      },
       db: options.db,
     };
 
@@ -120,13 +134,18 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
 
     // ── Chat Events ──────────────────────────────────────────
 
+    ctx.on('conversation:create', (data) => handleConversationCreate(handlerCtx, data));
     ctx.on('conversation:join', (data) => handleConversationJoin(handlerCtx, data));
     ctx.on('conversation:leave', (data) => handleConversationLeave(handlerCtx, data));
+    ctx.on('conversation:archive', (data) => handleConversationArchive(handlerCtx, data));
+    ctx.on('conversation:mute', (data) => handleConversationMute(handlerCtx, data));
+    ctx.on('conversation:pin', (data) => handleConversationPin(handlerCtx, data));
     ctx.on('message:send', (data) => handleMessageSend(handlerCtx, data));
     ctx.on('message:react', (data) => handleMessageReact(handlerCtx, data));
     ctx.on('message:edit', (data) => handleMessageEdit(handlerCtx, data));
     ctx.on('message:delete', (data) => handleMessageDelete(handlerCtx, data));
     ctx.on('message:read', (data) => handleMessageRead(handlerCtx, data));
+    ctx.on('message:forward', (data) => handleMessageForward(handlerCtx, data));
     ctx.on('typing:start', (data) => handleTypingStart(handlerCtx, data));
     ctx.on('typing:stop', (data) => handleTypingStop(handlerCtx, data));
     ctx.on('presence:update', (data) => handlePresenceUpdate(handlerCtx, data));

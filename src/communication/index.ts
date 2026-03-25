@@ -17,6 +17,7 @@ export type {
   MessageAttachment,
   ReadReceipt,
   TypingIndicator,
+  MessageForward,
 
   // Calls
   CallType,
