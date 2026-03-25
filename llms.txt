@@ -110,13 +110,113 @@ Files in `api/` export named functions per HTTP method: `GET`, `POST`, `PUT`, `D
 export async function GET(req: NkRequest) → object
 ```
 
-Request shape: `{ method, url, query, params, body, files, headers, projectDir }`.
+Request shape: `{ method, url, query, params, body, files, headers, projectDir, storage }`.
 File upload shape: `{ fieldName, fileName, contentType, data: Buffer, size }`.
+`storage` is the configured `StorageAdapter` (or `null` if not set up).
 
 - Return plain object → auto-serialized as JSON with 200
 - Throw `{ status, message }` → error response
 - No `res` object — no `res.send()`, no `res.json()`
 - Multipart form data parsed automatically into `req.files`
+
+## Storage
+
+File storage abstraction with adapters for local disk (dev) and S3-compatible APIs (AWS S3, Cloudflare R2, MinIO).
+
+### Setup
+
+Configure storage in a `_middleware.ts` or app startup file:
+
+```typescript
+import { setStorage, createStorage } from '@nuraly/lumenjs/dist/storage/index.js';
+
+// Local (dev — automatic, no config needed)
+setStorage(createStorage({ provider: 'local' }));
+
+// AWS S3
+setStorage(createStorage({
+  provider: 's3',
+  bucket: 'my-bucket',
+  region: 'us-east-1',
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+}));
+
+// Cloudflare R2
+setStorage(createStorage({
+  provider: 's3',
+  endpoint: 'https://<ACCOUNT_ID>.r2.cloudflarestorage.com',
+  bucket: 'my-bucket',
+  region: 'auto',
+  accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+  secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  publicBaseUrl: 'https://pub.example.com', // R2 public bucket URL
+}));
+```
+
+Credentials can also come from env vars `LUMENJS_S3_ACCESS_KEY` / `LUMENJS_S3_SECRET_KEY`.
+
+Install S3 peer deps: `npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner`
+
+### API Routes — server-side upload
+
+```typescript
+export async function POST(req) {
+  const file = req.files[0];
+  const stored = await req.storage.put(file.data, {
+    mimeType: file.contentType,
+    fileName: file.fileName,
+  });
+  return { url: stored.url };
+}
+```
+
+### Presigned Upload (client-direct, E2E safe)
+
+```typescript
+// api/upload-url.ts
+export async function POST(req) {
+  const { key, mimeType } = req.body;
+  const presigned = await req.storage.presignPut(key, { mimeType, expiresIn: 300 });
+  return presigned; // { uploadUrl, key, expiresAt }
+}
+```
+
+Client PUTs file directly to `uploadUrl` — for E2E-encrypted chat, client encrypts the file first and the server never sees plaintext.
+
+### StorageAdapter interface
+
+```typescript
+interface StorageAdapter {
+  put(data: Buffer, options?: { key?, mimeType?, fileName?, acl? }): Promise<StoredFile>;
+  delete(key: string): Promise<void>;
+  presignPut(key: string, options?: { mimeType?, expiresIn?, maxSize? }): Promise<{ uploadUrl, key, expiresAt }>;
+  presignGet(key: string, options?: { expiresIn? }): Promise<string>;
+  publicUrl(key: string): string;
+}
+```
+
+### Chat File Uploads (Communication module)
+
+When storage is configured, clients emit `file:request-upload` — server validates constraints, calls `storage.presignPut()`, and responds with `file:upload-ready`. The file encryption key travels inside the Signal envelope — server stores only the encrypted blob URL.
+
+```typescript
+// client
+socket.emit('file:request-upload', {
+  conversationId: 'abc',
+  mimeType: 'image/jpeg',
+  size: 500_000,
+  fileName: 'photo.jpg',
+});
+socket.on('file:upload-ready', ({ uploadUrl, key, fileId, expiresAt }) => {
+  // encrypt file locally, then PUT encryptedBlob to uploadUrl
+  // include { url, fileId } in the message envelope
+});
+```
+
+### Dev mode
+
+In dev, `vite-plugin-storage` auto-creates a `LocalStorageAdapter` at `{projectDir}/uploads`, serves files at `/uploads/*`, and handles `/__nk_storage/upload/:token` for presigned uploads. No config needed.
 
 ## i18n
 
