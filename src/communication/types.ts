@@ -17,6 +17,41 @@ export interface CommunicationConfig {
   pageSize?: number;
   /** End-to-end encryption settings */
   encryption?: EncryptionConfig;
+  /** Rate limiting for message sends */
+  rateLimit?: RateLimitConfig;
+  /** File upload constraints */
+  fileUpload?: FileUploadConfig;
+  /** Typing indicator timeout in ms. Default: 5000 */
+  typingTimeoutMs?: number;
+  /** Message retention in days. 0 = keep forever. Default: 0 */
+  messageRetentionDays?: number;
+  /** Socket reconnection config */
+  reconnection?: ReconnectionConfig;
+}
+
+export interface RateLimitConfig {
+  /** Max messages per window. Default: 30 */
+  maxMessages: number;
+  /** Window duration in seconds. Default: 60 */
+  windowSeconds: number;
+}
+
+export interface FileUploadConfig {
+  /** Maximum file size in bytes. Default: 25MB (26214400) */
+  maxFileSize: number;
+  /** Maximum attachments per message. Default: 10 */
+  maxAttachmentsPerMessage: number;
+  /** Allowed MIME types. Empty array = allow all. Default: common image/video/document types */
+  allowedMimeTypes?: string[];
+}
+
+export interface ReconnectionConfig {
+  /** Max reconnection attempts. Default: 10 */
+  maxRetries: number;
+  /** Base delay between retries in ms. Default: 1000 */
+  baseDelayMs: number;
+  /** Max delay cap in ms. Default: 30000 */
+  maxDelayMs: number;
 }
 
 export interface EncryptionConfig {
@@ -329,6 +364,7 @@ export interface CommunicationServerEvents {
   'message:new': (data: Message) => void;
   'message:updated': (data: Message) => void;
   'message:status': (data: { messageId: string; status: MessageStatus }) => void;
+  'message:error': (data: { code: string; message: string }) => void;
   'typing:update': (data: TypingIndicator) => void;
   'presence:changed': (data: PresenceUpdate) => void;
   'conversation:updated': (data: Conversation) => void;

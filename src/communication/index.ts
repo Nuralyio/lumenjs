@@ -38,6 +38,11 @@ export type {
   CommunicationClientEvents,
   CommunicationServerEvents,
 
+  // Rate Limiting, File Upload, Reconnection
+  RateLimitConfig,
+  FileUploadConfig,
+  ReconnectionConfig,
+
   // E2E Encryption
   EncryptionConfig,
   PreKey,

@@ -67,6 +67,12 @@ const defaultGetUserId = (headers: Record<string, any>, query: Record<string, an
 export function createCommunicationHandler(options: CommunicationHandlerOptions = {}) {
   const getUserId = options.getUserId || defaultGetUserId;
   const store = useCommunicationStore();
+  const resolvedConfig: CommunicationConfig = { ...options.config };
+
+  // Apply configurable typing timeout to the store
+  if (resolvedConfig.typingTimeoutMs != null) {
+    store.typingTimeoutMs = resolvedConfig.typingTimeoutMs;
+  }
 
   return (ctx: {
     on: (event: string, handler: (...args: any[]) => void) => void;
@@ -101,6 +107,7 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
     const handlerCtx: HandlerContext = {
       userId,
       store,
+      config: resolvedConfig,
       push: ctx.push,
       broadcastAll: ctx.room.broadcastAll,
       broadcast: ctx.room.broadcast,

@@ -1,4 +1,4 @@
-import type { Message, MessageAttachment, MessageForward, PresenceStatus, ReadReceipt, EncryptedEnvelope, Conversation } from './types.js';
+import type { Message, MessageAttachment, MessageForward, PresenceStatus, ReadReceipt, EncryptedEnvelope, Conversation, CommunicationConfig } from './types.js';
 import type { CommunicationStore } from './store.js';
 import type { LumenDb } from '../db/index.js';
 
@@ -6,6 +6,8 @@ import type { LumenDb } from '../db/index.js';
 export interface HandlerContext {
   userId: string;
   store: CommunicationStore;
+  /** Resolved communication config */
+  config: CommunicationConfig;
   /** Emit data to the current socket */
   push: (data: any) => void;
   /** Broadcast to all sockets in a room */
@@ -168,6 +170,30 @@ export function handleMessageSend(
   ctx: HandlerContext,
   data: { conversationId: string; content: string; type: Message['type']; replyTo?: string; attachment?: MessageAttachment; encrypted?: boolean; envelope?: EncryptedEnvelope },
 ): void {
+  // ── Rate limit check ──────────────────────────────────────────
+  if (ctx.config.rateLimit) {
+    const allowed = ctx.store.checkRateLimit(ctx.userId, ctx.config.rateLimit);
+    if (!allowed) {
+      ctx.push({ event: 'message:error', data: { code: 'RATE_LIMITED', message: 'Message rate limit exceeded. Please wait before sending more messages.' } });
+      return;
+    }
+  }
+
+  // ── File upload validation ────────────────────────────────────
+  if (data.attachment && ctx.config.fileUpload) {
+    const { maxFileSize, allowedMimeTypes } = ctx.config.fileUpload;
+
+    if (data.attachment.fileSize > maxFileSize) {
+      ctx.push({ event: 'message:error', data: { code: 'FILE_TOO_LARGE', message: `File size ${data.attachment.fileSize} exceeds maximum allowed size of ${maxFileSize} bytes.` } });
+      return;
+    }
+
+    if (allowedMimeTypes && allowedMimeTypes.length > 0 && !allowedMimeTypes.includes(data.attachment.mimeType)) {
+      ctx.push({ event: 'message:error', data: { code: 'MIME_TYPE_NOT_ALLOWED', message: `MIME type '${data.attachment.mimeType}' is not allowed.` } });
+      return;
+    }
+  }
+
   const now = new Date().toISOString();
   let message: Message;
 

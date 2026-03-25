@@ -1,4 +1,4 @@
-import type { PresenceStatus, Call, CallState, CallEndReason, CallParticipant, KeyBundle, PreKey } from './types.js';
+import type { PresenceStatus, Call, CallState, CallEndReason, CallParticipant, KeyBundle, PreKey, RateLimitConfig } from './types.js';
 
 // ── Presence ──────────────────────────────────────────────────────
 
@@ -16,9 +16,15 @@ interface TypingEntry {
   timer: ReturnType<typeof setTimeout>;
 }
 
+// ── Rate Limiting ─────────────────────────────────────────────────
+
+interface RateLimitEntry {
+  timestamps: number[];
+}
+
 // ── CommunicationStore ────────────────────────────────────────────
 
-const TYPING_TIMEOUT_MS = 5000;
+const DEFAULT_TYPING_TIMEOUT_MS = 5000;
 
 export class CommunicationStore {
   /** userId → presence info */
@@ -33,8 +39,12 @@ export class CommunicationStore {
   private socketUser = new Map<string, string>();
   /** userId → public key bundle for E2E encryption */
   private keyBundles = new Map<string, KeyBundle>();
+  /** userId → rate limit tracking */
+  private rateLimits = new Map<string, RateLimitEntry>();
   /** conversationId → set of user IDs currently in the room */
   private conversationMembers = new Map<string, Set<string>>();
+  /** Configurable typing timeout in ms */
+  typingTimeoutMs: number = DEFAULT_TYPING_TIMEOUT_MS;
 
   // ── User-Socket Mapping ───────────────────────────────────────
 
@@ -110,7 +120,7 @@ export class CommunicationStore {
     const timer = setTimeout(() => {
       this.clearTyping(conversationId, userId);
       onExpire();
-    }, TYPING_TIMEOUT_MS);
+    }, this.typingTimeoutMs);
 
     convTyping.set(userId, { userId, timer });
   }
@@ -252,6 +262,33 @@ export class CommunicationStore {
 
   removeKeyBundle(userId: string): void {
     this.keyBundles.delete(userId);
+  }
+
+  // ── Rate Limiting ──────────────────────────────────────────────
+
+  /**
+   * Check whether a user is rate-limited. If not, records the message timestamp.
+   * Returns true if the message is allowed, false if rate-limited.
+   */
+  checkRateLimit(userId: string, config: RateLimitConfig): boolean {
+    const now = Date.now();
+    const windowStart = now - config.windowSeconds * 1000;
+
+    let entry = this.rateLimits.get(userId);
+    if (!entry) {
+      entry = { timestamps: [] };
+      this.rateLimits.set(userId, entry);
+    }
+
+    // Prune timestamps outside the current window
+    entry.timestamps = entry.timestamps.filter(t => t > windowStart);
+
+    if (entry.timestamps.length >= config.maxMessages) {
+      return false;
+    }
+
+    entry.timestamps.push(now);
+    return true;
   }
 }
 
