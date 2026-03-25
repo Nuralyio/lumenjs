@@ -19,6 +19,7 @@ function createMockCtx(overrides?: Partial<HandlerContext>): HandlerContext {
   return {
     userId: 'user-1',
     store: new CommunicationStore(),
+    config: {},
     push: vi.fn(),
     broadcastAll: vi.fn(),
     broadcast: vi.fn(),
