@@ -142,6 +142,11 @@ export async function handleAuthRoutes(
     return handleResetPassword(config, req, res, db);
   }
 
+  // ── Change password (authenticated) ──────────────────────────
+  if (pathname === '/__nk_auth/change-password' && req.method === 'POST') {
+    return handleChangePassword(config, req, res, db);
+  }
+
   // ── Refresh — exchange refresh token for new access token ─────
   if (pathname === '/__nk_auth/refresh' && req.method === 'POST') {
     return handleTokenRefresh(config, req, res, db);
@@ -553,6 +558,65 @@ async function handleResetPassword(
   }
 
   sendJson(res, 200, { message: 'Password has been reset. You can now sign in.' });
+  return true;
+}
+
+// ── Change Password (authenticated) ─────────────────────────────
+
+async function handleChangePassword(
+  config: ResolvedAuthConfig,
+  req: IncomingMessage,
+  res: ServerResponse,
+  db?: any,
+): Promise<boolean> {
+  const user = (req as any).nkAuth?.user;
+  if (!user) {
+    sendJson(res, 401, { error: 'Authentication required' });
+    return true;
+  }
+
+  if (!db) {
+    sendJson(res, 400, { error: 'Native auth not configured' });
+    return true;
+  }
+
+  const body = JSON.parse(await readBody(req));
+  const { currentPassword, newPassword } = body;
+
+  if (!currentPassword || !newPassword) {
+    sendJson(res, 400, { error: 'Current password and new password required' });
+    return true;
+  }
+
+  const { verifyPassword, updatePassword } = await import('./native-auth.js');
+
+  const row = db.get('SELECT password_hash FROM _nk_auth_users WHERE id = ?', user.sub);
+  if (!row) {
+    sendJson(res, 404, { error: 'User not found' });
+    return true;
+  }
+
+  const valid = await verifyPassword(currentPassword, row.password_hash);
+  if (!valid) {
+    sendJson(res, 401, { error: 'Current password is incorrect' });
+    return true;
+  }
+
+  const nativeProvider = getNativeProvider(config);
+  const minLength = nativeProvider?.minPasswordLength ?? 8;
+
+  try {
+    await updatePassword(db, user.sub, newPassword, minLength);
+  } catch (err: any) {
+    sendJson(res, 400, { error: err.message });
+    return true;
+  }
+
+  if (config.onEvent) {
+    try { await config.onEvent({ type: 'password-changed', email: user.email, userId: user.sub }); } catch {}
+  }
+
+  sendJson(res, 200, { message: 'Password updated successfully' });
   return true;
 }
 
