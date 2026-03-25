@@ -19,6 +19,7 @@ import {
   handlePresenceUpdate,
   handleConnect,
   handleDisconnect,
+  handleFileUploadRequest,
   type HandlerContext,
 } from './handlers.js';
 import {
@@ -42,6 +43,9 @@ import {
   type EncryptionContext,
 } from './encryption.js';
 
+import type { StorageAdapter } from '../storage/adapters/types.js';
+import { useStorage } from '../storage/index.js';
+
 /** Options for creating a communication socket handler */
 export interface CommunicationHandlerOptions {
   /** Communication config overrides */
@@ -50,6 +54,12 @@ export interface CommunicationHandlerOptions {
   getUserId?: (headers: Record<string, any>, query: Record<string, any>) => string | undefined;
   /** LumenJS database instance — if provided, messages are persisted */
   db?: LumenDb;
+  /**
+   * Storage adapter for chat file uploads.
+   * Falls back to the global singleton (useStorage()) if not provided.
+   * Required for file:request-upload support.
+   */
+  storage?: StorageAdapter;
 }
 
 const defaultGetUserId = (headers: Record<string, any>, query: Record<string, any>): string | undefined => {
@@ -125,6 +135,7 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
         }
       },
       db: options.db,
+      storage: options.storage ?? useStorage() ?? undefined,
     };
 
     // Build signaling context
@@ -202,6 +213,10 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
     ctx.on('encryption:upload-keys', (data) => handleUploadKeys(encryptionCtx, data));
     ctx.on('encryption:request-keys', (data) => handleRequestKeys(encryptionCtx, data));
     ctx.on('encryption:session-init', (data) => handleSessionInit(encryptionCtx, data));
+
+    // ── File Upload ───────────────────────────────────────────
+
+    ctx.on('file:request-upload', (data) => handleFileUploadRequest(handlerCtx, data));
 
     // ── Cleanup on Disconnect ────────────────────────────────
 

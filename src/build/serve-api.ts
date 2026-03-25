@@ -4,6 +4,7 @@ import path from 'path';
 import type { BuildManifest } from '../shared/types.js';
 import { readBody } from '../shared/utils.js';
 import { matchRoute } from '../shared/route-matching.js';
+import { useStorage } from '../storage/index.js';
 
 export async function handleApiRoute(
   manifest: BuildManifest,
@@ -61,6 +62,7 @@ export async function handleApiRoute(
       params: matched.params,
       body,
       headers: req.headers,
+      storage: useStorage(),
     });
 
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });

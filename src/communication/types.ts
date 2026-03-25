@@ -1,3 +1,5 @@
+import type { StorageAdapter } from '../storage/adapters/types.js';
+
 // ── Configuration ─────────────────────────────────────────────────
 
 export interface CommunicationConfig {
@@ -27,6 +29,8 @@ export interface CommunicationConfig {
   messageRetentionDays?: number;
   /** Socket reconnection config */
   reconnection?: ReconnectionConfig;
+  /** Storage adapter for chat file uploads. Required for file:request-upload support. */
+  storage?: StorageAdapter;
 }
 
 export interface RateLimitConfig {
@@ -358,6 +362,17 @@ export interface CommunicationClientEvents {
   'encryption:upload-keys': (data: KeyBundle) => void;
   'encryption:request-keys': (data: KeyExchangeRequest) => void;
   'encryption:session-init': (data: { recipientId: string; sessionId: string; envelope: EncryptedEnvelope }) => void;
+  /**
+   * Request a presigned upload URL for a chat file attachment.
+   * For E2E-encrypted chats: client encrypts the file locally before uploading.
+   * The server issues a presigned PUT URL — it never sees the plaintext content.
+   */
+  'file:request-upload': (data: {
+    conversationId: string;
+    mimeType: string;
+    size: number;
+    fileName: string;
+  }) => void;
 }
 
 export interface CommunicationServerEvents {
@@ -385,6 +400,10 @@ export interface CommunicationServerEvents {
   'encryption:session-established': (data: { sessionId: string; senderId: string }) => void;
   'encryption:session-init': (data: { senderId: string; sessionId: string; envelope: EncryptedEnvelope }) => void;
   'encryption:keys-depleted': (data: { userId: string }) => void;
+  /** Presigned upload URL ready — client should PUT the (encrypted) file to uploadUrl */
+  'file:upload-ready': (data: { fileId: string; uploadUrl: string; key: string; expiresAt: string }) => void;
+  /** File upload request was rejected */
+  'file:upload-error': (data: { code: string; message: string }) => void;
 }
 
 // ── Aggregate ─────────────────────────────────────────────────────

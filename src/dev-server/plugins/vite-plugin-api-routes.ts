@@ -2,6 +2,8 @@ import { Plugin, ViteDevServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import { readBody } from '../../shared/utils.js';
+import { useStorage } from '../../storage/index.js';
+import type { StorageAdapter } from '../../storage/adapters/types.js';
 
 /**
  * LumenJS API Routes plugin.
@@ -86,6 +88,7 @@ export function lumenApiRoutesPlugin(apiDir: string, projectDir?: string): Plugi
             headers: req.headers,
             projectDir: projectDir || path.dirname(apiDir),
             nkAuth: (req as any).nkAuth || null,
+            storage: useStorage() as StorageAdapter | null,
           };
 
           const result = await handler(nkRequest);

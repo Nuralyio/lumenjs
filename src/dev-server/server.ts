@@ -20,6 +20,7 @@ import { virtualModulesPlugin } from './plugins/vite-plugin-virtual-modules.js';
 import { i18nPlugin, loadTranslationsFromDisk } from './plugins/vite-plugin-i18n.js';
 import { authPlugin } from './plugins/vite-plugin-auth.js';
 import { communicationPlugin } from './plugins/vite-plugin-communication.js';
+import { lumenStoragePlugin } from './plugins/vite-plugin-storage.js';
 import { lumenSocketIOPlugin } from './plugins/vite-plugin-socketio.js';
 import { resolveLocale } from './middleware/locale.js';
 import { setProjectDir } from '../db/context.js';
@@ -149,6 +150,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
       ...shared.plugins,
       ...(integrations.includes('communication') ? [communicationPlugin(projectDir)] : []),
+      lumenStoragePlugin(projectDir),
       lumenApiRoutesPlugin(apiDir, projectDir),
       litHmrPlugin(projectDir),
       ...(i18nConfig ? [i18nPlugin(projectDir, i18nConfig)] : []),
