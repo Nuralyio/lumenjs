@@ -4,20 +4,36 @@ import { parseSessionCookie, decryptSession, encryptSession, createSessionCookie
 
 type NextFn = (err?: any) => void;
 
+/** Type augmentation — makes `req.nkAuth` available without casting */
+declare module 'http' {
+  interface IncomingMessage {
+    nkAuth?: NkAuth | null;
+  }
+}
+
+export type ConnectMiddleware = (req: IncomingMessage, res: ServerResponse, next: NextFn) => Promise<void>;
+
 /**
  * Create Connect middleware that parses the session cookie and attaches req.nkAuth.
  * Works with both OIDC and native auth sessions — the cookie format is identical.
+ *
+ * Behavior:
+ * 1. Skip non-page requests (/@, /node_modules, static files with `.`)
+ * 2. Check Bearer token (mobile/API clients)
+ * 3. Parse + decrypt session cookie → attach req.nkAuth
+ * 4. Refresh OIDC tokens if expiring within 5 minutes
+ * 5. Always call next() — never blocks the middleware chain
  */
-export function createAuthMiddleware(config: ResolvedAuthConfig) {
+export function createAuthMiddleware(config: ResolvedAuthConfig): ConnectMiddleware {
   return async (req: IncomingMessage, res: ServerResponse, next: NextFn): Promise<void> => {
-    const url = (req as any).url || '';
+    const url = req.url || '';
 
     // Skip non-page requests
     if (url.startsWith('/@') || url.startsWith('/node_modules') || url.includes('.')) {
       return next();
     }
 
-    (req as any).nkAuth = null;
+    req.nkAuth = null;
 
     // 1. Check bearer token first (mobile apps)
     const authHeader = req.headers.authorization;
@@ -26,7 +42,7 @@ export function createAuthMiddleware(config: ResolvedAuthConfig) {
         const { verifyAccessToken } = await import('./token.js');
         const user = verifyAccessToken(authHeader.slice(7), config.session.secret);
         if (user) {
-          (req as any).nkAuth = { user, session: { accessToken: authHeader.slice(7), expiresAt: 0, user } } as NkAuth;
+          req.nkAuth = { user, session: { accessToken: authHeader.slice(7), expiresAt: 0, user } };
           return next();
         }
       } catch {}
@@ -42,9 +58,9 @@ export function createAuthMiddleware(config: ResolvedAuthConfig) {
     const session = await decryptSession(sessionCookie, config.session.secret);
     if (!session) return next();
 
-    (req as any).nkAuth = { user: session.user, session } as NkAuth;
+    req.nkAuth = { user: session.user, session };
 
-    // Refresh OIDC tokens if about to expire (native sessions don't expire the same way)
+    // 3. Refresh OIDC tokens if about to expire (native sessions don't expire the same way)
     if (shouldRefreshSession(session) && session.refreshToken && session.provider !== 'native') {
       const oidc = config.providers.find(
         p => p.type === 'oidc' && p.name === session.provider,
@@ -70,7 +86,7 @@ export function createAuthMiddleware(config: ResolvedAuthConfig) {
           const encrypted = await encryptSession(newSession, config.session.secret);
           const cookie = createSessionCookie(config.session.cookieName, encrypted, config.session.maxAge, config.session.secure);
           res.setHeader('Set-Cookie', cookie);
-          (req as any).nkAuth = { user: newSession.user, session: newSession };
+          req.nkAuth = { user: newSession.user, session: newSession };
         } catch {
           // Refresh failed — keep existing session
         }
