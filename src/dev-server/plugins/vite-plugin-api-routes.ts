@@ -93,9 +93,15 @@ export function lumenApiRoutesPlugin(apiDir: string, projectDir?: string): Plugi
 
           const result = await handler(nkRequest);
 
-          res.statusCode = 200;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify(result));
+          if (result && result.__nk_binary && Buffer.isBuffer(result.body)) {
+            res.statusCode = result.status || 200;
+            for (const [k, v] of Object.entries(result.headers || {})) res.setHeader(k, v as string);
+            res.end(result.body);
+          } else {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(result));
+          }
         } catch (err: any) {
           const status = err?.status || 500;
           const message = err?.message || 'Internal server error';
