@@ -24,6 +24,7 @@ export interface EmailConfig {
     host: string;
     port: number;
     secure?: boolean;
+    rejectUnauthorized?: boolean;
     auth: { user: string; pass: string };
   };
   resend?: {
