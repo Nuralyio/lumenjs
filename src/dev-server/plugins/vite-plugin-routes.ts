@@ -84,8 +84,8 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
       if (entry.isDirectory() && !entry.name.startsWith('_')) {
         walkDir(baseDir, entryRelative, routes);
       } else if (entry.isFile() && /\.(ts|js)$/.test(entry.name) && !entry.name.startsWith('_')) {
-        // In a folder route (has index file), only register the index file
-        if (hasIndex && !/^index\.(ts|js)$/.test(entry.name)) continue;
+        // In a folder route (has index file), only register the index file and dynamic param files
+        if (hasIndex && !/^index\.(ts|js)$/.test(entry.name) && !entry.name.startsWith('[')) continue;
         const routePath = filePathToRoute(entryRelative);
         const componentPath = path.join(pagesDir, entryRelative);
         const tagName = filePathToTagName(entryRelative);
