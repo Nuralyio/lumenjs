@@ -11,7 +11,12 @@ export function createSendGridProvider(apiKey: string): EmailProvider {
         },
         body: JSON.stringify({
           personalizations: [{ to: [{ email: message.to }] }],
-          from: { email: message.from.replace(/.*<(.+)>/, '$1'), name: message.from.replace(/<.+>/, '').trim() || undefined },
+          from: (() => {
+            const hasAngleBrackets = /<.+>/.test(message.from);
+            const email = hasAngleBrackets ? message.from.replace(/.*<(.+)>/, '$1') : message.from;
+            const name = hasAngleBrackets ? message.from.replace(/<.+>/, '').trim() || undefined : undefined;
+            return { email, name };
+          })(),
           subject: message.subject,
           content: [
             ...(message.text ? [{ type: 'text/plain', value: message.text }] : []),
