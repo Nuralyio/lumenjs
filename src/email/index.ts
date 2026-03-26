@@ -10,7 +10,7 @@ export type { EmailConfig, EmailMessage, EmailProvider, EmailTemplates, Template
 export { renderVerifyEmail } from './templates/verify-email.js';
 export { renderPasswordReset } from './templates/password-reset.js';
 export { renderWelcome } from './templates/welcome.js';
-export { renderTemplate, renderButton } from './templates/base.js';
+export { renderTemplate, renderButton, escapeHtml } from './templates/base.js';
 export { compileTemplate } from './template-engine.js';
 
 const BUILT_IN_TEMPLATES: Record<string, TemplateRenderer> = {
