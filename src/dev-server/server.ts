@@ -140,7 +140,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       strictPort: false,
       allowedHosts: true,
       cors: true,
-      hmr: process.env.HMR_CLIENT_PORT ? { clientPort: parseInt(process.env.HMR_CLIENT_PORT), protocol: process.env.HMR_PROTOCOL || 'wss' } : true,
+      hmr: process.env.HMR_CLIENT_PORT ? { clientPort: parseInt(process.env.HMR_CLIENT_PORT), protocol: process.env.HMR_PROTOCOL || 'wss', host: process.env.HMR_HOST || undefined } : true,
       fs: {
         allow: [projectDir, getLumenJSNodeModules(), path.resolve(getLumenJSNodeModules(), '..')],
       },
