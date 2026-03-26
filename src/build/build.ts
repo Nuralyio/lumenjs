@@ -207,6 +207,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
         tagName: filePathToTagName(relPath),
         ...(routeLayouts.length > 0 ? { layouts: routeLayouts } : {}),
         ...(e.hasAuth ? { hasAuth: true } : {}),
+        ...(e.hasMeta ? { hasMeta: true } : {}),
         ...(e.hasStandalone ? { hasStandalone: true } : {}),
         ...(e.prerender ? { prerender: true } : {}),
       };

@@ -146,6 +146,26 @@ class NkApp extends HTMLElement {
       this.innerHTML = '<div id="nk-router-outlet"></div>';
     }
     const outlet = this.querySelector('#nk-router-outlet') as HTMLElement;
+
+    // Create route announcer for screen readers (WCAG 2.4.2)
+    const announcer = document.createElement('div');
+    announcer.id = 'nk-route-announcer';
+    announcer.setAttribute('aria-live', 'assertive');
+    announcer.setAttribute('aria-atomic', 'true');
+    announcer.setAttribute('role', 'status');
+    Object.assign(announcer.style, {
+      position: 'absolute',
+      width: '1px',
+      height: '1px',
+      padding: '0',
+      margin: '-1px',
+      overflow: 'hidden',
+      clip: 'rect(0,0,0,0)',
+      whiteSpace: 'nowrap',
+      border: '0',
+    });
+    this.appendChild(announcer);
+
     this.router = new NkRouter(routes, outlet, isSSR);
 
     const strategy = getDefaultStrategy();

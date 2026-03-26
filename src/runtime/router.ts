@@ -1,6 +1,7 @@
 import { fetchLoaderData, fetchLayoutLoaderData, prefetchLoaderData, prefetchLayoutLoaderData, connectSubscribe, connectLayoutSubscribe, render404 } from './router-data.js';
 import { hydrateInitialRoute } from './router-hydration.js';
 import { getI18nConfig, getLocale, initI18n, stripLocalePrefix, buildLocalePath } from './i18n.js';
+import type { PageMeta } from '../shared/meta.js';
 
 export interface LayoutInfo {
   tagName: string;
@@ -15,6 +16,7 @@ export interface Route {
   tagName: string;
   hasLoader?: boolean;
   hasSubscribe?: boolean;
+  hasMeta?: boolean;
   load?: () => Promise<any>;
   layouts?: LayoutInfo[];
   pattern?: RegExp;
@@ -32,10 +34,12 @@ export class NkRouter {
   private currentTag: string | null = null;
   private currentLayoutTags: string[] = [];
   private subscriptions: EventSource[] = [];
+  private siteTitle: string;
   public params: Record<string, string> = {};
 
   constructor(routes: Route[], outlet: HTMLElement, hydrate = false) {
     this.outlet = outlet;
+    this.siteTitle = document.title || 'LumenJS App';
     this.routes = routes.map(r => ({
       ...r,
       ...this.compilePattern(r.path),
@@ -173,6 +177,9 @@ export class NkRouter {
     const [loaderData, ...layoutDataList] = await Promise.all(loaderPromises);
 
     this.renderRoute(match.route, loaderData, layouts, layoutDataList);
+
+    // Update document.title and announce route change for screen readers
+    this.updatePageMeta(match.route, loaderData);
 
     // Set up SSE subscriptions
     this.setupSubscriptions(pathname);
@@ -332,6 +339,50 @@ export class NkRouter {
   private findPageElement(tagName: string): Element | null {
     if (!this.outlet) return null;
     return this.outlet.querySelector(tagName) ?? this.outlet.querySelector(`${tagName}:last-child`);
+  }
+
+  /**
+   * Resolve the page title from the route's meta export and update
+   * document.title, the aria-live announcer, and focus.
+   */
+  private async updatePageMeta(route: Route, loaderData?: any): Promise<void> {
+    let pageTitle: string | undefined;
+
+    if (route.hasMeta && route.load) {
+      try {
+        const mod = await route.load();
+        if (mod) {
+          let meta: PageMeta | undefined;
+          if (typeof mod.meta === 'function') {
+            meta = mod.meta({ data: loaderData, params: this.params });
+          } else if (mod.meta && typeof mod.meta === 'object') {
+            meta = mod.meta;
+          }
+          if (meta?.title) {
+            pageTitle = `${meta.title} | ${this.siteTitle}`;
+          }
+        }
+      } catch { /* fall back to site title */ }
+    }
+
+    const title = pageTitle || this.siteTitle;
+    document.title = title;
+
+    // Announce route change to screen readers
+    const announcer = document.getElementById('nk-route-announcer');
+    if (announcer) {
+      announcer.textContent = '';
+      // Use a microtask delay so aria-live picks up the change
+      requestAnimationFrame(() => { announcer.textContent = title; });
+    }
+
+    // Move focus to the router outlet for keyboard/screen reader users
+    if (this.outlet) {
+      if (!this.outlet.hasAttribute('tabindex')) {
+        this.outlet.setAttribute('tabindex', '-1');
+      }
+      this.outlet.focus({ preventScroll: true });
+    }
   }
 
   private handleLinkClick(event: MouseEvent) {

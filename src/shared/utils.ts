@@ -197,6 +197,22 @@ export function fileHasAuth(filePath: string): boolean {
 }
 
 /**
+ * Check if a page file exports a `meta` object or function.
+ * Supports both `export const meta = { ... }` and `export function meta(...)`.
+ */
+export function fileHasMeta(filePath: string): boolean {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const classStart = content.search(/export\s+class\s+\w+/);
+    // Check for `export const meta` or `export function meta`
+    const match = /export\s+(const\s+meta\s*=|(async\s+)?function\s+meta\s*\()/.exec(content);
+    if (!match) return false;
+    if (classStart >= 0 && match.index > classStart) return false;
+    return true;
+  } catch { return false; }
+}
+
+/**
  * Check if a page file exports a `socket` function or constant.
  */
 export function fileHasSocket(filePath: string): boolean {
