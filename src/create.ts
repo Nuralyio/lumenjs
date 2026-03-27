@@ -4,6 +4,12 @@ import { fileURLToPath } from 'url';
 
 const TEMPLATES = ['default', 'blog', 'dashboard'];
 
+const BINARY_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.avif',
+  '.woff', '.woff2', '.ttf', '.eot', '.otf',
+  '.mp4', '.mp3', '.zip', '.tar', '.gz',
+]);
+
 export async function createProject(name: string, template: string): Promise<void> {
   if (!name) {
     console.error('Please provide a project name: lumenjs create <name>');
@@ -48,6 +54,8 @@ function copyDir(src: string, dest: string, projectName: string): void {
     if (entry.isDirectory()) {
       fs.mkdirSync(destPath, { recursive: true });
       copyDir(srcPath, destPath, projectName);
+    } else if (BINARY_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      fs.copyFileSync(srcPath, destPath);
     } else {
       let content = fs.readFileSync(srcPath, 'utf-8');
       content = content.replace(/\{\{PROJECT_NAME\}\}/g, projectName);
