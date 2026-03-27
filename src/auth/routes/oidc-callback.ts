@@ -1,18 +1,18 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { ResolvedAuthConfig, OIDCProvider } from '../../types.js';
-import { getOidcProvider, hasNativeAuth } from '../../config.js';
+import type { ResolvedAuthConfig, OIDCProvider } from '../types.js';
+import { getOidcProvider, hasNativeAuth } from '../config.js';
 import {
   discoverProvider,
   exchangeCode,
   extractUser,
-} from '../../oidc-client.js';
+} from '../oidc-client.js';
 import {
   encryptSession,
   createSessionCookie,
   clearSessionCookie,
   parseSessionCookie,
   decryptSession,
-} from '../../session.js';
+} from '../session.js';
 import { sendJson } from './utils.js';
 
 export async function handleOidcCallback(
@@ -69,7 +69,7 @@ export async function handleOidcCallback(
   // Account linking: if native auth is also configured, link by email
   if (db && hasNativeAuth(config) && user.email) {
     try {
-      const { linkOidcUser, ensureUsersTable } = await import('../../native-auth.js');
+      const { linkOidcUser, ensureUsersTable } = await import('../native-auth.js');
       ensureUsersTable(db);
       user = linkOidcUser(db, user);
     } catch {}

@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { ResolvedAuthConfig } from '../../types.js';
-import { getNativeProvider } from '../../config.js';
+import type { ResolvedAuthConfig } from '../types.js';
+import { getNativeProvider } from '../config.js';
 import {
   encryptSession,
   createSessionCookie,
-} from '../../session.js';
+} from '../session.js';
 import { sendJson, readBody, isTokenMode } from './utils.js';
 
 export async function handleNativeSignup(
@@ -33,7 +33,7 @@ export async function handleNativeSignup(
   }
 
   try {
-    const { registerUser, ensureUsersTable, generateVerificationToken } = await import('../../native-auth.js');
+    const { registerUser, ensureUsersTable, generateVerificationToken } = await import('../native-auth.js');
     ensureUsersTable(db);
     const user = await registerUser(db, email, password, name, nativeProvider);
 
@@ -64,7 +64,7 @@ export async function handleNativeSignup(
 
     // Token mode: return bearer tokens
     if (isTokenMode(url, req) && config.token.enabled) {
-      const { issueAccessToken, generateRefreshToken, storeRefreshToken, ensureRefreshTokenTable } = await import('../../token.js');
+      const { issueAccessToken, generateRefreshToken, storeRefreshToken, ensureRefreshTokenTable } = await import('../token.js');
       ensureRefreshTokenTable(db);
       const accessToken = issueAccessToken(user, config.session.secret, config.token.accessTokenTTL);
       const refreshToken = generateRefreshToken();

@@ -1,5 +1,5 @@
 import type { ServerResponse } from 'http';
-import type { ResolvedAuthConfig } from '../../types.js';
+import type { ResolvedAuthConfig } from '../types.js';
 
 export async function handleVerifyEmail(
   config: ResolvedAuthConfig,
@@ -16,7 +16,7 @@ export async function handleVerifyEmail(
     return true;
   }
 
-  const { verifyVerificationToken, verifyUserEmail } = await import('../../native-auth.js');
+  const { verifyVerificationToken, verifyUserEmail } = await import('../native-auth.js');
   const userId = verifyVerificationToken(token, config.session.secret);
   if (!userId) {
     res.writeHead(302, { Location: '/auth/verify?error=invalid' });

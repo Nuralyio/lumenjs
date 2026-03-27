@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { ResolvedAuthConfig } from '../../types.js';
-import { getNativeProvider } from '../../config.js';
+import type { ResolvedAuthConfig } from '../types.js';
+import { getNativeProvider } from '../config.js';
 import { sendJson, readBody } from './utils.js';
 
 export async function handleForgotPassword(
@@ -21,7 +21,7 @@ export async function handleForgotPassword(
     return true;
   }
 
-  const { findUserIdByEmail, generateResetToken } = await import('../../native-auth.js');
+  const { findUserIdByEmail, generateResetToken } = await import('../native-auth.js');
   const userId = findUserIdByEmail(db, email);
 
   // Always return success (don't reveal if email exists)
@@ -55,7 +55,7 @@ export async function handleResetPassword(
     return true;
   }
 
-  const { verifyResetToken, updatePassword } = await import('../../native-auth.js');
+  const { verifyResetToken, updatePassword } = await import('../native-auth.js');
   const userId = verifyResetToken(token, config.session.secret);
   if (!userId) {
     sendJson(res, 400, { error: 'Invalid or expired reset link' });
@@ -107,7 +107,7 @@ export async function handleChangePassword(
     return true;
   }
 
-  const { verifyPassword, updatePassword } = await import('../../native-auth.js');
+  const { verifyPassword, updatePassword } = await import('../native-auth.js');
 
   const row = db.get('SELECT password_hash FROM _nk_auth_users WHERE id = ?', user.sub);
   if (!row) {

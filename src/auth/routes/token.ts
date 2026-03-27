@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { ResolvedAuthConfig } from '../../types.js';
+import type { ResolvedAuthConfig } from '../types.js';
 import { sendJson, readBody } from './utils.js';
 
 export async function handleTokenRefresh(
@@ -20,7 +20,7 @@ export async function handleTokenRefresh(
     return true;
   }
 
-  const { validateRefreshToken, deleteRefreshToken, storeRefreshToken, generateRefreshToken, issueAccessToken, ensureRefreshTokenTable } = await import('../../token.js');
+  const { validateRefreshToken, deleteRefreshToken, storeRefreshToken, generateRefreshToken, issueAccessToken, ensureRefreshTokenTable } = await import('../token.js');
   ensureRefreshTokenTable(db);
 
   const userId = validateRefreshToken(db, refreshToken);
@@ -33,7 +33,7 @@ export async function handleTokenRefresh(
   deleteRefreshToken(db, refreshToken);
 
   // Look up user from DB
-  const { findUserByEmail } = await import('../../native-auth.js');
+  const { findUserByEmail } = await import('../native-auth.js');
   const row = db.get('SELECT * FROM _nk_auth_users WHERE id = ?', userId);
   if (!row) {
     sendJson(res, 401, { error: 'User not found' });
@@ -69,7 +69,7 @@ export async function handleTokenRevoke(
     return true;
   }
 
-  const { deleteRefreshToken } = await import('../../token.js');
+  const { deleteRefreshToken } = await import('../token.js');
   deleteRefreshToken(db, refreshToken);
 
   sendJson(res, 200, { ok: true });

@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { ResolvedAuthConfig, OIDCProvider } from '../../types.js';
-import { discoverProvider } from '../../oidc-client.js';
+import type { ResolvedAuthConfig, OIDCProvider } from '../types.js';
+import { discoverProvider } from '../oidc-client.js';
 import {
   clearSessionCookie,
   parseSessionCookie,
   decryptSession,
-} from '../../session.js';
+} from '../session.js';
 import { sendJson } from './utils.js';
 
 export async function handleLogout(
@@ -69,13 +69,13 @@ export async function handleLogoutAll(
   }
 
   // Set sessions_revoked_at — any session created before this timestamp is invalid
-  const { revokeAllSessions, ensureUsersTable } = await import('../../native-auth.js');
+  const { revokeAllSessions, ensureUsersTable } = await import('../native-auth.js');
   ensureUsersTable(db);
   revokeAllSessions(db, user.sub);
 
   // Delete all refresh tokens (mobile/API sessions)
   try {
-    const { deleteAllRefreshTokens, ensureRefreshTokenTable } = await import('../../token.js');
+    const { deleteAllRefreshTokens, ensureRefreshTokenTable } = await import('../token.js');
     ensureRefreshTokenTable(db);
     deleteAllRefreshTokens(db, user.sub);
   } catch {}

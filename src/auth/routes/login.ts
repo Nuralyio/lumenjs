@@ -1,16 +1,16 @@
 import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { ResolvedAuthConfig, OIDCProvider } from '../../types.js';
-import { getOidcProvider, hasNativeAuth, getNativeProvider } from '../../config.js';
+import type { ResolvedAuthConfig, OIDCProvider } from '../types.js';
+import { getOidcProvider, hasNativeAuth, getNativeProvider } from '../config.js';
 import {
   discoverProvider,
   buildAuthorizationUrl,
   generateCodeVerifier,
-} from '../../oidc-client.js';
+} from '../oidc-client.js';
 import {
   encryptSession,
   createSessionCookie,
-} from '../../session.js';
+} from '../session.js';
 import { sendJson, readBody, isTokenMode } from './utils.js';
 
 /**
@@ -86,7 +86,7 @@ export async function handleNativeLogin(
     return true;
   }
 
-  const { authenticateUser, isEmailVerified } = await import('../../native-auth.js');
+  const { authenticateUser, isEmailVerified } = await import('../native-auth.js');
   const user = await authenticateUser(db, email, password);
   if (!user) {
     sendJson(res, 401, { error: 'Invalid credentials' });
@@ -115,7 +115,7 @@ export async function handleNativeLogin(
 
   // Token mode: return bearer tokens instead of cookie
   if (isTokenMode(url, req) && config.token.enabled) {
-    const { issueAccessToken, generateRefreshToken, storeRefreshToken, ensureRefreshTokenTable } = await import('../../token.js');
+    const { issueAccessToken, generateRefreshToken, storeRefreshToken, ensureRefreshTokenTable } = await import('../token.js');
     ensureRefreshTokenTable(db);
     const accessToken = issueAccessToken(user, config.session.secret, config.token.accessTokenTTL);
     const refreshToken = generateRefreshToken();
