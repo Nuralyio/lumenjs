@@ -59,6 +59,10 @@ export interface AuthConfig {
   guards?: {
     defaultAuth?: boolean;
   };
+  permissions?: {
+    enabled?: boolean;
+    defaultOwnerGrants?: string[];
+  };
   token?: {
     enabled?: boolean;
     /** Access token TTL in seconds. Default: 900 (15 min) */
@@ -91,6 +95,10 @@ export interface ResolvedAuthConfig {
   };
   guards: {
     defaultAuth: boolean;
+  };
+  permissions: {
+    enabled: boolean;
+    defaultOwnerGrants: string[];
   };
   token: {
     enabled: boolean;

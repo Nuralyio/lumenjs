@@ -6,10 +6,30 @@ import { createAuthMiddleware } from '../../auth/middleware.js';
 import { handleAuthRoutes } from '../../auth/routes.js';
 import { enforceGuard } from '../../auth/guard.js';
 import { hasNativeAuth } from '../../auth/config.js';
+import { enforcePermissionGuard, isPermissionGuard } from '../../permissions/guard.js';
+import { ensurePermissionTables } from '../../permissions/tables.js';
+import { PermissionService } from '../../permissions/service.js';
 import { loadEmailConfig, sendEmail, renderEmailTemplate } from '../../email/index.js';
 import { setProjectDir } from '../../db/context.js';
 import { useDb } from '../../db/index.js';
 import { ensureUsersTable } from '../../auth/native-auth.js';
+
+/**
+ * Extract URL params by matching a route pattern against a path.
+ * Pattern: /apps/workflows/:workflowId → { workflowId: 'abc-123' }
+ */
+function matchRouteParams(pattern: string, pathname: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  const patternParts = pattern.split('/');
+  const pathParts = pathname.split('/');
+  for (let i = 0; i < patternParts.length; i++) {
+    if (patternParts[i].startsWith(':')) {
+      const key = patternParts[i].slice(1);
+      if (pathParts[i]) params[key] = decodeURIComponent(pathParts[i]);
+    }
+  }
+  return params;
+}
 
 /**
  * Vite dev plugin for authentication.
@@ -18,6 +38,7 @@ import { ensureUsersTable } from '../../auth/native-auth.js';
 export function authPlugin(projectDir: string): Plugin {
   let authConfig: ResolvedAuthConfig | null = null;
   let db: any = null;
+  let permissionService: PermissionService | null = null;
 
   return {
     name: 'lumenjs-auth',
@@ -58,6 +79,11 @@ export function authPlugin(projectDir: string): Plugin {
                 setProjectDir(projectDir);
                 db = useDb();
                 ensureUsersTable(db);
+                if (authConfig.permissions.enabled) {
+                  ensurePermissionTables(db);
+                  permissionService = new PermissionService(db, authConfig.permissions);
+                  console.log('[LumenJS] Permission module initialized');
+                }
               } catch (dbErr) {
                 console.warn('[LumenJS Auth] DB init failed, native auth disabled:', (dbErr as any)?.message);
               }
@@ -109,7 +135,24 @@ export function authPlugin(projectDir: string): Plugin {
 
           if (!authExport) return next();
 
-          const result = enforceGuard(authExport, (req as any).nkAuth, authConfig.routes.loginPage, url);
+          // Permission guard: { permission: 'workflow:read', resourceParam: 'workflowId' }
+          let result;
+          if (isPermissionGuard(authExport) && permissionService) {
+            // Extract URL params from the page file path pattern
+            const { filePathToRoute } = await import('../../shared/utils.js');
+            const routePattern = filePathToRoute(path.relative(pagesDir, pageFile));
+            const urlParams = matchRouteParams(routePattern, url.split('?')[0]);
+            result = enforcePermissionGuard(
+              authExport,
+              (req as any).nkAuth?.user,
+              authConfig.routes.loginPage,
+              url,
+              urlParams,
+              permissionService,
+            );
+          } else {
+            result = enforceGuard(authExport, (req as any).nkAuth, authConfig.routes.loginPage, url);
+          }
 
           if ('redirect' in result) {
             res.writeHead(302, { Location: result.redirect });

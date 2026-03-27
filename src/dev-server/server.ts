@@ -72,6 +72,7 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
       '@lumenjs/communication': path.join(runtimeDir, 'communication.js'),
       '@lumenjs/webrtc': path.join(runtimeDir, 'webrtc.js'),
       '@lumenjs/db': path.join(distDir, 'db', 'client.js'),
+      '@lumenjs/permissions': path.join(distDir, 'permissions', 'index.js'),
     },
     conditions: isDev ? ['development', 'browser'] : ['browser'],
     // Note: resolve.dedupe is NOT used — it resolves via Node's algorithm
@@ -312,7 +313,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     },
     ssr: {
       noExternal: true,
-      external: ['node-domexception', 'socket.io-client', 'xmlhttprequest-ssl', 'engine.io-client', 'better-sqlite3', '@lumenjs/db'],
+      external: ['node-domexception', 'socket.io-client', 'xmlhttprequest-ssl', 'engine.io-client', 'better-sqlite3', '@lumenjs/db', '@lumenjs/permissions'],
       resolve: {
         conditions: ['node', 'import'],
       },
