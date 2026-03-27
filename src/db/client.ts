@@ -5,7 +5,7 @@
 import { getProjectDir, setProjectDir } from './context.js';
 import { useDb as _useDb, LumenDb } from './index.js';
 
-export { LumenDb } from './index.js';
+export { LumenDb, waitForSeed } from './index.js';
 
 export function useDb(): LumenDb {
   try {

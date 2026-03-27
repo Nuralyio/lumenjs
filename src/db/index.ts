@@ -5,10 +5,11 @@ import { getProjectDir } from './context.js';
 import { readProjectConfig } from '../dev-server/config.js';
 import { autoMigrate } from './auto-migrate.js';
 import { getRegisteredTables } from './table.js';
-import { autoSeed } from './seed.js';
+import { autoSeed, waitForSeed } from './seed.js';
 
 export { defineTable, getRegisteredTables } from './table.js';
 export type { TableDefinition, TableColumn } from './table.js';
+export { waitForSeed } from './seed.js';
 
 export class LumenDb {
   private db: Database.Database;

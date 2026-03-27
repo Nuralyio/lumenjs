@@ -32,10 +32,12 @@ async function loadAndRunSeed(projectDir: string): Promise<void> {
   }
 }
 
+let _seedPromise: Promise<void> | null = null;
+
 /**
  * Auto-seed on first DB creation. Called from useDb() after migrations.
- * Fires asynchronously — the import() of the seed file is async,
- * but the seed function itself typically uses sync better-sqlite3 ops.
+ * Marks seed as applied BEFORE running to prevent concurrent re-runs,
+ * and rolls back the mark on failure so it retries next time.
  */
 export function autoSeed(db: Database.Database, projectDir: string): void {
   if (isSeedApplied(db)) return;
@@ -44,14 +46,29 @@ export function autoSeed(db: Database.Database, projectDir: string): void {
   if (!fs.existsSync(seedPath)) return;
 
   console.log('[LumenJS] Running seed file...');
-  loadAndRunSeed(projectDir)
+  // Mark as applied BEFORE running to prevent concurrent re-runs
+  markSeedApplied(db);
+
+  _seedPromise = loadAndRunSeed(projectDir)
     .then(() => {
-      markSeedApplied(db);
       console.log('[LumenJS] Seed applied.');
     })
     .catch(err => {
       console.error('[LumenJS] Failed to run seed:', err);
+      // Rollback the mark so it can retry next time
+      db.prepare(`DELETE FROM ${SEED_TABLE} WHERE name = ?`).run(SEED_NAME);
+    })
+    .finally(() => {
+      _seedPromise = null;
     });
+}
+
+/**
+ * Returns a promise that resolves when any in-progress seed completes.
+ * Resolves immediately if no seed is running.
+ */
+export function waitForSeed(): Promise<void> {
+  return _seedPromise ?? Promise.resolve();
 }
 
 /** Run seed via CLI. If force=true, re-run even if already applied. */
