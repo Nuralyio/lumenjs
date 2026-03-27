@@ -15,6 +15,11 @@ const GUARD_DEFAULTS = {
   defaultAuth: false,
 };
 
+const PERMISSIONS_DEFAULTS = {
+  enabled: false,
+  defaultOwnerGrants: ['read', 'write', 'delete', 'share'],
+};
+
 const TOKEN_DEFAULTS = {
   enabled: true,
   accessTokenTTL: 900,
@@ -62,6 +67,7 @@ function validate(config: any): ResolvedAuthConfig {
     },
     routes: { ...ROUTE_DEFAULTS, ...config.routes },
     guards: { ...GUARD_DEFAULTS, ...config.guards },
+    permissions: { ...PERMISSIONS_DEFAULTS, ...config.permissions },
     token: { ...TOKEN_DEFAULTS, ...config.token },
     ...(config.onEvent ? { onEvent: config.onEvent } : {}),
   };
