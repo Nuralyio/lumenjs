@@ -9,12 +9,12 @@ export function ensurePermissionTables(db: any): void {
       resource_type TEXT NOT NULL,
       resource_id TEXT NOT NULL,
       grantee_type TEXT NOT NULL CHECK (grantee_type IN ('user', 'role', 'public', 'anonymous')),
-      grantee_id TEXT,
+      grantee_id TEXT NOT NULL DEFAULT '',
       permission TEXT NOT NULL,
       granted_by TEXT,
       expires_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(resource_type, resource_id, grantee_type, COALESCE(grantee_id, ''), permission)
+      UNIQUE(resource_type, resource_id, grantee_type, grantee_id, permission)
     );
 
     CREATE INDEX IF NOT EXISTS idx_nk_rp_resource
@@ -33,10 +33,10 @@ export function ensurePermissionTables(db: any): void {
     CREATE TABLE IF NOT EXISTS _nk_user_roles (
       user_id TEXT NOT NULL,
       role_id TEXT NOT NULL,
-      resource_type TEXT,
-      resource_id TEXT,
+      resource_type TEXT NOT NULL DEFAULT '',
+      resource_id TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      PRIMARY KEY (user_id, role_id, COALESCE(resource_type, ''), COALESCE(resource_id, ''))
+      PRIMARY KEY (user_id, role_id, resource_type, resource_id)
     );
 
     CREATE INDEX IF NOT EXISTS idx_nk_ur_user
