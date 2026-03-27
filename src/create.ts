@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const TEMPLATES = ['default', 'blog', 'dashboard'];
+const TEMPLATES = ['default', 'blog', 'dashboard', 'social'];
 
 const BINARY_EXTENSIONS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.avif',
