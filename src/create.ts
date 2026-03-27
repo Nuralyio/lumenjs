@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const TEMPLATES = ['default', 'blog', 'dashboard'];
+const TEMPLATES = ['default', 'blog', 'dashboard', 'social'];
 
 export async function createProject(name: string, template: string): Promise<void> {
   if (!name) {

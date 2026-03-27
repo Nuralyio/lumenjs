@@ -11,7 +11,7 @@ function getArg(name: string): string | undefined {
 }
 
 const USAGE = `Usage:
-  lumenjs create <name> [--template <default|blog|dashboard>]
+  lumenjs create <name> [--template <default|blog|dashboard|social>]
   lumenjs dev    [--project <dir>] [--port <port>] [--base <path>] [--editor-mode]
   lumenjs build  [--project <dir>] [--out <dir>]
   lumenjs serve  [--project <dir>] [--port <port>]
