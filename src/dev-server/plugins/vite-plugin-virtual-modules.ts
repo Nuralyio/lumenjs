@@ -20,6 +20,7 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     'auth': 'auth.js',
     'communication': 'communication.js',
     'webrtc': 'webrtc.js',
+    'error-boundary': 'error-boundary.js',
     'hydrate-support': '__virtual__',
   };
 

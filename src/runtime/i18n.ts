@@ -1,28 +1,41 @@
 /**
  * LumenJS i18n runtime — provides translation lookup, locale management,
  * and translation loading for both SSR and client-side navigation.
+ *
+ * State is stored on globalThis so that it survives Vite's SSR module
+ * invalidation. During dev SSR, page and layout modules may each get a
+ * separate copy of this module after cache invalidation — globalThis
+ * ensures they all read from the same translation map.
  */
 
-let currentLocale = 'en';
-let translations: Record<string, string> = {};
-let i18nConfig: { locales: string[]; defaultLocale: string; prefixDefault: boolean } | null = null;
+interface I18nState {
+  locale: string;
+  translations: Record<string, string>;
+  config: { locales: string[]; defaultLocale: string; prefixDefault: boolean } | null;
+}
+
+const G = globalThis as any;
+if (!G.__nk_i18n) {
+  G.__nk_i18n = { locale: 'en', translations: {}, config: null } as I18nState;
+}
+const state: I18nState = G.__nk_i18n;
 
 /**
  * Look up a translation key. Returns the translated string, or the key itself
  * if no translation is found.
  */
 export function t(key: string): string {
-  return translations[key] ?? key;
+  return state.translations[key] ?? key;
 }
 
 /** Returns the current locale. */
 export function getLocale(): string {
-  return currentLocale;
+  return state.locale;
 }
 
 /** Returns the i18n config, or null if i18n is not enabled. */
 export function getI18nConfig(): { locales: string[]; defaultLocale: string; prefixDefault: boolean } | null {
-  return i18nConfig;
+  return state.config;
 }
 
 /**
@@ -30,7 +43,7 @@ export function getI18nConfig(): { locales: string[]; defaultLocale: string; pre
  * locale prefix and sets the `nk-locale` cookie.
  */
 export function setLocale(locale: string): void {
-  if (!i18nConfig || !i18nConfig.locales.includes(locale)) return;
+  if (!state.config || !state.config.locales.includes(locale)) return;
 
   document.cookie = `nk-locale=${locale};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`;
 
@@ -48,9 +61,9 @@ export function initI18n(
   locale: string,
   trans: Record<string, string>
 ): void {
-  i18nConfig = config;
-  currentLocale = locale;
-  translations = trans;
+  state.config = config;
+  state.locale = locale;
+  state.translations = trans;
 }
 
 /**
@@ -63,8 +76,8 @@ export async function loadTranslations(locale: string): Promise<void> {
     console.error(`[i18n] Failed to load translations for locale "${locale}"`);
     return;
   }
-  translations = await res.json();
-  currentLocale = locale;
+  state.translations = await res.json();
+  state.locale = locale;
 }
 
 /**
@@ -75,7 +88,7 @@ export async function loadTranslations(locale: string): Promise<void> {
  */
 if (typeof window !== 'undefined') {
   (window as any).__lumenjs_i18n_reload = async (locale: string): Promise<boolean> => {
-    if (locale !== currentLocale) return false;
+    if (locale !== state.locale) return false;
     await loadTranslations(locale);
     return true;
   };
@@ -87,9 +100,9 @@ if (typeof window !== 'undefined') {
  *   /about    → /about
  */
 export function stripLocalePrefix(pathname: string): string {
-  if (!i18nConfig) return pathname;
-  for (const loc of i18nConfig.locales) {
-    if (loc === i18nConfig.defaultLocale && !i18nConfig.prefixDefault) continue;
+  if (!state.config) return pathname;
+  for (const loc of state.config.locales) {
+    if (loc === state.config.defaultLocale && !state.config.prefixDefault) continue;
     if (pathname === `/${loc}` || pathname.startsWith(`/${loc}/`)) {
       return pathname.slice(loc.length + 1) || '/';
     }
@@ -103,8 +116,8 @@ export function stripLocalePrefix(pathname: string): string {
  *   (en, /about) → /about        (when prefixDefault=false)
  */
 export function buildLocalePath(locale: string, pathname: string): string {
-  if (!i18nConfig) return pathname;
-  if (locale === i18nConfig.defaultLocale && !i18nConfig.prefixDefault) {
+  if (!state.config) return pathname;
+  if (locale === state.config.defaultLocale && !state.config.prefixDefault) {
     return pathname;
   }
   return `/${locale}${pathname === '/' ? '' : pathname}` || `/${locale}`;
@@ -115,11 +128,11 @@ export function buildLocalePath(locale: string, pathname: string): string {
  * Returns the locale and the pathname with the prefix stripped.
  */
 export function detectLocaleFromPath(pathname: string): { locale: string; pathname: string } {
-  if (!i18nConfig) return { locale: 'en', pathname };
-  for (const loc of i18nConfig.locales) {
+  if (!state.config) return { locale: 'en', pathname };
+  for (const loc of state.config.locales) {
     if (pathname === `/${loc}` || pathname.startsWith(`/${loc}/`)) {
       return { locale: loc, pathname: pathname.slice(loc.length + 1) || '/' };
     }
   }
-  return { locale: i18nConfig.defaultLocale, pathname };
+  return { locale: state.config.defaultLocale, pathname };
 }

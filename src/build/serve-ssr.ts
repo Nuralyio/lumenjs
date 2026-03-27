@@ -5,6 +5,7 @@ import type { BuildManifest } from '../shared/types.js';
 import { stripOuterLitMarkers, dirToLayoutTagName, isRedirectResponse, patchLoaderDataSpread } from '../shared/utils.js';
 import { matchRoute } from '../shared/route-matching.js';
 import { sendCompressed } from './serve-static.js';
+import { logger } from '../shared/logger.js';
 
 export async function handlePageRoute(
   manifest: BuildManifest,
@@ -144,7 +145,7 @@ export async function handlePageRoute(
             sendCompressed(req, res, 200, 'text/html; charset=utf-8', html_out);
             return;
           } catch (ssrErr) {
-            console.error('[LumenJS] SSR render failed, falling back to CSR:', ssrErr);
+            logger.warn('SSR render failed, falling back to CSR', { error: (ssrErr as any)?.message });
           }
         }
 
@@ -163,7 +164,7 @@ export async function handlePageRoute(
           return;
         }
       } catch (err) {
-        console.error('[LumenJS] Page handler error:', err);
+        logger.error('Page handler error', { error: (err as any)?.message });
       }
     }
   }

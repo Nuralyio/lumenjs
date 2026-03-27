@@ -35,6 +35,7 @@ src/
 │   ├── router-hydration.ts # SSR hydration logic
 │   ├── response.ts        # Response helpers (redirect, json)
 │   ├── i18n.ts            # Client i18n: t(), getLocale(), setLocale()
+│   ├── error-boundary.ts  # <nk-error-boundary> — catches render errors, shows fallback
 │   └── socket-client.ts   # Socket.io client wrapper
 ├── editor/                # Visual editor mode
 │   ├── editor-bridge.ts   # Host ↔ editor iframe communication
@@ -50,6 +51,12 @@ src/
 │   ├── utils.ts           # filePathToTagName, filePathToRoute, fileHasLoader, etc.
 │   ├── route-matching.ts  # URL pattern matching
 │   ├── middleware-runner.ts # Express-style middleware chain execution
+│   ├── logger.ts          # Structured logging (JSON prod, pretty dev, log levels)
+│   ├── security-headers.ts # CSP, X-Frame-Options, HSTS, etc. middleware
+│   ├── rate-limit.ts      # Token bucket rate limiter middleware
+│   ├── health.ts          # /__health endpoint handler
+│   ├── request-id.ts      # X-Request-ID generation/propagation
+│   ├── graceful-shutdown.ts # SIGTERM/SIGINT handler with connection draining
 │   ├── dom-shims.ts       # DOM shims for SSR
 │   ├── meta.ts            # Page meta/head management
 │   ├── socket-io-setup.ts # Socket.io server setup

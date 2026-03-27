@@ -16,6 +16,13 @@ import { getMiddlewareDirsForPathname, MiddlewareEntry } from './scan.js';
 import { createAuthMiddleware } from '../auth/middleware.js';
 import { handleAuthRoutes } from '../auth/routes.js';
 import { loadAuthConfigProd } from '../auth/config.js';
+import { initLogger, logger } from '../shared/logger.js';
+import { createSecurityHeadersMiddleware } from '../shared/security-headers.js';
+import { createRateLimiter, createAuthRateLimiter } from '../shared/rate-limit.js';
+import { createHealthCheckHandler } from '../shared/health.js';
+import { createRequestIdMiddleware } from '../shared/request-id.js';
+import { getRequestId } from '../shared/request-id.js';
+import { setupGracefulShutdown } from '../shared/graceful-shutdown.js';
 
 export interface ServeOptions {
   projectDir: string;
@@ -30,19 +37,30 @@ export async function serveProject(options: ServeOptions): Promise<void> {
   const serverDir = path.join(outDir, 'server');
   const manifestPath = path.join(outDir, 'manifest.json');
 
+  // Initialize structured logging
+  initLogger();
+
   if (!fs.existsSync(manifestPath)) {
-    console.error('[LumenJS] No build found. Run `lumenjs build` first.');
+    logger.fatal('No build found. Run `lumenjs build` first.');
     process.exit(1);
   }
 
   const manifest: BuildManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-  const { title } = readProjectConfig(projectDir);
+  const config = readProjectConfig(projectDir);
+  const { title } = config;
   const localesDir = path.join(outDir, 'locales');
+
+  // Production middleware stack
+  const requestIdMiddleware = createRequestIdMiddleware();
+  const securityHeaders = createSecurityHeadersMiddleware(config.securityHeaders);
+  const rateLimiter = createRateLimiter(config.rateLimit);
+  const authRateLimiter = createAuthRateLimiter();
+  const healthCheck = createHealthCheckHandler({ version: config.version });
 
   // Read the built index.html shell
   const indexHtmlPath = path.join(clientDir, 'index.html');
   if (!fs.existsSync(indexHtmlPath)) {
-    console.error('[LumenJS] No index.html found in build output.');
+    logger.fatal('No index.html found in build output.');
     process.exit(1);
   }
   const indexHtmlShell = fs.readFileSync(indexHtmlPath, 'utf-8');
@@ -73,7 +91,7 @@ export async function serveProject(options: ServeOptions): Promise<void> {
           const mod = await import(modPath);
           middlewareModules.set(entry.dir, extractMiddleware(mod));
         } catch (err) {
-          console.error(`[LumenJS] Failed to load middleware (${entry.dir || 'root'}):`, err);
+          logger.error(`Failed to load middleware (${entry.dir || 'root'})`, { error: (err as any)?.message });
         }
       }
     }
@@ -90,18 +108,45 @@ export async function serveProject(options: ServeOptions): Promise<void> {
     try {
       authConfig = await loadAuthConfigProd(serverDir, manifest.auth.configModule);
       authMiddleware = createAuthMiddleware(authConfig);
-      console.log('[LumenJS] Auth middleware loaded.');
+      logger.info('Auth middleware loaded.');
     } catch (err) {
-      console.error('[LumenJS] Failed to load auth config:', err);
+      logger.error('Failed to load auth config', { error: (err as any)?.message });
     }
   }
 
+  const runMiddleware = (mw: (req: any, res: any, next: any) => void, req: any, res: any): Promise<void> =>
+    new Promise((resolve, reject) => mw(req, res, (err?: any) => err ? reject(err) : resolve()));
+
   const server = http.createServer(async (req, res) => {
+    const startTime = Date.now();
     const url = req.url || '/';
     const [pathname, queryString] = url.split('?');
     const method = req.method || 'GET';
 
     try {
+      // --- Production middleware pipeline ---
+
+      // Request ID (always first)
+      await runMiddleware(requestIdMiddleware, req, res);
+
+      // Health check (bypass everything else)
+      let healthHandled = false;
+      await new Promise<void>(resolve => healthCheck(req, res, () => { resolve(); }));
+      if (res.writableEnded) return;
+
+      // Security headers
+      await runMiddleware(securityHeaders, req, res);
+
+      // Rate limiting (stricter for auth routes)
+      if (pathname.startsWith('/__nk_auth/')) {
+        await runMiddleware(authRateLimiter, req, res);
+      } else {
+        await runMiddleware(rateLimiter, req, res);
+      }
+      if (res.writableEnded) return;
+
+      // --- Original request handling ---
+
       // -2. Auth routes (must handle /__nk_auth/* before other /__nk_ exclusions)
       if (authConfig && pathname.startsWith('/__nk_auth/')) {
         const handled = await handleAuthRoutes(authConfig, req, res);
@@ -172,7 +217,7 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         return;
       }
 
-      // 6. Resolve locale and strip prefix for page routing
+      // 8. Resolve locale and strip prefix for page routing
       let resolvedPathname = pathname;
       let locale: string | undefined;
       if (manifest.i18n) {
@@ -181,7 +226,7 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         locale = result.locale;
       }
 
-      // 7. Check for pre-rendered HTML file
+      // 9. Check for pre-rendered HTML file
       const prerenderFile = path.join(clientDir, resolvedPathname === '/' ? '' : resolvedPathname, 'index.html');
       if (resolvedPathname !== '/' && fs.existsSync(prerenderFile)) {
         const prerenderHtml = fs.readFileSync(prerenderFile, 'utf-8');
@@ -198,10 +243,13 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         }
       }
 
-      // 8. Page routes — SSR render
+      // 10. Page routes — SSR render
       await handlePageRoute(manifest, serverDir, pagesDir, resolvedPathname, queryString, indexHtmlShell, title, ssrRuntime, req, res);
     } catch (err: any) {
-      console.error('[LumenJS] Request error:', err);
+      logger.error('Request error', {
+        method, url: pathname, error: err?.message, stack: err?.stack,
+        requestId: getRequestId(req),
+      });
       const html = renderErrorPage(
         500,
         'Something went wrong',
@@ -209,10 +257,21 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         process.env.NODE_ENV !== 'production' ? err?.stack || err?.message : undefined
       );
       sendCompressed(req, res, 500, 'text/html; charset=utf-8', html);
+    } finally {
+      // Log request completion
+      const duration = Date.now() - startTime;
+      logger.request(req, res.statusCode, duration, { requestId: getRequestId(req) });
     }
   });
 
+  // Graceful shutdown
+  setupGracefulShutdown(server, {
+    onShutdown: async () => {
+      logger.info('Cleaning up resources...');
+    },
+  });
+
   server.listen(port, () => {
-    console.log(`[LumenJS] Production server running at http://localhost:${port}`);
+    logger.info(`Production server running at http://localhost:${port}`, { port });
   });
 }

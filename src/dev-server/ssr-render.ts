@@ -32,31 +32,12 @@ export async function ssrRenderPage(
     // Patch missing DOM APIs that NuralyUI components may use during SSR
     installDomShims();
 
-    // Initialize i18n in the SSR context so t() works during render
-    if (locale) {
-      const projectDir = path.resolve(pagesDir, '..');
-      const translations = loadTranslationsFromDisk(projectDir, locale);
-      try {
-        // Load the same i18n module the page will import (via resolve.alias)
-        const i18nMod = await server.ssrLoadModule('@lumenjs/i18n');
-        if (i18nMod?.initI18n) {
-          i18nMod.initI18n({ locales: [], defaultLocale: locale, prefixDefault: false }, locale, translations);
-        }
-      } catch {
-        // i18n module not available — translations will show keys
-      }
-    }
-
-    // Initialize auth in the SSR context
-    if (user) {
-      try {
-        const authMod = await server.ssrLoadModule('@nuraly/lumenjs-auth');
-        if (authMod?.initAuth) authMod.initAuth(user);
-      } catch {}
-    }
-
     // Invalidate SSR module cache so we always get fresh content after file edits.
     // Also clear the custom element from the SSR registry so the new class is used.
+    // IMPORTANT: This must happen BEFORE i18n/auth init, because invalidation
+    // recursively clears all SSR-imported modules (including @lumenjs/i18n).
+    // If we init i18n first, then invalidate, the page reload gets a fresh i18n
+    // module instance with empty translations.
     const g = globalThis as any;
     invalidateSsrModule(server, filePath);
     clearSsrCustomElement(g);
@@ -114,6 +95,32 @@ export async function ssrRenderPage(
       patchLoaderDataSpread(lm.tagName);
     }
     patchLoaderDataSpread(tagName);
+
+    // Initialize i18n in the SSR context AFTER all page/layout modules are loaded.
+    // This ensures t() uses the same module instance the components imported.
+    // Must happen after invalidation + module loading, because invalidateSsrModule
+    // recursively clears cached modules — if i18n was initialized before, the
+    // reloaded page/layout would get a fresh i18n instance with empty translations.
+    if (locale) {
+      const projectDir = path.resolve(pagesDir, '..');
+      const translations = loadTranslationsFromDisk(projectDir, locale);
+      try {
+        const i18nMod = await server.ssrLoadModule('@lumenjs/i18n');
+        if (i18nMod?.initI18n) {
+          i18nMod.initI18n({ locales: [], defaultLocale: locale, prefixDefault: false }, locale, translations);
+        }
+      } catch {
+        // i18n module not available — translations will show keys
+      }
+    }
+
+    // Initialize auth in the SSR context (same reason — after module loading)
+    if (user) {
+      try {
+        const authMod = await server.ssrLoadModule('@nuraly/lumenjs-auth');
+        if (authMod?.initAuth) authMod.initAuth(user);
+      } catch {}
+    }
 
     // Load SSR render + lit/static-html.js through Vite (same module registry as page)
     const { render } = await server.ssrLoadModule('@lit-labs/ssr');

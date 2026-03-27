@@ -1,6 +1,8 @@
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import type { SecurityHeadersConfig } from '../shared/security-headers.js';
+import type { RateLimitConfig } from '../shared/rate-limit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +21,12 @@ export interface ProjectConfig {
   i18n?: I18nConfig;
   prefetch: PrefetchStrategy;
   prerender?: boolean;
+  /** App version for health check. Default: reads from package.json. */
+  version?: string;
+  /** Security headers config. Applied in production. */
+  securityHeaders?: SecurityHeadersConfig;
+  /** Rate limiting config. Applied in production. */
+  rateLimit?: RateLimitConfig;
 }
 
 /**
@@ -89,7 +97,17 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
     } catch { /* ignore */ }
   }
 
-  return { title, integrations, prefetch, ...(i18n ? { i18n } : {}), ...(prerender ? { prerender } : {}) };
+  // Read version from project's package.json
+  let version: string | undefined;
+  const pkgPath = path.join(projectDir, 'package.json');
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+      version = pkg.version;
+    } catch { /* ignore */ }
+  }
+
+  return { title, integrations, prefetch, version, ...(i18n ? { i18n } : {}), ...(prerender ? { prerender } : {}) };
 }
 
 /**

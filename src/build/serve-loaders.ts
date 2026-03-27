@@ -4,6 +4,7 @@ import path from 'path';
 import type { BuildManifest } from '../shared/types.js';
 import { isRedirectResponse } from '../shared/utils.js';
 import { matchRoute } from '../shared/route-matching.js';
+import { logger } from '../shared/logger.js';
 
 /** Resolve a module path, falling back to bracket-sanitized filename (Rollup replaces [] with _) */
 function resolveModulePath(serverDir: string, moduleName: string): string {
@@ -71,7 +72,7 @@ export async function handleLayoutLoaderRequest(
       res.end();
       return;
     }
-    console.error(`[LumenJS] Layout loader error for dir=${dir}:`, err);
+    logger.error(`Layout loader error`, { dir, error: (err as any)?.message });
     const status = err?.status || 500;
     const message = err?.message || 'Layout loader failed';
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -134,7 +135,7 @@ export async function handleLayoutSubscribeRequest(
       if (typeof cleanup === 'function') cleanup();
     });
   } catch (err: any) {
-    console.error(`[LumenJS] Layout subscribe error for dir=${dir}:`, err);
+    logger.error(`Layout subscribe error`, { dir, error: (err as any)?.message });
     if (!res.headersSent) {
       res.writeHead(500);
       res.end();
@@ -206,7 +207,7 @@ export async function handleSubscribeRequest(
       if (typeof cleanup === 'function') cleanup();
     });
   } catch (err: any) {
-    console.error(`[LumenJS] Subscribe error for ${pagePath}:`, err);
+    logger.error(`Subscribe error`, { pagePath, error: (err as any)?.message });
     if (!res.headersSent) {
       res.writeHead(500);
       res.end();
@@ -281,7 +282,7 @@ export async function handleLoaderRequest(
       res.end();
       return;
     }
-    console.error(`[LumenJS] Loader error for ${pagePath}:`, err);
+    logger.error(`Loader error`, { pagePath, error: (err as any)?.message });
     const status = err?.status || 500;
     const message = err?.message || 'Loader failed';
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
