@@ -24,7 +24,7 @@ export type ConnectMiddleware = (req: IncomingMessage, res: ServerResponse, next
  * 4. Refresh OIDC tokens if expiring within 5 minutes
  * 5. Always call next() — never blocks the middleware chain
  */
-export function createAuthMiddleware(config: ResolvedAuthConfig): ConnectMiddleware {
+export function createAuthMiddleware(config: ResolvedAuthConfig, db?: any): ConnectMiddleware {
   return async (req: IncomingMessage, res: ServerResponse, next: NextFn): Promise<void> => {
     const url = req.url || '';
 
@@ -60,7 +60,19 @@ export function createAuthMiddleware(config: ResolvedAuthConfig): ConnectMiddlew
 
     req.nkAuth = { user: session.user, session };
 
-    // 3. Refresh OIDC tokens if about to expire (native sessions don't expire the same way)
+    // 3. Check if session was revoked via logout-all
+    if (db && session.createdAt && session.user?.sub) {
+      try {
+        const { getSessionsRevokedAt } = await import('./native-auth.js');
+        const revokedAt = getSessionsRevokedAt(db, session.user.sub);
+        if (revokedAt && session.createdAt <= revokedAt) {
+          req.nkAuth = null;
+          return next();
+        }
+      } catch {}
+    }
+
+    // 4. Refresh OIDC tokens if about to expire (native sessions don't expire the same way)
     if (shouldRefreshSession(session) && session.refreshToken && session.provider !== 'native') {
       const oidc = config.providers.find(
         p => p.type === 'oidc' && p.name === session.provider,

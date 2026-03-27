@@ -120,6 +120,11 @@ export async function handleAuthRoutes(
     return handleLogout(config, req, res, url);
   }
 
+  // ── Logout All — invalidate all sessions across devices ──────
+  if (pathname === '/__nk_auth/logout-all' && req.method === 'POST') {
+    return handleLogoutAll(config, req, res, db);
+  }
+
   // ── Me — return current user ──────────────────────────────────
   if (pathname === '/__nk_auth/me') {
     const user = (req as any).nkAuth?.user ?? null;
@@ -202,6 +207,7 @@ async function handleNativeLogin(
     expiresAt: Math.floor(Date.now() / 1000) + config.session.maxAge,
     user,
     provider: 'native',
+    createdAt: Math.floor(Date.now() / 1000),
   };
 
   const encrypted = await encryptSession(sessionData, config.session.secret);
@@ -283,6 +289,7 @@ async function handleNativeSignup(
       expiresAt: Math.floor(Date.now() / 1000) + config.session.maxAge,
       user,
       provider: 'native',
+      createdAt: Math.floor(Date.now() / 1000),
     };
 
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -384,6 +391,7 @@ async function handleOidcCallback(
     expiresAt: Math.floor(Date.now() / 1000) + tokens.expires_in,
     user,
     provider: oidc.name,
+    createdAt: Math.floor(Date.now() / 1000),
   };
 
   const encrypted = await encryptSession(sessionData, config.session.secret);
@@ -437,6 +445,50 @@ async function handleLogout(
 
   res.writeHead(302, { Location: redirectUrl, 'Set-Cookie': clearCookie });
   res.end();
+  return true;
+}
+
+// ── Logout All (sign out all devices) ────────────────────────────
+
+async function handleLogoutAll(
+  config: ResolvedAuthConfig,
+  req: IncomingMessage,
+  res: ServerResponse,
+  db?: any,
+): Promise<boolean> {
+  const user = (req as any).nkAuth?.user;
+  if (!user) {
+    sendJson(res, 401, { error: 'Authentication required' });
+    return true;
+  }
+
+  if (!db) {
+    sendJson(res, 400, { error: 'Native auth not configured' });
+    return true;
+  }
+
+  // Set sessions_revoked_at — any session created before this timestamp is invalid
+  const { revokeAllSessions, ensureUsersTable } = await import('./native-auth.js');
+  ensureUsersTable(db);
+  revokeAllSessions(db, user.sub);
+
+  // Delete all refresh tokens (mobile/API sessions)
+  try {
+    const { deleteAllRefreshTokens, ensureRefreshTokenTable } = await import('./token.js');
+    ensureRefreshTokenTable(db);
+    deleteAllRefreshTokens(db, user.sub);
+  } catch {}
+
+  // Clear current session cookie
+  const clearCookie = clearSessionCookie(config.session.cookieName);
+
+  if (req.headers.accept?.includes('application/json')) {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': clearCookie });
+    res.end(JSON.stringify({ ok: true, message: 'All sessions have been signed out' }));
+  } else {
+    res.writeHead(302, { Location: config.routes.postLogout, 'Set-Cookie': clearCookie });
+    res.end();
+  }
   return true;
 }
 

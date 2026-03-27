@@ -69,7 +69,7 @@ export function authPlugin(projectDir: string): Plugin {
         }
         if (!authConfig) return next();
 
-        const middleware = createAuthMiddleware(authConfig);
+        const middleware = createAuthMiddleware(authConfig, db);
         middleware(req, res, next);
       });
 

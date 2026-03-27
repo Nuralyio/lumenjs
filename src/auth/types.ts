@@ -131,6 +131,8 @@ export interface SessionData {
   user: AuthUser;
   /** Which provider created this session */
   provider?: string;
+  /** Epoch seconds when session was created — used for logout-all invalidation */
+  createdAt?: number;
 }
 
 export interface NkAuth {

@@ -57,6 +57,8 @@ export function ensureUsersTable(db: Db): void {
   )`);
   // Add email_verified column if table already exists without it
   try { db.exec('ALTER TABLE _nk_auth_users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0'); } catch {};
+  // Add sessions_revoked_at column for logout-all support
+  try { db.exec('ALTER TABLE _nk_auth_users ADD COLUMN sessions_revoked_at TEXT'); } catch {};
 }
 
 /**
@@ -240,4 +242,18 @@ export async function updatePassword(db: Db, userId: string, newPassword: string
 export function findUserIdByEmail(db: Db, email: string): string | null {
   const row = db.get<any>('SELECT id FROM _nk_auth_users WHERE email = ?', email);
   return row?.id || null;
+}
+
+// ── Session Revocation (Logout All) ─────────────────────────────
+
+/** Set sessions_revoked_at to now, invalidating all sessions created before this moment. */
+export function revokeAllSessions(db: Db, userId: string): void {
+  db.run('UPDATE _nk_auth_users SET sessions_revoked_at = datetime("now") WHERE id = ?', userId);
+}
+
+/** Get the epoch-seconds timestamp of the last logout-all, or null if never revoked. */
+export function getSessionsRevokedAt(db: Db, userId: string): number | null {
+  const row = db.get<any>('SELECT sessions_revoked_at FROM _nk_auth_users WHERE id = ?', userId);
+  if (!row?.sessions_revoked_at) return null;
+  return Math.floor(new Date(row.sessions_revoked_at + 'Z').getTime() / 1000);
 }
