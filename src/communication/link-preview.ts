@@ -1,5 +1,25 @@
 import crypto from 'node:crypto';
 
+function isPrivateUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '0.0.0.0') return true;
+    const parts = hostname.split('.').map(Number);
+    if (parts.length === 4 && parts.every(n => !isNaN(n))) {
+      if (parts[0] === 10) return true;
+      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+      if (parts[0] === 192 && parts[1] === 168) return true;
+      if (parts[0] === 169 && parts[1] === 254) return true;
+      if (parts[0] === 0) return true;
+    }
+    if (!hostname.includes('.')) return true;
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 interface LinkPreview {
   url: string;
   title: string | null;
@@ -17,6 +37,7 @@ interface Db {
  * Fetch Open Graph metadata from a URL and cache it.
  */
 export async function fetchLinkPreview(url: string, db?: Db): Promise<LinkPreview | null> {
+  if (isPrivateUrl(url)) return null;
   const urlHash = crypto.createHash('sha256').update(url).digest('hex').slice(0, 16);
 
   // Check cache
