@@ -31,10 +31,21 @@ export function communicationPlugin(projectDir: string): Plugin {
     return api;
   }
 
-  function readBody(req: IncomingMessage): Promise<string> {
+  const MAX_BODY_SIZE = 1024 * 1024; // 1 MB
+
+  function readBody(req: IncomingMessage, maxSize: number = MAX_BODY_SIZE): Promise<string> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
-      req.on('data', (c: Buffer) => chunks.push(c));
+      let size = 0;
+      req.on('data', (c: Buffer) => {
+        size += c.length;
+        if (size > maxSize) {
+          req.destroy();
+          reject(new Error('Request body too large'));
+          return;
+        }
+        chunks.push(c);
+      });
       req.on('end', () => resolve(Buffer.concat(chunks).toString()));
       req.on('error', reject);
     });
@@ -82,6 +93,7 @@ export function communicationPlugin(projectDir: string): Plugin {
 
           // GET /__nk_comm/messages/<conversationId>
           if (rest.startsWith('messages/') && req.method === 'GET') {
+            if (!userId) { sendJson(res, 401, { error: 'Unauthorized' }); return; }
             const conversationId = rest.slice('messages/'.length);
             const data = commApi.getMessages(conversationId);
             sendJson(res, 200, data);
@@ -90,6 +102,7 @@ export function communicationPlugin(projectDir: string): Plugin {
 
           // GET /__nk_comm/search?q=...
           if (rest === 'search' && req.method === 'GET') {
+            if (!userId) { sendJson(res, 401, { error: 'Unauthorized' }); return; }
             const params = new URL(url, 'http://localhost').searchParams;
             const data = commApi.searchMessages(params.get('q') || '');
             sendJson(res, 200, data);
@@ -102,9 +115,20 @@ export function communicationPlugin(projectDir: string): Plugin {
             const uploadDir = path.join(projectDir, 'data', 'uploads');
             if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
+            const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10 MB
             const chunks: Buffer[] = [];
-            req.on('data', (c: Buffer) => chunks.push(c));
+            let uploadSize = 0;
+            req.on('data', (c: Buffer) => {
+              uploadSize += c.length;
+              if (uploadSize > MAX_UPLOAD_SIZE) {
+                req.destroy();
+                sendJson(res, 413, { error: 'File too large' });
+                return;
+              }
+              chunks.push(c);
+            });
             req.on('end', () => {
+              if (uploadSize > MAX_UPLOAD_SIZE) return;
               const body = Buffer.concat(chunks);
               const id = crypto.randomUUID();
               const contentType = req.headers['content-type'] || '';
@@ -127,8 +151,11 @@ export function communicationPlugin(projectDir: string): Plugin {
           // GET /__nk_comm/files/:id — serve uploaded file
           if (rest.startsWith('files/') && req.method === 'GET') {
             const fileId = rest.slice('files/'.length);
+            // Validate fileId contains only safe characters (UUID format)
+            if (!/^[a-zA-Z0-9._-]+$/.test(fileId)) { sendJson(res, 400, { error: 'Invalid file ID' }); return; }
             const uploadDir = path.join(projectDir, 'data', 'uploads');
-            const filePath = path.join(uploadDir, `${fileId}.bin`);
+            const filePath = path.resolve(uploadDir, `${fileId}.bin`);
+            if (!filePath.startsWith(uploadDir + path.sep)) { sendJson(res, 400, { error: 'Invalid file ID' }); return; }
             if (!fs.existsSync(filePath)) { sendJson(res, 404, { error: 'File not found' }); return; }
             const stat = fs.statSync(filePath);
             let contentType = 'application/octet-stream';

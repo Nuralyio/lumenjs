@@ -13,7 +13,13 @@ export async function handleTokenRefresh(
     return true;
   }
 
-  const body = JSON.parse(await readBody(req));
+  let body: any;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: 'Invalid JSON body' });
+    return true;
+  }
   const { refreshToken } = body;
   if (!refreshToken) {
     sendJson(res, 400, { error: 'refreshToken required' });
@@ -62,7 +68,13 @@ export async function handleTokenRevoke(
     return true;
   }
 
-  const body = JSON.parse(await readBody(req));
+  let body: any;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: 'Invalid JSON body' });
+    return true;
+  }
   const { refreshToken } = body;
   if (!refreshToken) {
     sendJson(res, 400, { error: 'refreshToken required' });

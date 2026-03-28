@@ -116,10 +116,21 @@ export function patchLoaderDataSpread(tagName: string): void {
 /**
  * Read and parse the body of an HTTP request.
  */
-export function readBody(req: any): Promise<any> {
+const DEFAULT_MAX_BODY = 1024 * 1024; // 1 MB
+
+export function readBody(req: any, maxSize: number = DEFAULT_MAX_BODY): Promise<any> {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maxSize) {
+        req.destroy();
+        reject(new Error('Request body too large'));
+        return;
+      }
+      data += chunk.toString();
+    });
     req.on('end', () => {
       if (!data) return resolve(undefined);
       try {

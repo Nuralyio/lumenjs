@@ -79,6 +79,18 @@ export function handleConversationCreate(
 }
 
 export function handleConversationJoin(ctx: HandlerContext, data: { conversationId: string }): void {
+  // Verify the user is an actual participant of this conversation
+  if (ctx.db) {
+    const row = ctx.db.get(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
+      data.conversationId, ctx.userId,
+    );
+    if (!row) {
+      ctx.push({ event: 'error', data: { code: 'FORBIDDEN', message: 'Not a participant of this conversation' } });
+      return;
+    }
+  }
+
   ctx.joinRoom(`conv:${data.conversationId}`);
   ctx.store.addConversationMember(data.conversationId, ctx.userId);
   ctx.store.joinConversation(ctx.userId, data.conversationId);
@@ -94,7 +106,16 @@ export function handleConversationArchive(
   ctx: HandlerContext,
   data: { conversationId: string; archived: boolean },
 ): void {
+  // Verify the user is a participant
   if (ctx.db) {
+    const row = ctx.db.get(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
+      data.conversationId, ctx.userId,
+    );
+    if (!row) {
+      ctx.push({ event: 'error', data: { code: 'FORBIDDEN', message: 'Not a participant of this conversation' } });
+      return;
+    }
     ctx.db.run(
       `UPDATE conversations SET archived = ?, updated_at = ? WHERE id = ?`,
       data.archived ? 1 : 0, new Date().toISOString(), data.conversationId,

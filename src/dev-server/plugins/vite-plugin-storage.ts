@@ -65,8 +65,14 @@ export function lumenStoragePlugin(projectDir: string): Plugin {
           return;
         }
 
-        // Write to disk
-        const filePath = path.join(uploadDir, pending.key);
+        // Write to disk (validate path stays within uploadDir)
+        const filePath = path.resolve(uploadDir, pending.key);
+        if (!filePath.startsWith(uploadDir + path.sep) && filePath !== uploadDir) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'invalid storage key' }));
+          return;
+        }
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, body);
 
@@ -84,7 +90,10 @@ export function lumenStoragePlugin(projectDir: string): Plugin {
       server.middlewares.use('/uploads', (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();
 
-        const filePath = path.join(uploadDir, req.url?.split('?')[0] ?? '/');
+        const filePath = path.resolve(uploadDir, (req.url?.split('?')[0] ?? '/').replace(/^\/+/, ''));
+        if (!filePath.startsWith(uploadDir + path.sep) && filePath !== uploadDir) {
+          return next();
+        }
         if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
           return next();
         }

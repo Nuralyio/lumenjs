@@ -78,7 +78,13 @@ export async function handleNativeLogin(
     return true;
   }
 
-  const body = JSON.parse(await readBody(req));
+  let body: any;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: 'Invalid JSON body' });
+    return true;
+  }
   const { email, password } = body;
 
   if (!email || !password) {

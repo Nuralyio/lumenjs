@@ -1,9 +1,20 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 
-export function readBody(req: IncomingMessage): Promise<string> {
+const MAX_BODY_SIZE = 64 * 1024; // 64 KB — sufficient for auth payloads
+
+export function readBody(req: IncomingMessage, maxSize: number = MAX_BODY_SIZE): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (c: Buffer) => chunks.push(c));
+    let size = 0;
+    req.on('data', (c: Buffer) => {
+      size += c.length;
+      if (size > maxSize) {
+        req.destroy();
+        reject(new Error('Request body too large'));
+        return;
+      }
+      chunks.push(c);
+    });
     req.on('end', () => resolve(Buffer.concat(chunks).toString()));
     req.on('error', reject);
   });

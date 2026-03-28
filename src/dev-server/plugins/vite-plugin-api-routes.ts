@@ -201,10 +201,21 @@ interface NkUploadedFile {
   size: number;
 }
 
-function readRawBody(req: any): Promise<Buffer> {
+const MAX_API_BODY = 10 * 1024 * 1024; // 10 MB
+
+function readRawBody(req: any, maxSize: number = MAX_API_BODY): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maxSize) {
+        req.destroy();
+        reject(new Error('Request body too large'));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });

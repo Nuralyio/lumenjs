@@ -7,6 +7,24 @@ export function handleMessageSend(
   ctx: HandlerContext,
   data: { conversationId: string; content: string; type: Message['type']; replyTo?: string; attachment?: MessageAttachment; encrypted?: boolean; envelope?: EncryptedEnvelope },
 ): void {
+  // ── Membership check ──────────────────────────────────────────
+  if (ctx.db) {
+    const row = ctx.db.get(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
+      data.conversationId, ctx.userId,
+    );
+    if (!row) {
+      ctx.push({ event: 'message:error', data: { code: 'FORBIDDEN', message: 'Not a participant of this conversation' } });
+      return;
+    }
+  } else {
+    const members = ctx.store.getConversationMembers(data.conversationId);
+    if (members.size > 0 && !members.has(ctx.userId)) {
+      ctx.push({ event: 'message:error', data: { code: 'FORBIDDEN', message: 'Not a participant of this conversation' } });
+      return;
+    }
+  }
+
   // ── Rate limit check ──────────────────────────────────────────
   if (ctx.config.rateLimit) {
     const allowed = ctx.store.checkRateLimit(ctx.userId, ctx.config.rateLimit);
@@ -199,18 +217,18 @@ export function handleMessageEdit(
   const now = new Date().toISOString();
 
   if (ctx.db) {
-    // Only allow sender to edit
+    // Only allow sender to edit — return early if not the owner
     const msg = ctx.db.get('SELECT sender_id FROM messages WHERE id = ?', data.messageId);
     if (!msg || (msg as any).sender_id !== ctx.userId) return;
 
     ctx.db.run('UPDATE messages SET content = ?, updated_at = ? WHERE id = ? AND sender_id = ?',
       data.content, now, data.messageId, ctx.userId);
-  }
 
-  ctx.broadcastAll(`conv:${data.conversationId}`, {
-    event: 'message:updated',
-    data: { messageId: data.messageId, content: data.content, updatedAt: now, editedBy: ctx.userId },
-  });
+    ctx.broadcastAll(`conv:${data.conversationId}`, {
+      event: 'message:updated',
+      data: { messageId: data.messageId, content: data.content, updatedAt: now, editedBy: ctx.userId },
+    });
+  }
 }
 
 // ── Message Delete ──────────────────────────────────────────────
@@ -220,18 +238,18 @@ export function handleMessageDelete(
   data: { messageId: string; conversationId: string },
 ): void {
   if (ctx.db) {
-    // Only allow sender to delete
+    // Only allow sender to delete — return early if not the owner
     const msg = ctx.db.get('SELECT sender_id FROM messages WHERE id = ?', data.messageId);
     if (!msg || (msg as any).sender_id !== ctx.userId) return;
 
     ctx.db.run("UPDATE messages SET content = '', type = 'system', updated_at = ? WHERE id = ? AND sender_id = ?",
       new Date().toISOString(), data.messageId, ctx.userId);
-  }
 
-  ctx.broadcastAll(`conv:${data.conversationId}`, {
-    event: 'message:deleted',
-    data: { messageId: data.messageId, conversationId: data.conversationId, deletedBy: ctx.userId },
-  });
+    ctx.broadcastAll(`conv:${data.conversationId}`, {
+      event: 'message:deleted',
+      data: { messageId: data.messageId, conversationId: data.conversationId, deletedBy: ctx.userId },
+    });
+  }
 }
 
 // ── Message Forward ─────────────────────────────────────────────

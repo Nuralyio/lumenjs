@@ -42,14 +42,23 @@ export class LocalStorageAdapter implements StorageAdapter {
   readonly pendingUploads = new Map<string, PendingUpload>();
 
   constructor(options: LocalStorageOptions) {
-    this.uploadDir = options.uploadDir;
+    this.uploadDir = path.resolve(options.uploadDir);
     this.publicPath = options.publicPath.replace(/\/$/, '');
     fs.mkdirSync(this.uploadDir, { recursive: true });
   }
 
+  /** Resolve a storage key to an absolute path and ensure it stays within uploadDir. */
+  private safePath(key: string): string {
+    const resolved = path.resolve(this.uploadDir, key);
+    if (!resolved.startsWith(this.uploadDir + path.sep) && resolved !== this.uploadDir) {
+      throw new Error('Invalid storage key: path traversal detected');
+    }
+    return resolved;
+  }
+
   async put(data: Buffer, options?: PutOptions): Promise<StoredFile> {
     const key = options?.key ?? crypto.randomUUID();
-    const filePath = path.join(this.uploadDir, key);
+    const filePath = this.safePath(key);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, data);
     return {
@@ -62,7 +71,7 @@ export class LocalStorageAdapter implements StorageAdapter {
   }
 
   async delete(key: string): Promise<void> {
-    const filePath = path.join(this.uploadDir, key);
+    const filePath = this.safePath(key);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }

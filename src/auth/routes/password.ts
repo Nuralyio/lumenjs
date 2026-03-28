@@ -14,7 +14,13 @@ export async function handleForgotPassword(
     return true;
   }
 
-  const body = JSON.parse(await readBody(req));
+  let body: any;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: 'Invalid JSON body' });
+    return true;
+  }
   const { email } = body;
   if (!email) {
     sendJson(res, 400, { error: 'Email required' });
@@ -47,7 +53,13 @@ export async function handleResetPassword(
     return true;
   }
 
-  const body = JSON.parse(await readBody(req));
+  let body: any;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: 'Invalid JSON body' });
+    return true;
+  }
   const { token, password } = body;
 
   if (!token || !password) {
@@ -99,7 +111,13 @@ export async function handleChangePassword(
     return true;
   }
 
-  const body = JSON.parse(await readBody(req));
+  let body: any;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: 'Invalid JSON body' });
+    return true;
+  }
   const { currentPassword, newPassword } = body;
 
   if (!currentPassword || !newPassword) {
