@@ -297,8 +297,13 @@ async function handleLayoutLoader(
   req: any,
   res: any
 ): Promise<void> {
-  // Resolve the layout file from the directory
-  const layoutDir = path.join(pagesDir, dir);
+  // Resolve the layout file from the directory (validate path stays within pagesDir)
+  const layoutDir = path.resolve(pagesDir, dir);
+  if (!layoutDir.startsWith(path.resolve(pagesDir) + path.sep) && layoutDir !== path.resolve(pagesDir)) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Invalid layout directory' }));
+    return;
+  }
   let layoutFile: string | null = null;
 
   for (const ext of ['.ts', '.js']) {
@@ -531,7 +536,12 @@ async function handleLayoutSubscribe(
   req: any,
   res: any
 ): Promise<void> {
-  const layoutDir = path.join(pagesDir, dir);
+  const layoutDir = path.resolve(pagesDir, dir);
+  if (!layoutDir.startsWith(path.resolve(pagesDir) + path.sep) && layoutDir !== path.resolve(pagesDir)) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Invalid layout directory' }));
+    return;
+  }
   let layoutFile: string | null = null;
 
   for (const ext of ['.ts', '.js']) {

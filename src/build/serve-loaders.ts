@@ -74,7 +74,7 @@ export async function handleLayoutLoaderRequest(
     }
     logger.error(`Layout loader error`, { dir, error: (err as any)?.message });
     const status = err?.status || 500;
-    const message = err?.message || 'Layout loader failed';
+    const message = status < 500 ? (err?.message || 'Layout loader failed') : 'Internal server error';
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ error: message }));
   }
@@ -284,7 +284,7 @@ export async function handleLoaderRequest(
     }
     logger.error(`Loader error`, { pagePath, error: (err as any)?.message });
     const status = err?.status || 500;
-    const message = err?.message || 'Loader failed';
+    const message = status < 500 ? (err?.message || 'Loader failed') : 'Internal server error';
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ error: message }));
   }

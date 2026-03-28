@@ -1,17 +1,18 @@
 import crypto from 'node:crypto';
 import type { OIDCMetadata, TokenSet, AuthUser } from './types.js';
 
-const metadataCache = new Map<string, OIDCMetadata>();
+const METADATA_TTL_MS = 60 * 60 * 1000; // 1 hour
+const metadataCache = new Map<string, { metadata: OIDCMetadata; fetchedAt: number }>();
 
 export async function discoverProvider(issuer: string): Promise<OIDCMetadata> {
   const cached = metadataCache.get(issuer);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.fetchedAt < METADATA_TTL_MS) return cached.metadata;
 
   const url = issuer.replace(/\/+$/, '') + '/.well-known/openid-configuration';
   const res = await fetch(url);
   if (!res.ok) throw new Error(`OIDC discovery failed: ${res.status} ${res.statusText}`);
   const metadata = await res.json() as OIDCMetadata;
-  metadataCache.set(issuer, metadata);
+  metadataCache.set(issuer, { metadata, fetchedAt: Date.now() });
   return metadata;
 }
 

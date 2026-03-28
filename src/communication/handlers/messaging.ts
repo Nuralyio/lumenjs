@@ -25,6 +25,13 @@ export function handleMessageSend(
     }
   }
 
+  // ── Message length check ──────────────────────────────────────
+  const maxLen = ctx.config.maxMessageLength ?? 10_000;
+  if (data.content && data.content.length > maxLen) {
+    ctx.push({ event: 'message:error', data: { code: 'MESSAGE_TOO_LONG', message: `Message exceeds maximum length of ${maxLen} characters.` } });
+    return;
+  }
+
   // ── Rate limit check ──────────────────────────────────────────
   if (ctx.config.rateLimit) {
     const allowed = ctx.store.checkRateLimit(ctx.userId, ctx.config.rateLimit);
@@ -223,12 +230,12 @@ export function handleMessageEdit(
 
     ctx.db.run('UPDATE messages SET content = ?, updated_at = ? WHERE id = ? AND sender_id = ?',
       data.content, now, data.messageId, ctx.userId);
-
-    ctx.broadcastAll(`conv:${data.conversationId}`, {
-      event: 'message:updated',
-      data: { messageId: data.messageId, content: data.content, updatedAt: now, editedBy: ctx.userId },
-    });
   }
+
+  ctx.broadcastAll(`conv:${data.conversationId}`, {
+    event: 'message:updated',
+    data: { messageId: data.messageId, content: data.content, updatedAt: now, editedBy: ctx.userId },
+  });
 }
 
 // ── Message Delete ──────────────────────────────────────────────
@@ -244,12 +251,12 @@ export function handleMessageDelete(
 
     ctx.db.run("UPDATE messages SET content = '', type = 'system', updated_at = ? WHERE id = ? AND sender_id = ?",
       new Date().toISOString(), data.messageId, ctx.userId);
-
-    ctx.broadcastAll(`conv:${data.conversationId}`, {
-      event: 'message:deleted',
-      data: { messageId: data.messageId, conversationId: data.conversationId, deletedBy: ctx.userId },
-    });
   }
+
+  ctx.broadcastAll(`conv:${data.conversationId}`, {
+    event: 'message:deleted',
+    data: { messageId: data.messageId, conversationId: data.conversationId, deletedBy: ctx.userId },
+  });
 }
 
 // ── Message Forward ─────────────────────────────────────────────

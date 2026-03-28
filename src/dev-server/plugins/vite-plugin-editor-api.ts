@@ -38,10 +38,21 @@ export function editorApiPlugin(projectDir: string): Plugin {
     }
   }
 
-  function readBody(req: IncomingMessage): Promise<string> {
+  const MAX_EDITOR_BODY = 5 * 1024 * 1024; // 5 MB
+
+  function readBody(req: IncomingMessage, maxSize: number = MAX_EDITOR_BODY): Promise<string> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
-      req.on('data', (chunk: Buffer) => chunks.push(chunk));
+      let size = 0;
+      req.on('data', (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > maxSize) {
+          req.destroy();
+          reject(new Error('Request body too large'));
+          return;
+        }
+        chunks.push(chunk);
+      });
       req.on('end', () => resolve(Buffer.concat(chunks).toString()));
       req.on('error', reject);
     });
