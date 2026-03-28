@@ -32,7 +32,8 @@ export async function handleForgotPassword(
 
   // Always return success (don't reveal if email exists)
   if (userId && config.onEvent) {
-    const token = generateResetToken(userId, config.session.secret);
+    const userRow = db.get('SELECT password_hash FROM _nk_auth_users WHERE id = ?', userId);
+    const token = generateResetToken(userId, config.session.secret, 3600, userRow?.password_hash);
     const origin = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;
     const resetUrl = `${origin}/__nk_auth/reset-password?token=${encodeURIComponent(token)}`;
     try { await config.onEvent({ type: 'password-reset', email, token, url: resetUrl }); } catch {}
@@ -67,8 +68,16 @@ export async function handleResetPassword(
     return true;
   }
 
-  const { verifyResetToken, updatePassword } = await import('../native-auth.js');
-  const userId = verifyResetToken(token, config.session.secret);
+  const { verifyResetToken, updatePassword, decodeResetTokenUserId } = await import('../native-auth.js');
+  // First, decode the userId from the token payload (without full verification)
+  // so we can look up the current password hash for single-use validation
+  const candidateUserId = decodeResetTokenUserId(token);
+  let currentHash: string | undefined;
+  if (candidateUserId) {
+    const userRow = db.get('SELECT password_hash FROM _nk_auth_users WHERE id = ?', candidateUserId);
+    currentHash = userRow?.password_hash;
+  }
+  const userId = verifyResetToken(token, config.session.secret, currentHash);
   if (!userId) {
     sendJson(res, 400, { error: 'Invalid or expired reset link' });
     return true;

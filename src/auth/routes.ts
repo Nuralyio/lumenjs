@@ -10,6 +10,22 @@ import { handleForgotPassword, handleResetPassword, handleChangePassword } from 
 import { handleTokenRefresh, handleTokenRevoke } from './routes/token.js';
 
 /**
+ * Validate Origin header on POST requests to prevent CSRF.
+ * Returns true if the request is safe to proceed.
+ */
+function checkOrigin(req: IncomingMessage, url: URL): boolean {
+  if (req.method !== 'POST') return true;
+  const origin = req.headers.origin || req.headers.referer;
+  if (!origin) return true; // Allow requests without Origin (non-browser clients)
+  try {
+    const originUrl = new URL(origin);
+    return originUrl.origin === url.origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Handle auth routes (login, callback, logout, signup, me).
  * Supports both OIDC and native auth.
  * Returns true if the request was handled.
@@ -23,6 +39,12 @@ export async function handleAuthRoutes(
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const pathname = url.pathname;
   const routes = config.routes;
+
+  // CSRF check: verify Origin header on POST requests
+  if (req.method === 'POST' && !checkOrigin(req, url)) {
+    sendJson(res, 403, { error: 'Origin mismatch — possible CSRF' });
+    return true;
+  }
 
   // ── Login (GET) — redirect to OIDC or show available methods ──
   // /__nk_auth/login/<provider> — specific provider
@@ -51,7 +73,7 @@ export async function handleAuthRoutes(
 
   // ── Logout ────────────────────────────────────────────────────
   if (pathname === routes.logout) {
-    return handleLogout(config, req, res, url);
+    return handleLogout(config, req, res, url, db);
   }
 
   // ── Logout All — invalidate all sessions across devices ──────

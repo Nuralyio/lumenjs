@@ -98,8 +98,11 @@ export function patchLoaderDataSpread(tagName: string): void {
         this.__nk_loaderData = value;
       }
       if (value && typeof value === 'object') {
+        const BLOCKED_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'loaderData',
+          'render', 'connectedCallback', 'disconnectedCallback', 'attributeChangedCallback',
+          'adoptedCallback', 'innerHTML', 'outerHTML', 'textContent']);
         for (const [key, val] of Object.entries(value)) {
-          if (key !== 'loaderData') {
+          if (!BLOCKED_KEYS.has(key)) {
             (this as any)[key] = val;
           }
         }

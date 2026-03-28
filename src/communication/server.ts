@@ -157,23 +157,34 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
       handleConnect(handlerCtx);
     }
 
+    // ── Payload Validation ────────────────────────────────────
+
+    /** Validate socket event payload is a non-null object with expected string fields. */
+    function validated<T>(data: any, requiredStrings: string[], handler: (d: T) => void): void {
+      if (!data || typeof data !== 'object') return;
+      for (const field of requiredStrings) {
+        if (typeof data[field] !== 'string' || data[field].length === 0) return;
+      }
+      handler(data as T);
+    }
+
     // ── Chat Events ──────────────────────────────────────────
 
-    ctx.on('conversation:create', (data) => handleConversationCreate(handlerCtx, data));
-    ctx.on('conversation:join', (data) => handleConversationJoin(handlerCtx, data));
-    ctx.on('conversation:leave', (data) => handleConversationLeave(handlerCtx, data));
-    ctx.on('conversation:archive', (data) => handleConversationArchive(handlerCtx, data));
-    ctx.on('conversation:mute', (data) => handleConversationMute(handlerCtx, data));
-    ctx.on('conversation:pin', (data) => handleConversationPin(handlerCtx, data));
-    ctx.on('message:send', (data) => handleMessageSend(handlerCtx, data));
-    ctx.on('message:react', (data) => handleMessageReact(handlerCtx, data));
-    ctx.on('message:edit', (data) => handleMessageEdit(handlerCtx, data));
-    ctx.on('message:delete', (data) => handleMessageDelete(handlerCtx, data));
-    ctx.on('message:read', (data) => handleMessageRead(handlerCtx, data));
-    ctx.on('message:forward', (data) => handleMessageForward(handlerCtx, data));
-    ctx.on('typing:start', (data) => handleTypingStart(handlerCtx, data));
-    ctx.on('typing:stop', (data) => handleTypingStop(handlerCtx, data));
-    ctx.on('presence:update', (data) => handlePresenceUpdate(handlerCtx, data));
+    ctx.on('conversation:create', (data) => validated(data, ['type'], () => handleConversationCreate(handlerCtx, data)));
+    ctx.on('conversation:join', (data) => validated(data, ['conversationId'], () => handleConversationJoin(handlerCtx, data)));
+    ctx.on('conversation:leave', (data) => validated(data, ['conversationId'], () => handleConversationLeave(handlerCtx, data)));
+    ctx.on('conversation:archive', (data) => validated(data, ['conversationId'], () => handleConversationArchive(handlerCtx, data)));
+    ctx.on('conversation:mute', (data) => validated(data, ['conversationId'], () => handleConversationMute(handlerCtx, data)));
+    ctx.on('conversation:pin', (data) => validated(data, ['conversationId'], () => handleConversationPin(handlerCtx, data)));
+    ctx.on('message:send', (data) => validated(data, ['conversationId', 'content'], () => handleMessageSend(handlerCtx, data)));
+    ctx.on('message:react', (data) => validated(data, ['messageId', 'conversationId', 'emoji'], () => handleMessageReact(handlerCtx, data)));
+    ctx.on('message:edit', (data) => validated(data, ['messageId', 'conversationId', 'content'], () => handleMessageEdit(handlerCtx, data)));
+    ctx.on('message:delete', (data) => validated(data, ['messageId', 'conversationId'], () => handleMessageDelete(handlerCtx, data)));
+    ctx.on('message:read', (data) => validated(data, ['messageId', 'conversationId'], () => handleMessageRead(handlerCtx, data)));
+    ctx.on('message:forward', (data) => validated(data, ['messageId', 'fromConversationId', 'toConversationId'], () => handleMessageForward(handlerCtx, data)));
+    ctx.on('typing:start', (data) => validated(data, ['conversationId'], () => handleTypingStart(handlerCtx, data)));
+    ctx.on('typing:stop', (data) => validated(data, ['conversationId'], () => handleTypingStop(handlerCtx, data)));
+    ctx.on('presence:update', (data) => validated(data, ['status'], () => handlePresenceUpdate(handlerCtx, data)));
 
     // ── Call Events ──────────────────────────────────────────
 

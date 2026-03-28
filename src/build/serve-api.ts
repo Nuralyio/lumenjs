@@ -69,7 +69,8 @@ export async function handleApiRoute(
     res.end(JSON.stringify(result));
   } catch (err: any) {
     const status = err?.status || 500;
-    const message = err?.message || 'Internal server error';
+    // Only expose error messages for client errors (4xx); hide internals for 5xx
+    const message = status < 500 ? (err?.message || 'Request error') : 'Internal server error';
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ error: message }));
   }

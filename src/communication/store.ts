@@ -47,6 +47,21 @@ export class CommunicationStore {
   private conversationMembers = new Map<string, Set<string>>();
   /** Configurable typing timeout in ms */
   typingTimeoutMs: number = DEFAULT_TYPING_TIMEOUT_MS;
+  /** Max call age before auto-cleanup (1 hour) */
+  private static CALL_TTL_MS = 60 * 60 * 1000;
+
+  constructor() {
+    // Periodically clean up stale calls that were never properly ended
+    setInterval(() => {
+      const now = Date.now();
+      for (const [id, call] of this.calls) {
+        const startedAt = new Date(call.startedAt).getTime();
+        if (now - startedAt > CommunicationStore.CALL_TTL_MS) {
+          this.calls.delete(id);
+        }
+      }
+    }, 5 * 60 * 1000).unref(); // every 5 min, unref so it doesn't keep process alive
+  }
 
   // ── User-Socket Mapping ───────────────────────────────────────
 

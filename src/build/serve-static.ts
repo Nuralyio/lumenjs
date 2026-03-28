@@ -58,10 +58,10 @@ export function sendCompressed(req: http.IncomingMessage, res: http.ServerRespon
 
 export function serveStaticFile(clientDir: string, pathname: string, req: http.IncomingMessage, res: http.ServerResponse): boolean {
   // Prevent directory traversal
-  const safePath = path.normalize(pathname).replace(/^(\.\.[/\\])+/, '');
-  const filePath = path.join(clientDir, safePath);
+  const resolvedClientDir = path.resolve(clientDir);
+  const filePath = path.resolve(resolvedClientDir, pathname.replace(/^\/+/, ''));
 
-  if (!filePath.startsWith(clientDir)) {
+  if (!filePath.startsWith(resolvedClientDir + path.sep) && filePath !== resolvedClientDir) {
     return false;
   }
 

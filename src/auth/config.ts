@@ -63,7 +63,7 @@ function validate(config: any): ResolvedAuthConfig {
       secret: config.session.secret,
       cookieName: config.session.cookieName || 'nk-session',
       maxAge: config.session.maxAge || 60 * 60 * 24 * 7,
-      secure: config.session.secure ?? false,
+      secure: config.session.secure ?? (process.env.NODE_ENV === 'production'),
     },
     routes: { ...ROUTE_DEFAULTS, ...config.routes },
     guards: { ...GUARD_DEFAULTS, ...config.guards },

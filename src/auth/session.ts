@@ -51,7 +51,8 @@ export function clearSessionCookie(name: string): string {
 }
 
 export function parseSessionCookie(cookieHeader: string, name: string): string | undefined {
-  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${escapedName}=([^;]*)`));
   return match ? match[1] : undefined;
 }
 

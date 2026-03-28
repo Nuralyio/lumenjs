@@ -13,6 +13,7 @@ export async function handleLogout(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
+  db?: any,
 ): Promise<boolean> {
   const clearCookie = clearSessionCookie(config.session.cookieName);
 
@@ -25,6 +26,15 @@ export async function handleLogout(
     const session = await decryptSession(sessionCookie, config.session.secret);
     idToken = session?.idToken || undefined;
     providerName = session?.provider;
+
+    // Invalidate refresh tokens for this user if DB is available
+    if (db && session?.user?.sub) {
+      try {
+        const { deleteAllRefreshTokens, ensureRefreshTokenTable } = await import('../token.js');
+        ensureRefreshTokenTable(db);
+        deleteAllRefreshTokens(db, session.user.sub);
+      } catch {}
+    }
   }
 
   let redirectUrl = config.routes.postLogout;

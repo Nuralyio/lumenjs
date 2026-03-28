@@ -71,9 +71,18 @@ export async function registerUser(
   name?: string,
   provider?: NativeProvider,
 ): Promise<AuthUser> {
+  // Basic email format validation
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('Invalid email address');
+  }
+
+  const MAX_PASSWORD_LENGTH = 128;
   const minLength = provider?.minPasswordLength ?? 8;
   if (password.length < minLength) {
     throw new Error(`Password must be at least ${minLength} characters`);
+  }
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    throw new Error(`Password must be at most ${MAX_PASSWORD_LENGTH} characters`);
   }
 
   const existing = db.get<any>('SELECT id FROM _nk_auth_users WHERE email = ?', email);
@@ -226,20 +235,55 @@ export function isEmailVerified(db: Db, userId: string): boolean {
 
 /**
  * Generate an HMAC-signed password reset token.
- * Same format as verification token but shorter TTL (1 hour).
+ * Includes a hash of the current password hash so the token auto-invalidates
+ * after the password is changed (single-use without server state).
  */
-export function generateResetToken(userId: string, secret: string, ttlSeconds: number = 3600): string {
-  return generateVerificationToken(userId, secret, ttlSeconds);
+export function generateResetToken(userId: string, secret: string, ttlSeconds: number = 3600, currentPasswordHash?: string): string {
+  const expiry = Math.floor(Date.now() / 1000) + ttlSeconds;
+  // Include a fingerprint of the current password hash to invalidate on change
+  const pwFingerprint = currentPasswordHash
+    ? crypto.createHash('sha256').update(currentPasswordHash).digest('hex').slice(0, 8)
+    : '';
+  const payload = `${userId}.${expiry}.${pwFingerprint}`;
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  return `${Buffer.from(payload).toString('base64url')}.${sig}`;
 }
 
 /** Verify a password reset token. Returns userId or null. */
-export function verifyResetToken(token: string, secret: string): string | null {
-  return verifyVerificationToken(token, secret);
+export function verifyResetToken(token: string, secret: string, currentPasswordHash?: string): string | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 2) return null;
+    const payload = Buffer.from(parts[0], 'base64url').toString('utf8');
+    const expectedSig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+    if (!crypto.timingSafeEqual(Buffer.from(parts[1]), Buffer.from(expectedSig))) return null;
+    const segments = payload.split('.');
+    const [userId, expiryStr] = segments;
+    const pwFingerprint = segments[2] || '';
+    if (parseInt(expiryStr) < Math.floor(Date.now() / 1000)) return null;
+    // Verify password hasn't changed since token was issued
+    if (pwFingerprint && currentPasswordHash) {
+      const currentFingerprint = crypto.createHash('sha256').update(currentPasswordHash).digest('hex').slice(0, 8);
+      if (pwFingerprint !== currentFingerprint) return null;
+    }
+    return userId;
+  } catch { return null; }
+}
+
+/** Decode the userId from a reset token payload without verifying. */
+export function decodeResetTokenUserId(token: string): string | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 2) return null;
+    const payload = Buffer.from(parts[0], 'base64url').toString('utf8');
+    return payload.split('.')[0] || null;
+  } catch { return null; }
 }
 
 /** Update a user's password. */
 export async function updatePassword(db: Db, userId: string, newPassword: string, minLength: number = 8): Promise<void> {
   if (newPassword.length < minLength) throw new Error(`Password must be at least ${minLength} characters`);
+  if (newPassword.length > 128) throw new Error('Password must be at most 128 characters');
   const hash = await hashPassword(newPassword);
   db.run('UPDATE _nk_auth_users SET password_hash = ?, updated_at = datetime("now") WHERE id = ?', hash, userId);
 }

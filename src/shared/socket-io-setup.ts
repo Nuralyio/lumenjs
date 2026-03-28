@@ -26,7 +26,7 @@ export async function setupSocketIO(options: {
 
   const io = new SocketIOServer(options.httpServer, {
     path: '/__nk_socketio/',
-    cors: { origin: '*' },
+    cors: { origin: process.env.NODE_ENV === 'production' ? false : '*' },
   });
 
   for (const route of options.routes) {
