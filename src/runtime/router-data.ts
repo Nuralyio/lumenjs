@@ -1,8 +1,19 @@
 import { getI18nConfig, getLocale } from './i18n.js';
 
 const PREFETCH_TTL = 30_000; // 30 seconds
+const MAX_PREFETCH_CACHE_SIZE = 50;
 const prefetchCache = new Map<string, { data: any; timestamp: number }>();
 const inflightRequests = new Map<string, Promise<any>>();
+
+// Periodic sweep of expired prefetch entries (every 60s)
+if (typeof setInterval !== 'undefined') {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of prefetchCache) {
+      if (now - entry.timestamp > PREFETCH_TTL) prefetchCache.delete(key);
+    }
+  }, 60_000);
+}
 
 export function getCachedLoaderData(key: string): any | undefined {
   const entry = prefetchCache.get(key);
@@ -15,6 +26,11 @@ export function getCachedLoaderData(key: string): any | undefined {
 }
 
 function setCachedLoaderData(key: string, data: any): void {
+  // Evict oldest entry if cache is full
+  if (prefetchCache.size >= MAX_PREFETCH_CACHE_SIZE) {
+    const firstKey = prefetchCache.keys().next().value;
+    if (firstKey) prefetchCache.delete(firstKey);
+  }
   prefetchCache.set(key, { data, timestamp: Date.now() });
 }
 

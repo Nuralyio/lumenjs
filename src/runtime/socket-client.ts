@@ -16,6 +16,10 @@ export async function connectSocket(routePath: string, params: Record<string, st
     }
   } catch {}
 
+  // Disconnect existing socket for this route to prevent leaks
+  const existing = connections.get(routePath);
+  if (existing) existing.disconnect();
+
   const socket = io(ns, { path: '/__nk_socketio/', query });
   connections.set(routePath, socket);
   return socket;

@@ -400,6 +400,9 @@ export class NkRouter {
     const href = anchor.getAttribute('href');
     if (!href || href.startsWith('http') || href.startsWith('#') || anchor.hasAttribute('target')) return;
 
+    // Allow modifier-key clicks to behave normally (Ctrl+Click = new tab, etc.)
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
     event.preventDefault();
     this.navigate(this.stripLocale(href));
   }

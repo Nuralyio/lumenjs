@@ -23,7 +23,7 @@ export function createHealthCheckHandler(config?: HealthCheckConfig) {
       version,
       timestamp: new Date().toISOString(),
       memory: {
-        rss: Math.round(process.memoryUsage.rss() / 1024 / 1024),
+        rss: Math.round(process.memoryUsage().rss / 1024 / 1024),
         heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
       },
     });

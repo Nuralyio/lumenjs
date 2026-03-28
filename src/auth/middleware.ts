@@ -45,7 +45,7 @@ export function createAuthMiddleware(config: ResolvedAuthConfig, db?: any): Conn
           req.nkAuth = { user, session: { accessToken: authHeader.slice(7), expiresAt: 0, user } };
           return next();
         }
-      } catch {}
+      } catch { /* Invalid token — fall through to cookie auth */ }
     }
 
     // 2. Fall back to cookie-based session (browsers)
@@ -69,7 +69,10 @@ export function createAuthMiddleware(config: ResolvedAuthConfig, db?: any): Conn
           req.nkAuth = null;
           return next();
         }
-      } catch {}
+      } catch { /* Revocation check failed — deny access (fail closed) */
+        req.nkAuth = null;
+        return next();
+      }
     }
 
     // 4. Refresh OIDC tokens if about to expire (native sessions don't expire the same way)
@@ -99,9 +102,7 @@ export function createAuthMiddleware(config: ResolvedAuthConfig, db?: any): Conn
           const cookie = createSessionCookie(config.session.cookieName, encrypted, config.session.maxAge, config.session.secure);
           res.setHeader('Set-Cookie', cookie);
           req.nkAuth = { user: newSession.user, session: newSession };
-        } catch {
-          // Refresh failed — keep existing session
-        }
+        } catch { /* OIDC token refresh failed — keep existing session */ }
       }
     }
 

@@ -485,8 +485,32 @@ function stripServerFunction(code: string, fnName: string): string {
   let depth = 1;
   let i = braceStart + 1;
   while (i < code.length && depth > 0) {
-    if (code[i] === '{') depth++;
-    else if (code[i] === '}') depth--;
+    const ch = code[i];
+    // Skip string literals and template literals to avoid counting braces inside them
+    if (ch === "'" || ch === '"' || ch === '`') {
+      const quote = ch;
+      i++;
+      while (i < code.length && code[i] !== quote) {
+        if (code[i] === '\\') i++; // skip escaped char
+        i++;
+      }
+      i++; // skip closing quote
+      continue;
+    }
+    // Skip single-line comments
+    if (ch === '/' && code[i + 1] === '/') {
+      while (i < code.length && code[i] !== '\n') i++;
+      continue;
+    }
+    // Skip multi-line comments
+    if (ch === '/' && code[i + 1] === '*') {
+      i += 2;
+      while (i < code.length - 1 && !(code[i] === '*' && code[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+    if (ch === '{') depth++;
+    else if (ch === '}') depth--;
     i++;
   }
 

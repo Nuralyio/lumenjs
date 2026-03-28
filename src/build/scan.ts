@@ -1,6 +1,35 @@
 import fs from 'fs';
 import path from 'path';
-import { fileHasLoader, fileHasSubscribe, fileHasAuth, fileHasStandalone, fileHasPrerender, fileHasMeta, filePathToRoute } from '../shared/utils.js';
+import { filePathToRoute } from '../shared/utils.js';
+
+/** Read a page file once and check all flags from the same content. */
+function analyzePageFile(filePath: string): {
+  hasLoader: boolean; hasSubscribe: boolean; hasAuth: boolean;
+  hasMeta: boolean; hasStandalone: boolean; prerender: boolean;
+} {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const classStart = content.search(/export\s+class\s+\w+/);
+
+    const hasExportBefore = (regex: RegExp) => {
+      const match = regex.exec(content);
+      if (!match) return false;
+      if (classStart >= 0 && match.index > classStart) return false;
+      return true;
+    };
+
+    return {
+      hasLoader: hasExportBefore(/export\s+(async\s+)?function\s+loader\s*\(/),
+      hasSubscribe: hasExportBefore(/export\s+(async\s+)?function\s+subscribe\s*\(/),
+      hasAuth: hasExportBefore(/export\s+const\s+auth\s*=/),
+      hasMeta: hasExportBefore(/export\s+(const\s+meta\s*=|(async\s+)?function\s+meta\s*\()/),
+      hasStandalone: hasExportBefore(/export\s+const\s+standalone\s*=/),
+      prerender: /export\s+const\s+prerender\s*=\s*true/.test(content),
+    };
+  } catch {
+    return { hasLoader: false, hasSubscribe: false, hasAuth: false, hasMeta: false, hasStandalone: false, prerender: false };
+  }
+}
 
 export interface PageEntry {
   name: string;
@@ -92,13 +121,8 @@ function walkDir(baseDir: string, relativePath: string, entries: PageEntry[], pa
       const filePath = path.join(pagesDir, entryRelative);
       const name = entryRelative.replace(/\.(ts|js)$/, '').replace(/\\/g, '/');
       const routePath = filePathToRoute(entryRelative);
-      const hasLoader = fileHasLoader(filePath);
-      const hasSubscribe = fileHasSubscribe(filePath);
-      const hasAuth = fileHasAuth(filePath);
-      const hasMeta = fileHasMeta(filePath);
-      const hasStandalone = fileHasStandalone(filePath);
-      const prerender = fileHasPrerender(filePath);
-      entries.push({ name, filePath, routePath, hasLoader, hasSubscribe, hasAuth, hasMeta, hasStandalone, prerender });
+      const flags = analyzePageFile(filePath);
+      entries.push({ name, filePath, routePath, ...flags });
     }
   }
 }

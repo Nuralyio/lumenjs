@@ -36,12 +36,18 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
   let title = 'LumenJS App';
   let integrations: string[] = [];
   let prefetch: PrefetchStrategy = 'viewport';
+  let prerender: boolean | undefined;
+  let i18n: I18nConfig | undefined;
+
   const configPath = path.join(projectDir, 'lumenjs.config.ts');
   if (fs.existsSync(configPath)) {
     try {
+      // Read the config file once and parse all fields from the same content
       const configContent = fs.readFileSync(configPath, 'utf-8');
+
       const titleMatch = configContent.match(/title\s*:\s*['"]([^'"]+)['"]/);
       if (titleMatch) title = titleMatch[1];
+
       const intMatch = configContent.match(/integrations\s*:\s*\[([^\]]*)\]/);
       if (intMatch) {
         integrations = intMatch[1]
@@ -49,6 +55,7 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
           .map(s => s.trim().replace(/^['"]|['"]$/g, ''))
           .filter(Boolean);
       }
+
       const prefetchMatch = configContent.match(/prefetch\s*:\s*['"]([^'"]+)['"]/);
       if (prefetchMatch) {
         const val = prefetchMatch[1];
@@ -56,26 +63,12 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
           prefetch = val as PrefetchStrategy;
         }
       }
-    } catch { /* use defaults */ }
-  }
 
-  // Parse global prerender flag
-  let prerender: boolean | undefined;
-  if (fs.existsSync(configPath)) {
-    try {
-      const configContent = fs.readFileSync(configPath, 'utf-8');
       const prerenderMatch = configContent.match(/prerender\s*:\s*(true|false)/);
       if (prerenderMatch) {
         prerender = prerenderMatch[1] === 'true';
       }
-    } catch { /* ignore */ }
-  }
 
-  // Parse i18n config (reuse the same file read)
-  let i18n: I18nConfig | undefined;
-  if (fs.existsSync(configPath)) {
-    try {
-      const configContent = fs.readFileSync(configPath, 'utf-8');
       const i18nMatch = configContent.match(/i18n\s*:\s*\{([\s\S]*?)\}/);
       if (i18nMatch) {
         const block = i18nMatch[1];
@@ -94,7 +87,7 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
           };
         }
       }
-    } catch { /* ignore */ }
+    } catch { /* use defaults */ }
   }
 
   // Read version from project's package.json

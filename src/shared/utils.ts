@@ -30,27 +30,6 @@ export function dirToLayoutTagName(dir: string): string {
 }
 
 /**
- * Find the custom element tag name from a page module.
- * Pages are auto-registered by the auto-define plugin based on file path.
- */
-export function findTagName(mod: Record<string, any>): string | null {
-  for (const key of Object.keys(mod)) {
-    const val = mod[key];
-    if (typeof val === 'function' && val.prototype) {
-      if (val.is) return val.is;
-      if (val.elementProperties || val.properties) {
-        const className = val.name || key;
-        const tag = className
-          .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-          .toLowerCase();
-        if (tag.includes('-')) return tag;
-      }
-    }
-  }
-  return null;
-}
-
-/**
  * Convert a relative file path within pages/ to a page tag name.
  *   'index.ts'           → 'page-index'
  *   'docs/api-routes.ts' → 'page-docs-api-routes'
@@ -150,7 +129,7 @@ export function readBody(req: any, maxSize: number = DEFAULT_MAX_BODY): Promise<
  * Escape HTML special characters for safe embedding.
  */
 export function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /**
