@@ -48,6 +48,9 @@ export function lumenApiRoutesPlugin(apiDir: string, projectDir?: string): Plugi
         // Map /api/foo/bar → api/foo/bar.ts
         const routePath = pathname.replace(/^\//, '');
         const filePath = findApiFile(apiDir, routePath);
+        if (filePath && !filePath.startsWith(path.resolve(apiDir) + path.sep)) {
+          return next();
+        }
         if (!filePath) {
           return next();
         }

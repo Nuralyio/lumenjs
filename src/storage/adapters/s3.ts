@@ -103,7 +103,7 @@ export class S3StorageAdapter implements StorageAdapter {
       ContentType: mimeType,
       ACL: acl,
       ...(options?.fileName
-        ? { ContentDisposition: `inline; filename="${options.fileName}"` }
+        ? { ContentDisposition: `inline; filename="${options.fileName.replace(/[\r\n"\\]/g, '_')}"` }
         : {}),
     }));
 

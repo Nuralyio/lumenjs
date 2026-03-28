@@ -96,6 +96,7 @@ export function createAuthMiddleware(config: ResolvedAuthConfig, db?: any): Conn
             expiresAt: Math.floor(Date.now() / 1000) + tokens.expires_in,
             user,
             provider: oidc.name,
+            createdAt: session.createdAt ?? Math.floor(Date.now() / 1000),
           };
 
           const encrypted = await encryptSession(newSession, config.session.secret);

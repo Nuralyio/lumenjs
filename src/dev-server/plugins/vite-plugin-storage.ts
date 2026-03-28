@@ -44,16 +44,31 @@ export function lumenStoragePlugin(projectDir: string): Plugin {
           return;
         }
 
-        // Read raw body
+        // Read raw body with streaming size enforcement
+        const MAX_UPLOAD = pending.maxSize || 50 * 1024 * 1024; // 50MB default cap
         const chunks: Buffer[] = [];
-        req.on('data', (c: Buffer) => chunks.push(c));
+        let uploadSize = 0;
+        let aborted = false;
+        req.on('data', (c: Buffer) => {
+          uploadSize += c.length;
+          if (uploadSize > MAX_UPLOAD) {
+            aborted = true;
+            req.destroy();
+            res.statusCode = 413;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'file_too_large', maxSize: MAX_UPLOAD, received: uploadSize }));
+            return;
+          }
+          chunks.push(c);
+        });
         await new Promise<void>((resolve, reject) => {
           req.on('end', resolve);
           req.on('error', reject);
         });
+        if (aborted) return;
         const body = Buffer.concat(chunks);
 
-        // Enforce maxSize if specified
+        // Enforce maxSize if specified (redundant safety check)
         if (pending.maxSize && body.length > pending.maxSize) {
           res.statusCode = 413;
           res.setHeader('Content-Type', 'application/json');

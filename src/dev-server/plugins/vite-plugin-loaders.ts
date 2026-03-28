@@ -66,6 +66,11 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
         }
 
         const filePath = resolvePageFile(pagesDir, pagePath);
+        if (filePath && !filePath.startsWith(path.resolve(pagesDir) + path.sep)) {
+          res.statusCode = 400;
+          res.end();
+          return;
+        }
         if (!filePath) {
           res.statusCode = 404;
           res.end();
@@ -147,8 +152,14 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
           delete query.__params;
         }
 
-        // Find the page file
+        // Find the page file (validate path stays within pagesDir)
         const filePath = resolvePageFile(pagesDir, pagePath);
+        if (filePath && !filePath.startsWith(path.resolve(pagesDir) + path.sep)) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Invalid page path' }));
+          return;
+        }
         if (!filePath) {
           res.statusCode = 404;
           res.setHeader('Content-Type', 'application/json');

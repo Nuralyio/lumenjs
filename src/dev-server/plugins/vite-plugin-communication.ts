@@ -170,6 +170,7 @@ export function communicationPlugin(projectDir: string): Plugin {
 
           // POST /__nk_comm/link-preview — fetch link preview
           if (rest === 'link-preview' && req.method === 'POST') {
+            if (!userId) { sendJson(res, 401, { error: 'Unauthorized' }); return; }
             const body = JSON.parse(await readBody(req));
             const urls = extractUrls(body.text || '');
             const previews = [];

@@ -159,7 +159,7 @@ export class PermissionService {
          JOIN _nk_roles r ON r.id = ur.role_id
          WHERE ur.user_id = ?
            AND (
-             (ur.resource_type IS NULL)
+             (ur.resource_type IS NULL OR ur.resource_type = '')
              OR (ur.resource_type = ? AND ur.resource_id = ?)
            )
            AND EXISTS (

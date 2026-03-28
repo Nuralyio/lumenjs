@@ -121,19 +121,18 @@ export function validateIdTokenClaims(
   issuer: string,
   clientId: string,
 ): void {
-  if (claims.iss && claims.iss !== issuer) {
+  if (!claims.iss) throw new Error('ID token missing iss claim');
+  if (claims.iss !== issuer) {
     throw new Error(`ID token issuer mismatch: expected ${issuer}, got ${claims.iss}`);
   }
-  if (claims.aud) {
-    const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-    if (!audiences.includes(clientId)) {
-      throw new Error(`ID token audience mismatch: expected ${clientId}`);
-    }
+  if (!claims.aud) throw new Error('ID token missing aud claim');
+  const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  if (!audiences.includes(clientId)) {
+    throw new Error(`ID token audience mismatch: expected ${clientId}`);
   }
-  if (claims.exp && typeof claims.exp === 'number') {
-    if (claims.exp < Math.floor(Date.now() / 1000)) {
-      throw new Error('ID token has expired');
-    }
+  if (!claims.exp || typeof claims.exp !== 'number') throw new Error('ID token missing exp claim');
+  if (claims.exp < Math.floor(Date.now() / 1000)) {
+    throw new Error('ID token has expired');
   }
 }
 
@@ -146,6 +145,7 @@ export function extractUser(idToken: string, userInfo?: Record<string, any>): Au
     name: merged.name || merged.preferred_username,
     preferred_username: merged.preferred_username,
     roles: merged.realm_access?.roles || merged.roles || [],
-    ...merged,
+    email_verified: merged.email_verified,
+    provider: merged.provider,
   };
 }

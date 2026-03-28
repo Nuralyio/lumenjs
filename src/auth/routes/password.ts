@@ -158,6 +158,15 @@ export async function handleChangePassword(
     return true;
   }
 
+  // Invalidate all other sessions and refresh tokens after password change
+  try {
+    const { revokeAllSessions } = await import('../native-auth.js');
+    revokeAllSessions(db, user.sub);
+    const { deleteAllRefreshTokens, ensureRefreshTokenTable } = await import('../token.js');
+    ensureRefreshTokenTable(db);
+    deleteAllRefreshTokens(db, user.sub);
+  } catch {}
+
   if (config.onEvent) {
     try { await config.onEvent({ type: 'password-changed', email: user.email, userId: user.sub }); } catch {}
   }

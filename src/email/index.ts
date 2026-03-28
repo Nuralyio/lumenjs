@@ -32,7 +32,10 @@ export function setEmailProjectDir(dir: string): void {
  */
 function loadHtmlTemplate(name: string): string | null {
   if (!_projectDir) return null;
-  const filePath = path.join(_projectDir, 'emails', `${name}.html`);
+  const emailsDir = path.resolve(_projectDir, 'emails');
+  const filePath = path.resolve(emailsDir, `${name}.html`);
+  // Prevent path traversal outside the emails/ directory
+  if (!filePath.startsWith(emailsDir + path.sep) && filePath !== emailsDir) return null;
   try {
     return fs.readFileSync(filePath, 'utf-8');
   } catch {

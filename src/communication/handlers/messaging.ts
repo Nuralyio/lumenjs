@@ -265,6 +265,26 @@ export function handleMessageForward(
   ctx: HandlerContext,
   data: MessageForward,
 ): void {
+  // Verify user is a participant of both source and target conversations
+  if (ctx.db) {
+    const inSource = ctx.db.get(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
+      data.fromConversationId, ctx.userId,
+    );
+    if (!inSource) {
+      ctx.push({ event: 'message:error', data: { code: 'FORBIDDEN', message: 'Not a participant of the source conversation' } });
+      return;
+    }
+    const inTarget = ctx.db.get(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
+      data.toConversationId, ctx.userId,
+    );
+    if (!inTarget) {
+      ctx.push({ event: 'message:error', data: { code: 'FORBIDDEN', message: 'Not a participant of the target conversation' } });
+      return;
+    }
+  }
+
   const now = new Date().toISOString();
 
   if (ctx.db) {
