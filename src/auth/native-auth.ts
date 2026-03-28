@@ -145,12 +145,18 @@ export function findUserByEmail(db: Db, email: string): AuthUser | null {
 
 /**
  * Create or link a native user from OIDC claims (account linking by email).
+ * Only links to existing native accounts if the OIDC provider has verified the email.
  */
 export function linkOidcUser(db: Db, oidcUser: AuthUser): AuthUser {
   if (!oidcUser.email) return oidcUser;
 
   const existing = db.get<any>('SELECT * FROM _nk_auth_users WHERE email = ?', oidcUser.email);
   if (existing) {
+    // Only link if the OIDC provider has verified the email — prevents account takeover
+    if (!(oidcUser as any).email_verified) {
+      return oidcUser;
+    }
+
     // Merge roles from both sources
     let nativeRoles: string[] = [];
     try { nativeRoles = JSON.parse(existing.roles); } catch {}

@@ -109,6 +109,33 @@ export function decodeJwtPayload(token: string): Record<string, any> {
   return JSON.parse(payload);
 }
 
+/**
+ * Validate basic ID token claims (iss, aud, exp) after decoding.
+ * Note: Full JWKS signature verification is not yet implemented.
+ * The token is received directly from the provider's token endpoint over TLS,
+ * which provides transport-level trust, but does not satisfy OIDC §3.1.3.7.
+ */
+export function validateIdTokenClaims(
+  claims: Record<string, any>,
+  issuer: string,
+  clientId: string,
+): void {
+  if (claims.iss && claims.iss !== issuer) {
+    throw new Error(`ID token issuer mismatch: expected ${issuer}, got ${claims.iss}`);
+  }
+  if (claims.aud) {
+    const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+    if (!audiences.includes(clientId)) {
+      throw new Error(`ID token audience mismatch: expected ${clientId}`);
+    }
+  }
+  if (claims.exp && typeof claims.exp === 'number') {
+    if (claims.exp < Math.floor(Date.now() / 1000)) {
+      throw new Error('ID token has expired');
+    }
+  }
+}
+
 export function extractUser(idToken: string, userInfo?: Record<string, any>): AuthUser {
   const claims = decodeJwtPayload(idToken);
   const merged = { ...claims, ...userInfo };

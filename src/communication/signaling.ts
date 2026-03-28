@@ -281,19 +281,35 @@ export function handleCallRemoveParticipant(
 
 // ── WebRTC Signal Relay ─────────────────────────────────────────
 
+/** Verify the sender is part of an active call with the target user. */
+function verifyCallMembership(ctx: SignalingContext, fromUserId: string, toUserId: string): boolean {
+  // Ensure fromUserId matches the authenticated user
+  if (fromUserId !== ctx.userId) return false;
+  // Check both users are participants in the same active call
+  const call = ctx.store.getActiveCallForUser(ctx.userId);
+  if (!call) return false;
+  const isTarget = call.callerId === toUserId || call.calleeIds.includes(toUserId) ||
+    call.participants.some(p => p.userId === toUserId);
+  return isTarget;
+}
+
 export function handleSignalOffer(ctx: SignalingContext, data: SignalOffer): void {
+  if (!verifyCallMembership(ctx, data.fromUserId, data.toUserId)) return;
   emitToUser(ctx, data.toUserId, { event: 'signal:offer', data });
 }
 
 export function handleSignalAnswer(ctx: SignalingContext, data: SignalOffer): void {
+  if (!verifyCallMembership(ctx, data.fromUserId, data.toUserId)) return;
   emitToUser(ctx, data.toUserId, { event: 'signal:answer', data });
 }
 
 export function handleSignalIceCandidate(ctx: SignalingContext, data: SignalIceCandidate): void {
+  if (!verifyCallMembership(ctx, data.fromUserId, data.toUserId)) return;
   emitToUser(ctx, data.toUserId, { event: 'signal:ice-candidate', data });
 }
 
 export function handleSignalIceRestart(ctx: SignalingContext, data: SignalIceRestart): void {
+  if (!verifyCallMembership(ctx, data.fromUserId, data.toUserId)) return;
   emitToUser(ctx, data.toUserId, { event: 'signal:ice-restart', data });
 }
 

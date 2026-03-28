@@ -3,17 +3,39 @@ import crypto from 'node:crypto';
 function isPrivateUrl(urlStr: string): boolean {
   try {
     const parsed = new URL(urlStr);
+
+    // Only allow http/https schemes
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return true;
+
     const hostname = parsed.hostname.toLowerCase();
+
+    // Loopback and unspecified addresses
     if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '0.0.0.0') return true;
+
+    // Single-label hostnames (no dots)
+    if (!hostname.includes('.')) return true;
+
+    // Cloud metadata endpoints
+    if (hostname === 'metadata.google.internal' || hostname === 'metadata.internal') return true;
+
+    // IPv6 addresses — block all private/reserved ranges
+    if (hostname.startsWith('[')) {
+      const ipv6 = hostname.slice(1, -1).toLowerCase();
+      if (ipv6 === '::1' || ipv6 === '::' || ipv6.startsWith('fe80:') || ipv6.startsWith('fd') || ipv6.startsWith('fc')) return true;
+      return true; // Block all bracketed IPv6 for safety
+    }
+
+    // IPv4 private ranges
     const parts = hostname.split('.').map(Number);
     if (parts.length === 4 && parts.every(n => !isNaN(n))) {
       if (parts[0] === 10) return true;
       if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
       if (parts[0] === 192 && parts[1] === 168) return true;
-      if (parts[0] === 169 && parts[1] === 254) return true;
+      if (parts[0] === 169 && parts[1] === 254) return true; // link-local + cloud metadata
       if (parts[0] === 0) return true;
+      if (parts[0] === 127) return true; // full loopback range
     }
-    if (!hostname.includes('.')) return true;
+
     return false;
   } catch {
     return true;
@@ -58,6 +80,9 @@ export async function fetchLinkPreview(url: string, db?: Db): Promise<LinkPrevie
       redirect: 'follow',
     });
     clearTimeout(timeout);
+
+    // Re-check final URL after redirects to prevent SSRF via redirect
+    if (res.url && res.url !== url && isPrivateUrl(res.url)) return null;
 
     if (!res.ok) return null;
 

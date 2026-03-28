@@ -48,10 +48,16 @@ function writeLine(socket: net.Socket | tls.TLSSocket, line: string): Promise<st
   });
 }
 
+/** Strip CR/LF to prevent SMTP header/command injection. */
+function sanitizeHeaderValue(value: string): string {
+  return value.replace(/[\r\n]/g, '');
+}
+
 export function createSmtpProvider(config: SmtpConfig): EmailProvider {
   return {
     async send(message: EmailMessage & { from: string }) {
-      const fromEmail = message.from.replace(/.*<(.+)>/, '$1').trim() || message.from;
+      const fromRaw = sanitizeHeaderValue(message.from);
+      const fromEmail = fromRaw.replace(/.*<(.+)>/, '$1').trim() || fromRaw;
 
       let socket: net.Socket | tls.TLSSocket;
 
@@ -93,7 +99,8 @@ export function createSmtpProvider(config: SmtpConfig): EmailProvider {
         const mailRes = await writeLine(socket, `MAIL FROM:<${fromEmail}>`);
         if (!mailRes.startsWith('250')) throw new Error(`MAIL FROM failed: ${mailRes}`);
 
-        const rcptRes = await writeLine(socket, `RCPT TO:<${message.to}>`);
+        const safeTo = sanitizeHeaderValue(message.to);
+        const rcptRes = await writeLine(socket, `RCPT TO:<${safeTo}>`);
         if (!rcptRes.startsWith('250')) throw new Error(`RCPT TO failed: ${rcptRes}`);
 
         const dataRes = await writeLine(socket, 'DATA');
@@ -102,10 +109,11 @@ export function createSmtpProvider(config: SmtpConfig): EmailProvider {
         const boundary = `----=_Part_${Date.now()}`;
         const textBody = (message.text || message.html.replace(/<[^>]+>/g, '')).replace(/^\./gm, '..');
         const htmlBody = message.html.replace(/^\./gm, '..');
+        const safeSubject = sanitizeHeaderValue(message.subject);
         const emailData = [
-          `From: ${message.from}`,
-          `To: ${message.to}`,
-          `Subject: ${message.subject}`,
+          `From: ${fromRaw}`,
+          `To: ${safeTo}`,
+          `Subject: ${safeSubject}`,
           `MIME-Version: 1.0`,
           `Content-Type: multipart/alternative; boundary="${boundary}"`,
           `Date: ${new Date().toUTCString()}`,

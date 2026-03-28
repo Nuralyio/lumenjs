@@ -120,7 +120,9 @@ export function authPlugin(projectDir: string): Plugin {
         const url = req.url || '';
 
         // Only enforce on page requests (no static files, no API, no internal)
-        if (url.includes('.') || url.startsWith('/@') || url.startsWith('/__nk_') || url.startsWith('/api/') || url.startsWith('/node_modules')) {
+        const lastSegment = url.split('?')[0].split('/').pop() || '';
+        const isStaticFile = lastSegment.includes('.') && /\.\w{1,10}$/.test(lastSegment);
+        if (isStaticFile || url.startsWith('/@') || url.startsWith('/__nk_') || url.startsWith('/api/') || url.startsWith('/node_modules')) {
           return next();
         }
 

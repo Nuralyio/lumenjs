@@ -11,7 +11,7 @@ import {
   encryptSession,
   createSessionCookie,
 } from '../session.js';
-import { sendJson, readBody, isTokenMode } from './utils.js';
+import { sendJson, readBody, isTokenMode, safeReturnTo } from './utils.js';
 
 /**
  * Handle OIDC login — redirect to provider's authorization endpoint.
@@ -40,7 +40,7 @@ export async function handleOidcLogin(
   const metadata = await discoverProvider(oidc.issuer);
   const state = crypto.randomBytes(16).toString('hex');
   const codeVerifier = generateCodeVerifier();
-  const returnTo = url.searchParams.get('returnTo') || config.routes.postLogin;
+  const returnTo = safeReturnTo(url.searchParams.get('returnTo'), config.routes.postLogin);
   const redirectUri = `${url.origin}${config.routes.callback}`;
 
   // Store PKCE state in short-lived encrypted cookie
@@ -117,7 +117,7 @@ export async function handleNativeLogin(
   const encrypted = await encryptSession(sessionData, config.session.secret);
   const cookie = createSessionCookie(config.session.cookieName, encrypted, config.session.maxAge, config.session.secure);
 
-  const returnTo = url.searchParams.get('returnTo') || config.routes.postLogin;
+  const returnTo = safeReturnTo(url.searchParams.get('returnTo'), config.routes.postLogin);
 
   // Token mode: return bearer tokens instead of cookie
   if (isTokenMode(url, req) && config.token.enabled) {

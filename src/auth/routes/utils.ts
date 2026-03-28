@@ -29,3 +29,11 @@ export function sendJson(res: ServerResponse, status: number, data: any): void {
 export function isTokenMode(url: URL, _req: IncomingMessage): boolean {
   return url.searchParams.get('mode') === 'token';
 }
+
+/** Validate returnTo is a safe relative path (prevents open redirect). */
+export function safeReturnTo(returnTo: string | null, fallback: string): string {
+  if (!returnTo) return fallback;
+  // Must start with / and must not start with // (protocol-relative URL)
+  if (returnTo.startsWith('/') && !returnTo.startsWith('//')) return returnTo;
+  return fallback;
+}

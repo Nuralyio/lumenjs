@@ -154,6 +154,11 @@ export class PermissionService {
 
     // 4. Role-based: check user's roles → role permissions
     if (userId) {
+      // Escape LIKE wildcards to prevent permission bypass via % or _
+      const escapeLike = (s: string) => s.replace(/[%_]/g, '\\$&');
+      const safePermType = escapeLike(permissionType);
+      const safeResType = escapeLike(resourceType);
+
       const roleMatch = this.db.get(
         `SELECT 1 FROM _nk_user_roles ur
          JOIN _nk_roles r ON r.id = ur.role_id
@@ -163,13 +168,13 @@ export class PermissionService {
              OR (ur.resource_type = ? AND ur.resource_id = ?)
            )
            AND (
-             r.permissions LIKE '%"' || ? || '"%'
-             OR r.permissions LIKE '%"' || ? || ':*"%'
+             r.permissions LIKE '%"' || ? || '"%' ESCAPE '\\'
+             OR r.permissions LIKE '%"' || ? || ':*"%' ESCAPE '\\'
              OR r.permissions LIKE '%"*"%'
            )`,
         userId,
         resourceType, resourceId,
-        permissionType, resourceType,
+        safePermType, safeResType,
       );
       if (roleMatch) return true;
     }

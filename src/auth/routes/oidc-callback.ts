@@ -5,6 +5,8 @@ import {
   discoverProvider,
   exchangeCode,
   extractUser,
+  validateIdTokenClaims,
+  decodeJwtPayload,
 } from '../oidc-client.js';
 import {
   encryptSession,
@@ -13,7 +15,7 @@ import {
   parseSessionCookie,
   decryptSession,
 } from '../session.js';
-import { sendJson } from './utils.js';
+import { sendJson, safeReturnTo } from './utils.js';
 
 export async function handleOidcCallback(
   config: ResolvedAuthConfig,
@@ -63,6 +65,12 @@ export async function handleOidcCallback(
   const redirectUri = `${url.origin}${config.routes.callback}`;
   const tokens = await exchangeCode(metadata, oidc.clientId, oidc.clientSecret, code, redirectUri, codeVerifier);
 
+  // Validate ID token claims (iss, aud, exp) before trusting
+  if (tokens.id_token) {
+    const claims = decodeJwtPayload(tokens.id_token);
+    validateIdTokenClaims(claims, oidc.issuer, oidc.clientId);
+  }
+
   let user = extractUser(tokens.id_token || tokens.access_token);
   user.provider = oidc.name;
 
@@ -89,7 +97,7 @@ export async function handleOidcCallback(
   const sessionCookie = createSessionCookie(config.session.cookieName, encrypted, config.session.maxAge, config.session.secure);
   const clearState = clearSessionCookie('nk-auth-state');
 
-  res.writeHead(302, { Location: returnTo || '/', 'Set-Cookie': [sessionCookie, clearState] });
+  res.writeHead(302, { Location: safeReturnTo(returnTo, '/'), 'Set-Cookie': [sessionCookie, clearState] });
   res.end();
   return true;
 }
