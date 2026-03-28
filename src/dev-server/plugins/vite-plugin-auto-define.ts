@@ -35,8 +35,8 @@ export function autoDefinePlugin(pagesDir: string): Plugin {
         ? dirToLayoutTagName(path.dirname(relative) === '.' ? '' : path.dirname(relative))
         : filePathToTagName(relative);
 
-      // Find the exported class that extends LitElement
-      const classMatch = code.match(/export\s+class\s+(\w+)\s+extends\s+LitElement\b/);
+      // Find the exported class that extends LitElement or any parent class
+      const classMatch = code.match(/export\s+class\s+(\w+)\s+extends\s+(\w+)\b/);
       if (!classMatch) return;
 
       const className = classMatch[1];
