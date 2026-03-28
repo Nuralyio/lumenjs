@@ -55,7 +55,7 @@ export class CommunicationStore {
     setInterval(() => {
       const now = Date.now();
       for (const [id, call] of this.calls) {
-        const startedAt = new Date(call.startedAt).getTime();
+        const startedAt = call.startedAt ? new Date(call.startedAt).getTime() : 0;
         if (now - startedAt > CommunicationStore.CALL_TTL_MS) {
           this.calls.delete(id);
         }

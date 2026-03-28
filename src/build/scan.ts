@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { filePathToRoute } from '../shared/utils.js';
+import { filePathToRoute, fileHasLoader, fileHasSubscribe } from '../shared/utils.js';
 
 /** Read a page file once and check all flags from the same content. */
 function analyzePageFile(filePath: string): {
