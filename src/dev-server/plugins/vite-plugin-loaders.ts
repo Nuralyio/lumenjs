@@ -356,7 +356,35 @@ async function handleLayoutLoader(
     }
     const locale = query.__locale;
 
-    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers: req.headers, locale, user: (req as any).nkAuth?.user ?? null });
+    // If auth middleware hasn't populated nkAuth, try to parse from cookie or bearer token
+    let user = (req as any).nkAuth?.user ?? null;
+    if (!user) {
+      try {
+        const authConfigPath = path.join(pagesDir, '..', 'lumenjs.auth.ts');
+        if (fs.existsSync(authConfigPath)) {
+          const { loadAuthConfig } = await import('../../auth/config.js');
+          const authCfg = await loadAuthConfig(path.join(pagesDir, '..'), server.ssrLoadModule.bind(server));
+          if (authCfg) {
+            const authHeader = req.headers.authorization;
+            if (authHeader?.startsWith('Bearer ')) {
+              const { verifyAccessToken } = await import('../../auth/token.js');
+              const tokenUser = verifyAccessToken(authHeader.slice(7), authCfg.session.secret);
+              if (tokenUser) user = tokenUser;
+            }
+            if (!user && req.headers.cookie) {
+              const { parseSessionCookie, decryptSession } = await import('../../auth/session.js');
+              const cookieVal = parseSessionCookie(req.headers.cookie, authCfg.session.cookieName);
+              if (cookieVal) {
+                const session = await decryptSession(cookieVal, authCfg.session.secret);
+                if (session?.user) user = session.user;
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers: req.headers, locale, user });
 
     if (isRedirectResponse(result)) {
       res.statusCode = result.status || 302;

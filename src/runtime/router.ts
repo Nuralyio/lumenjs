@@ -59,10 +59,17 @@ export class NkRouter {
       const path = this.stripLocale(location.pathname);
       this.navigate(path, false);
     });
+    // Re-run loader when page is restored from bfcache (back/forward on mobile Safari, etc.)
+    window.addEventListener('pageshow', (e) => {
+      if (e.persisted) {
+        const path = this.stripLocale(location.pathname);
+        this.navigate(path, false);
+      }
+    });
     document.addEventListener('click', (e) => this.handleLinkClick(e));
     (window as any).__nk_navigate = (href: string) => {
       const path = this.stripLocale(href);
-      if (this.matchRoute(path)) {
+      if (this.matchRoute(path.split('?')[0])) {
         this.navigate(path);
       } else {
         window.location.href = href;
@@ -121,9 +128,10 @@ export class NkRouter {
     this.subscriptions = [];
   }
 
-  async navigate(pathname: string, pushState = true) {
+  async navigate(fullPath: string, pushState = true) {
     this.cleanupSubscriptions();
 
+    const pathname = fullPath.split('?')[0];
     const match = this.matchRoute(pathname);
     if (!match) {
       if (this.outlet) this.outlet.innerHTML = render404(pathname);
@@ -133,7 +141,7 @@ export class NkRouter {
     }
 
     if (pushState) {
-      const localePath = this.withLocale(pathname);
+      const localePath = this.withLocale(fullPath);
       history.pushState(null, '', localePath);
       window.scrollTo(0, 0);
     }
@@ -407,7 +415,8 @@ export class NkRouter {
     this.navigate(this.stripLocale(href));
   }
 
-  async prefetch(pathname: string): Promise<void> {
+  async prefetch(fullPath: string): Promise<void> {
+    const pathname = fullPath.split('?')[0];
     const match = this.matchRoute(pathname);
     if (!match) return;
 
