@@ -12,6 +12,7 @@ export interface IndexHtmlOptions {
   translations?: Record<string, string>;
   prefetch?: string;
   authUser?: any;
+  headContent?: string;
 }
 
 /**
@@ -75,6 +76,7 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
   <title>${escapeHtml(options.title)}</title>
   <link rel="icon" type="image/svg+xml" href="/public/favicon.svg" />
   ${options.integrations?.includes('nuralyui') ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@nuraly/lumenui@latest/packages/themes/dist/default.css">' : ''}${options.integrations?.includes('tailwind') ? '\n  <script type="module">import "/styles/tailwind.css";</script>' : ''}
+  ${options.headContent || ''}
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; }

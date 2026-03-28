@@ -22,8 +22,12 @@ export async function buildClient(opts: BuildClientOptions): Promise<void> {
 
   console.log('[LumenJS] Building client bundle...');
 
+  // Read optional head.html for blocking scripts (e.g. theme initialization)
+  const headHtmlPath = path.join(projectDir, 'head.html');
+  const headContent = fs.existsSync(headHtmlPath) ? fs.readFileSync(headHtmlPath, 'utf-8') : undefined;
+
   // Generate index.html as build entry
-  const indexHtml = generateIndexHtml({ title, editorMode: false, integrations, prefetch: prefetchStrategy });
+  const indexHtml = generateIndexHtml({ title, editorMode: false, integrations, prefetch: prefetchStrategy, headContent });
   const tempIndexPath = path.join(projectDir, '__nk_build_index.html');
   fs.writeFileSync(tempIndexPath, indexHtml);
 

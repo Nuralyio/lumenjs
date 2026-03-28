@@ -126,6 +126,10 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
 
   const config = readProjectConfig(projectDir);
   const { title, integrations, i18n: i18nConfig, prefetch: prefetchStrategy } = config;
+
+  // Read optional head.html for blocking scripts (e.g. theme initialization)
+  const headHtmlPath = path.join(projectDir, 'head.html');
+  const headContent = fs.existsSync(headHtmlPath) ? fs.readFileSync(headHtmlPath, 'utf-8') : undefined;
   // Set project dir for DB context (used by loaders, API routes, plugins)
   setProjectDir(projectDir);
   process.env.LUMENJS_PROJECT_DIR = projectDir;
@@ -273,6 +277,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                   translations,
                   prefetch: prefetchStrategy,
                   authUser: ssrResult?.authUser ?? (req as any).nkAuth?.user ?? undefined,
+                  headContent,
                 });
                 const transformed = await server.transformIndexHtml(req.url!, shellHtml);
                 const finalHtml = ssrResult
@@ -283,7 +288,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                 res.end(finalHtml);
               }).catch(err => {
                 console.error('[LumenJS] SSR/HTML generation error:', err);
-                const html = generateIndexHtml({ title, editorMode, integrations, locale, i18nConfig: i18nConfig || undefined, translations, prefetch: prefetchStrategy });
+                const html = generateIndexHtml({ title, editorMode, integrations, locale, i18nConfig: i18nConfig || undefined, translations, prefetch: prefetchStrategy, headContent });
                 server.transformIndexHtml(req.url!, html).then(transformed => {
                   res.setHeader('Content-Type', 'text/html');
                   res.setHeader('Cache-Control', 'no-store');
