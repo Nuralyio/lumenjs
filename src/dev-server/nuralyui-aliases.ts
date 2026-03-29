@@ -71,8 +71,8 @@ export const implicitDeps: Record<string, string[]> = {
 };
 
 /**
- * NuralyUI component alias map — mirrors the studio astro.config.mjs aliases.
- * Points to the component source directories within the studio service.
+ * NuralyUI component alias map.
+ * Maps @nuraly/lumenui/* imports to component source directories.
  */
 /**
  * Resolve a component directory to its entry file.
