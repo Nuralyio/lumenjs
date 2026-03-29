@@ -19,7 +19,14 @@ function checkOrigin(req: IncomingMessage, url: URL): boolean {
   if (!origin) return true; // Allow requests without Origin (non-browser clients)
   try {
     const originUrl = new URL(origin);
-    return originUrl.origin === url.origin;
+    // Direct match
+    if (originUrl.origin === url.origin) return true;
+    // Behind reverse proxy: check X-Forwarded-Host
+    const fwdHost = (req.headers['x-forwarded-host'] as string)?.split(',')[0]?.trim();
+    if (fwdHost && originUrl.host === fwdHost) return true;
+    // Match hostname only (ignore port differences from proxy)
+    if (originUrl.hostname === url.hostname) return true;
+    return false;
   } catch {
     return false;
   }
