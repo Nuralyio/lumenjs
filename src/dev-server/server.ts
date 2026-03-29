@@ -60,6 +60,10 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
     const nuralyUIPaths = resolveNuralyUIPaths(projectDir);
     if (nuralyUIPaths) {
       Object.assign(aliases, getNuralyUIAliases(nuralyUIPaths.componentsPath, nuralyUIPaths.commonPath));
+      // Add root aliases for theme CSS imports
+      const nuralyUIRoot = path.resolve(nuralyUIPaths.componentsPath, '..');
+      aliases['@nuralyui-theme'] = path.join(nuralyUIRoot, 'shared/themes');
+      aliases['@nuralyui-common'] = nuralyUIPaths.commonPath;
     }
   }
 
