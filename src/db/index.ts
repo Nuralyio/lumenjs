@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import Database from 'better-sqlite3';
 import { getProjectDir } from './context.js';
-import { readProjectConfig } from '../dev-server/config.js';
+// DB path read inline to avoid pulling server-only config.js into client bundle
 import { autoMigrate } from './auto-migrate.js';
 import { getRegisteredTables } from './table.js';
 import { autoSeed, waitForSeed } from './seed.js';
@@ -51,8 +51,14 @@ export function useDb(): LumenDb {
   if (_instance) return _instance;
 
   const projectDir = getProjectDir();
-  const config = readProjectConfig(projectDir);
-  const dbRelPath = config.db?.path || 'data/db.sqlite';
+  // Read db path directly from config file (lightweight, no fileURLToPath dependency)
+  const dbRelPath = (() => {
+    try {
+      const c = fs.readFileSync(path.join(projectDir, 'lumenjs.config.ts'), 'utf-8');
+      const m = c.match(/db\s*:\s*\{[^}]*path\s*:\s*['"]([^'"]+)['"]/);
+      return m ? m[1] : 'data/db.sqlite';
+    } catch { return 'data/db.sqlite'; }
+  })();
   const dbPath = path.resolve(projectDir, dbRelPath);
 
   // Auto-create directory
