@@ -164,16 +164,16 @@ export async function serveProject(options: ServeOptions): Promise<void> {
 
       // --- Original request handling ---
 
-      // -2. Auth routes (must handle /__nk_auth/* before other /__nk_ exclusions)
-      if (authConfig && pathname.startsWith('/__nk_auth/')) {
-        const handled = await handleAuthRoutes(authConfig, req, res, authDb);
-        if (handled) return;
-      }
-
-      // -1. Auth session middleware (attach req.nkAuth before user middleware)
+      // -2. Auth session middleware (attach req.nkAuth — must run before auth routes and user middleware)
       if (authMiddleware && !pathname.includes('.') && !pathname.startsWith('/@')) {
         await new Promise<void>(resolve => authMiddleware(req, res, resolve));
         if (res.writableEnded) return;
+      }
+
+      // -1. Auth routes (login, logout, me, signup, etc.)
+      if (authConfig && pathname.startsWith('/__nk_auth/')) {
+        const handled = await handleAuthRoutes(authConfig, req, res, authDb);
+        if (handled) return;
       }
 
       // 0. Run user middleware chain
