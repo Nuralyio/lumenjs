@@ -1,11 +1,12 @@
 import path from 'path';
 import fs from 'fs';
 import Database from 'better-sqlite3';
+import type { LumenDb } from './index.js';
 
 const SEED_TABLE = '_lumen_seed_applied';
 const SEED_NAME = 'data/seed.ts';
 
-function ensureSeedTable(db: Database.Database): void {
+function ensureSeedTableSqlite(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS ${SEED_TABLE} (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
@@ -13,19 +14,19 @@ function ensureSeedTable(db: Database.Database): void {
   )`);
 }
 
-function isSeedApplied(db: Database.Database): boolean {
-  ensureSeedTable(db);
+function isSeedAppliedSqlite(db: Database.Database): boolean {
+  ensureSeedTableSqlite(db);
   const row = db.prepare(`SELECT 1 FROM ${SEED_TABLE} WHERE name = ?`).get(SEED_NAME);
   return !!row;
 }
 
-function markSeedApplied(db: Database.Database): void {
+function markSeedAppliedSqlite(db: Database.Database): void {
   db.prepare(`INSERT OR IGNORE INTO ${SEED_TABLE} (name) VALUES (?)`).run(SEED_NAME);
 }
 
 async function loadAndRunSeed(projectDir: string): Promise<void> {
   const seedPath = path.join(projectDir, 'data', 'seed.ts');
-  const mod = await import(seedPath);
+  const mod = await import(/* @vite-ignore */ seedPath);
   const seedFn = mod.default || mod;
   if (typeof seedFn === 'function') {
     await seedFn();
@@ -36,18 +37,16 @@ let _seedPromise: Promise<void> | null = null;
 
 /**
  * Auto-seed on first DB creation. Called from useDb() after migrations.
- * Marks seed as applied BEFORE running to prevent concurrent re-runs,
- * and rolls back the mark on failure so it retries next time.
+ * Only runs in SQLite mode (PG seeds are handled separately).
  */
 export function autoSeed(db: Database.Database, projectDir: string): void {
-  if (isSeedApplied(db)) return;
+  if (isSeedAppliedSqlite(db)) return;
 
   const seedPath = path.join(projectDir, 'data', 'seed.ts');
   if (!fs.existsSync(seedPath)) return;
 
   console.log('[LumenJS] Running seed file...');
-  // Mark as applied BEFORE running to prevent concurrent re-runs
-  markSeedApplied(db);
+  markSeedAppliedSqlite(db);
 
   _seedPromise = loadAndRunSeed(projectDir)
     .then(() => {
@@ -55,7 +54,6 @@ export function autoSeed(db: Database.Database, projectDir: string): void {
     })
     .catch(err => {
       console.error('[LumenJS] Failed to run seed:', err);
-      // Rollback the mark so it can retry next time
       db.prepare(`DELETE FROM ${SEED_TABLE} WHERE name = ?`).run(SEED_NAME);
     })
     .finally(() => {
@@ -65,7 +63,6 @@ export function autoSeed(db: Database.Database, projectDir: string): void {
 
 /**
  * Returns a promise that resolves when any in-progress seed completes.
- * Resolves immediately if no seed is running.
  */
 export function waitForSeed(): Promise<void> {
   return _seedPromise ?? Promise.resolve();
@@ -79,20 +76,30 @@ export async function runSeed(projectDir: string, force: boolean = false): Promi
     process.exit(1);
   }
 
-  // Import useDb to initialize the database (runs migrations first)
   const { useDb } = await import('./index.js');
   const lumenDb = useDb();
+
+  // PG mode: seeds are not tracked via SQLite mechanism
+  if (lumenDb.isPg) {
+    if (!force) {
+      console.log('[LumenJS] PG mode: skipping seed tracking check. Use --force to run anyway.');
+      return;
+    }
+    await loadAndRunSeed(projectDir);
+    console.log('[LumenJS] Seed applied.');
+    return;
+  }
+
   const db = lumenDb.raw;
+  ensureSeedTableSqlite(db);
 
-  ensureSeedTable(db);
-
-  if (!force && isSeedApplied(db)) {
+  if (!force && isSeedAppliedSqlite(db)) {
     console.log('[LumenJS] Seed already applied. Use --force to re-run.');
     return;
   }
 
   console.log('[LumenJS] Running seed file...');
   await loadAndRunSeed(projectDir);
-  markSeedApplied(db);
+  markSeedAppliedSqlite(db);
   console.log('[LumenJS] Seed applied.');
 }

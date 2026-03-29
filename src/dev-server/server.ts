@@ -77,6 +77,8 @@ export function getSharedViteConfig(projectDir: string, options?: { mode?: 'deve
       '@lumenjs/webrtc': path.join(runtimeDir, 'webrtc.js'),
       '@lumenjs/db': path.join(distDir, 'db', 'client.js'),
       '@lumenjs/permissions': path.join(distDir, 'permissions', 'index.js'),
+      '@lumenjs/storage': path.join(distDir, 'storage', 'index.js'),
+      '@nuraly/lumenjs': path.resolve(distDir, '..'),
     },
     conditions: isDev ? ['development', 'browser'] : ['browser'],
     // Note: resolve.dedupe is NOT used — it resolves via Node's algorithm
@@ -155,6 +157,10 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       },
     },
     resolve: shared.resolve,
+    ssr: {
+      // Prevent framework alias packages from being externalized (nodeImport bypasses aliases)
+      noExternal: [/@nuraly\/lumenjs/, /@lumenjs\//],
+    },
     plugins: [
       ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
       ...shared.plugins,

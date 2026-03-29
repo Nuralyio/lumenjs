@@ -11,8 +11,34 @@ import { ensurePermissionTables } from '../../permissions/tables.js';
 import { PermissionService } from '../../permissions/service.js';
 import { loadEmailConfig, sendEmail, renderEmailTemplate } from '../../email/index.js';
 import { setProjectDir } from '../../db/context.js';
-import { useDb } from '../../db/index.js';
+import { useDb, waitForMigrations } from '../../db/index.js';
 import { ensureUsersTable } from '../../auth/native-auth.js';
+
+import fs from 'fs';
+import type { LumenDb } from '../../db/index.js';
+
+/** Run seed.ts via Vite ssrLoadModule so TypeScript is handled. Only runs once per DB. */
+async function runPgSeedIfNeeded(server: any, db: LumenDb, projectDir: string): Promise<void> {
+  const seedPath = path.join(projectDir, 'data', 'seed.ts');
+  if (!fs.existsSync(seedPath)) return;
+  try {
+    await db.exec(`CREATE TABLE IF NOT EXISTS _lumen_seed_applied (
+      name TEXT PRIMARY KEY,
+      applied_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )`);
+    const row = await db.get('SELECT 1 FROM _lumen_seed_applied WHERE name = $1', 'data/seed.ts');
+    if (row) return;
+    await db.run('INSERT INTO _lumen_seed_applied (name) VALUES ($1) ON CONFLICT DO NOTHING', 'data/seed.ts');
+    console.log('[LumenJS] Running seed file (PG)...');
+    const mod = await server.ssrLoadModule(seedPath);
+    const seedFn = mod.default || mod;
+    if (typeof seedFn === 'function') await seedFn();
+    console.log('[LumenJS] Seed applied (PG).');
+  } catch (err: any) {
+    try { await db.run('DELETE FROM _lumen_seed_applied WHERE name = $1', 'data/seed.ts'); } catch {}
+    console.error('[LumenJS] PG seed failed:', err.message);
+  }
+}
 
 /**
  * Extract URL params by matching a route pattern against a path.
@@ -78,9 +104,14 @@ export function authPlugin(projectDir: string): Plugin {
               try {
                 setProjectDir(projectDir);
                 db = useDb();
-                ensureUsersTable(db);
+                await waitForMigrations();
+                // Run PG seed via ssrLoadModule so TypeScript is handled
+                if (db.isPg) {
+                  await runPgSeedIfNeeded(server, db, projectDir);
+                }
+                await ensureUsersTable(db);
                 if (authConfig.permissions.enabled) {
-                  ensurePermissionTables(db);
+                  await ensurePermissionTables(db);
                   permissionService = new PermissionService(db, authConfig.permissions);
                   console.log('[LumenJS] Permission module initialized');
                 }
@@ -144,7 +175,7 @@ export function authPlugin(projectDir: string): Plugin {
             const { filePathToRoute } = await import('../../shared/utils.js');
             const routePattern = filePathToRoute(path.relative(pagesDir, pageFile));
             const urlParams = matchRouteParams(routePattern, url.split('?')[0]);
-            result = enforcePermissionGuard(
+            result = await enforcePermissionGuard(
               authExport,
               (req as any).nkAuth?.user,
               authConfig.routes.loginPage,
