@@ -169,6 +169,13 @@ export async function handlePageRoute(
     }
   }
 
-  // SPA fallback — serve the built index.html
-  sendCompressed(req, res, 200, 'text/html; charset=utf-8', indexHtmlShell);
+  // SPA fallback — serve the built index.html with auth data injected
+  const fallbackUser = (req as any).nkAuth?.user ?? null;
+  if (fallbackUser) {
+    const authTag = `<script type="application/json" id="__nk_auth__">${JSON.stringify(fallbackUser).replace(/</g, '\\u003c')}</script>`;
+    const html = indexHtmlShell.replace('<nk-app>', `${authTag}<nk-app>`);
+    sendCompressed(req, res, 200, 'text/html; charset=utf-8', html);
+  } else {
+    sendCompressed(req, res, 200, 'text/html; charset=utf-8', indexHtmlShell);
+  }
 }
