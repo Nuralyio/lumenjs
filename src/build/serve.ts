@@ -104,10 +104,27 @@ export async function serveProject(options: ServeOptions): Promise<void> {
   // Load auth config if present
   let authConfig: any = null;
   let authMiddleware: any = null;
+  let authDb: any = null;
   if (manifest.auth) {
     try {
       authConfig = await loadAuthConfigProd(serverDir, manifest.auth.configModule);
-      authMiddleware = createAuthMiddleware(authConfig);
+
+      // Initialize DB for native auth
+      const { hasNativeAuth } = await import('../auth/config.js');
+      if (hasNativeAuth(authConfig)) {
+        try {
+          const { setProjectDir } = await import('../db/context.js');
+          const { useDb } = await import('../db/index.js');
+          const { ensureUsersTable } = await import('../auth/native-auth.js');
+          setProjectDir(projectDir);
+          authDb = useDb();
+          ensureUsersTable(authDb);
+        } catch (dbErr) {
+          logger.warn('Native auth DB init failed', { error: (dbErr as any)?.message });
+        }
+      }
+
+      authMiddleware = createAuthMiddleware(authConfig, authDb);
       logger.info('Auth middleware loaded.');
     } catch (err) {
       logger.error('Failed to load auth config', { error: (err as any)?.message });
@@ -149,7 +166,7 @@ export async function serveProject(options: ServeOptions): Promise<void> {
 
       // -2. Auth routes (must handle /__nk_auth/* before other /__nk_ exclusions)
       if (authConfig && pathname.startsWith('/__nk_auth/')) {
-        const handled = await handleAuthRoutes(authConfig, req, res);
+        const handled = await handleAuthRoutes(authConfig, req, res, authDb);
         if (handled) return;
       }
 
