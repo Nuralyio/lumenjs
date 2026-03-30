@@ -74,7 +74,9 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
       const secHeadersMatch = configContent.match(/securityHeaders\s*:\s*\{([\s\S]*?)\}/);
       if (secHeadersMatch) {
         const block = secHeadersMatch[1];
-        const cspMatch = block.match(/contentSecurityPolicy\s*:\s*['"`]([^'"`]+)['"`]/);
+        const cspMatch = block.match(/contentSecurityPolicy\s*:\s*"([^"]+)"/)
+          || block.match(/contentSecurityPolicy\s*:\s*'([^']+)'/)
+          || block.match(/contentSecurityPolicy\s*:\s*`([^`]+)`/);
         if (cspMatch) securityHeaders = { contentSecurityPolicy: cspMatch[1] };
       }
 
