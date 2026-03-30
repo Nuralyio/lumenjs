@@ -43,6 +43,7 @@ export async function buildClient(opts: BuildClientOptions): Promise<void> {
         emptyOutDir: true,
         rollupOptions: {
           input: tempIndexPath,
+          external: ['mermaid', 'monaco-editor', 'monacopilot', '@lumenjs/db', '@lumenjs/permissions', '@lumenjs/storage'],
         },
       },
       logLevel: 'warn',

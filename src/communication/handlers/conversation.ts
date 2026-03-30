@@ -3,17 +3,17 @@ import type { HandlerContext } from './context.js';
 
 // ── Conversation ────────────────────────────────────────────────
 
-export function handleConversationCreate(
+export async function handleConversationCreate(
   ctx: HandlerContext,
   data: { type: 'direct' | 'group'; name?: string; participantIds: string[] },
-): void {
+): Promise<void> {
   const now = new Date().toISOString();
 
   let conversation: Conversation;
 
   if (ctx.db) {
     const convId = crypto.randomUUID();
-    ctx.db.run(
+    await ctx.db.run(
       `INSERT INTO conversations (id, type, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
       convId, data.type, data.name || null, now, now,
     );
@@ -22,7 +22,7 @@ export function handleConversationCreate(
     const allParticipantIds = [ctx.userId, ...data.participantIds.filter(id => id !== ctx.userId)];
     for (const uid of allParticipantIds) {
       const role = uid === ctx.userId ? 'owner' : 'member';
-      ctx.db.run(
+      await ctx.db.run(
         `INSERT INTO conversation_participants (conversation_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)`,
         convId, uid, role, now,
       );
@@ -78,10 +78,10 @@ export function handleConversationCreate(
   }
 }
 
-export function handleConversationJoin(ctx: HandlerContext, data: { conversationId: string }): void {
+export async function handleConversationJoin(ctx: HandlerContext, data: { conversationId: string }): Promise<void> {
   // Verify the user is an actual participant of this conversation
   if (ctx.db) {
-    const row = ctx.db.get(
+    const row = await ctx.db.get(
       'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
       data.conversationId, ctx.userId,
     );
@@ -102,13 +102,13 @@ export function handleConversationLeave(ctx: HandlerContext, data: { conversatio
   ctx.store.leaveConversation(ctx.userId, data.conversationId);
 }
 
-export function handleConversationArchive(
+export async function handleConversationArchive(
   ctx: HandlerContext,
   data: { conversationId: string; archived: boolean },
-): void {
+): Promise<void> {
   // Verify the user is a participant
   if (ctx.db) {
-    const row = ctx.db.get(
+    const row = await ctx.db.get(
       'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
       data.conversationId, ctx.userId,
     );
@@ -116,7 +116,7 @@ export function handleConversationArchive(
       ctx.push({ event: 'error', data: { code: 'FORBIDDEN', message: 'Not a participant of this conversation' } });
       return;
     }
-    ctx.db.run(
+    await ctx.db.run(
       `UPDATE conversations SET archived = ?, updated_at = ? WHERE id = ?`,
       data.archived ? 1 : 0, new Date().toISOString(), data.conversationId,
     );
@@ -128,12 +128,12 @@ export function handleConversationArchive(
   });
 }
 
-export function handleConversationMute(
+export async function handleConversationMute(
   ctx: HandlerContext,
   data: { conversationId: string; muted: boolean },
-): void {
+): Promise<void> {
   if (ctx.db) {
-    ctx.db.run(
+    await ctx.db.run(
       `UPDATE conversation_participants SET muted = ?, updated_at = ? WHERE conversation_id = ? AND user_id = ?`,
       data.muted ? 1 : 0, new Date().toISOString(), data.conversationId, ctx.userId,
     );
@@ -146,12 +146,12 @@ export function handleConversationMute(
   });
 }
 
-export function handleConversationPin(
+export async function handleConversationPin(
   ctx: HandlerContext,
   data: { conversationId: string; pinned: boolean },
-): void {
+): Promise<void> {
   if (ctx.db) {
-    ctx.db.run(
+    await ctx.db.run(
       `UPDATE conversation_participants SET pinned = ?, updated_at = ? WHERE conversation_id = ? AND user_id = ?`,
       data.pinned ? 1 : 0, new Date().toISOString(), data.conversationId, ctx.userId,
     );

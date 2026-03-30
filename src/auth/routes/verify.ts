@@ -24,7 +24,7 @@ export async function handleVerifyEmail(
     return true;
   }
 
-  const verified = verifyUserEmail(db, userId);
+  const verified = await verifyUserEmail(db, userId);
   if (!verified) {
     res.writeHead(302, { Location: '/auth/verify?error=not_found' });
     res.end();

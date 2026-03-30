@@ -230,6 +230,17 @@ export function fileHasStandalone(filePath: string): boolean {
 }
 
 /**
+ * Return the HTTP methods exported by an API route file (e.g. ['GET', 'POST']).
+ */
+export function fileGetApiMethods(filePath: string): string[] {
+  const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return HTTP_METHODS.filter(m => new RegExp(`export\\s+(async\\s+)?function\\s+${m}[\\s(]`).test(content));
+  } catch { return []; }
+}
+
+/**
  * Convert a file path (relative to pages/) to a route path.
  */
 export function filePathToRoute(filePath: string): string {

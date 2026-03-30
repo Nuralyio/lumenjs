@@ -64,14 +64,14 @@ export function hashRefreshToken(token: string): string {
 // ── DB helpers for refresh tokens ────────────────────────────────
 
 interface Db {
-  all<T = any>(sql: string, ...params: any[]): T[];
-  get<T = any>(sql: string, ...params: any[]): T | undefined;
-  run(sql: string, ...params: any[]): { changes: number; lastInsertRowid: number | bigint };
-  exec(sql: string): void;
+  all<T = any>(sql: string, ...params: any[]): Promise<T[]>;
+  get<T = any>(sql: string, ...params: any[]): Promise<T | undefined>;
+  run(sql: string, ...params: any[]): Promise<{ changes: number; lastInsertRowid: number | bigint }>;
+  exec(sql: string): Promise<void>;
 }
 
-export function ensureRefreshTokenTable(db: Db): void {
-  db.exec(`CREATE TABLE IF NOT EXISTS _nk_auth_refresh_tokens (
+export async function ensureRefreshTokenTable(db: Db): Promise<void> {
+  await db.exec(`CREATE TABLE IF NOT EXISTS _nk_auth_refresh_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     token_hash TEXT NOT NULL UNIQUE,
     user_id TEXT NOT NULL,
@@ -80,34 +80,34 @@ export function ensureRefreshTokenTable(db: Db): void {
   )`);
 }
 
-export function storeRefreshToken(db: Db, token: string, userId: string, ttlSeconds: number): void {
+export async function storeRefreshToken(db: Db, token: string, userId: string, ttlSeconds: number): Promise<void> {
   const tokenHash = hashRefreshToken(token);
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
-  db.run(
+  await db.run(
     'INSERT INTO _nk_auth_refresh_tokens (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
     tokenHash, userId, expiresAt,
   );
 }
 
-export function validateRefreshToken(db: Db, token: string): string | null {
+export async function validateRefreshToken(db: Db, token: string): Promise<string | null> {
   const tokenHash = hashRefreshToken(token);
-  const row = db.get<any>(
+  const row = await db.get<any>(
     'SELECT user_id, expires_at FROM _nk_auth_refresh_tokens WHERE token_hash = ?',
     tokenHash,
   );
   if (!row) return null;
   if (new Date(row.expires_at) < new Date()) {
-    db.run('DELETE FROM _nk_auth_refresh_tokens WHERE token_hash = ?', tokenHash);
+    await db.run('DELETE FROM _nk_auth_refresh_tokens WHERE token_hash = ?', tokenHash);
     return null;
   }
   return row.user_id;
 }
 
-export function deleteRefreshToken(db: Db, token: string): void {
+export async function deleteRefreshToken(db: Db, token: string): Promise<void> {
   const tokenHash = hashRefreshToken(token);
-  db.run('DELETE FROM _nk_auth_refresh_tokens WHERE token_hash = ?', tokenHash);
+  await db.run('DELETE FROM _nk_auth_refresh_tokens WHERE token_hash = ?', tokenHash);
 }
 
-export function deleteAllRefreshTokens(db: Db, userId: string): void {
-  db.run('DELETE FROM _nk_auth_refresh_tokens WHERE user_id = ?', userId);
+export async function deleteAllRefreshTokens(db: Db, userId: string): Promise<void> {
+  await db.run('DELETE FROM _nk_auth_refresh_tokens WHERE user_id = ?', userId);
 }

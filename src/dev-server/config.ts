@@ -19,6 +19,7 @@ export interface ProjectConfig {
   title: string;
   integrations: string[];
   i18n?: I18nConfig;
+  db?: { path?: string };
   prefetch: PrefetchStrategy;
   prerender?: boolean;
   /** App version for health check. Default: reads from package.json. */

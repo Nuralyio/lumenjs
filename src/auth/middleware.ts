@@ -64,7 +64,7 @@ export function createAuthMiddleware(config: ResolvedAuthConfig, db?: any): Conn
     if (db && session.createdAt && session.user?.sub) {
       try {
         const { getSessionsRevokedAt } = await import('./native-auth.js');
-        const revokedAt = getSessionsRevokedAt(db, session.user.sub);
+        const revokedAt = await getSessionsRevokedAt(db, session.user.sub);
         if (revokedAt && session.createdAt <= revokedAt) {
           req.nkAuth = null;
           return next();

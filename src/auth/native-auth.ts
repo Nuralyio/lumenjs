@@ -35,17 +35,17 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 
 /** DB interface — subset of LumenDb */
 interface Db {
-  all<T = any>(sql: string, ...params: any[]): T[];
-  get<T = any>(sql: string, ...params: any[]): T | undefined;
-  run(sql: string, ...params: any[]): { changes: number; lastInsertRowid: number | bigint };
-  exec(sql: string): void;
+  all<T = any>(sql: string, ...params: any[]): Promise<T[]>;
+  get<T = any>(sql: string, ...params: any[]): Promise<T | undefined>;
+  run(sql: string, ...params: any[]): Promise<{ changes: number; lastInsertRowid: number | bigint }>;
+  exec(sql: string): Promise<void>;
 }
 
 /**
  * Ensure the native auth users table exists.
  */
-export function ensureUsersTable(db: Db): void {
-  db.exec(`CREATE TABLE IF NOT EXISTS _nk_auth_users (
+export async function ensureUsersTable(db: Db): Promise<void> {
+  await db.exec(`CREATE TABLE IF NOT EXISTS _nk_auth_users (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
     name TEXT,
@@ -56,9 +56,9 @@ export function ensureUsersTable(db: Db): void {
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
   // Add email_verified column if table already exists without it
-  try { db.exec('ALTER TABLE _nk_auth_users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0'); } catch {};
+  try { await db.exec('ALTER TABLE _nk_auth_users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0'); } catch {};
   // Add sessions_revoked_at column for logout-all support
-  try { db.exec('ALTER TABLE _nk_auth_users ADD COLUMN sessions_revoked_at TEXT'); } catch {};
+  try { await db.exec('ALTER TABLE _nk_auth_users ADD COLUMN sessions_revoked_at TEXT'); } catch {};
 }
 
 /**
@@ -85,7 +85,7 @@ export async function registerUser(
     throw new Error(`Password must be at most ${MAX_PASSWORD_LENGTH} characters`);
   }
 
-  const existing = db.get<any>('SELECT id FROM _nk_auth_users WHERE email = ?', email);
+  const existing = await db.get<any>('SELECT id FROM _nk_auth_users WHERE email = ?', email);
   if (existing) {
     throw new Error('Email already registered');
   }
@@ -93,7 +93,7 @@ export async function registerUser(
   const id = crypto.randomUUID();
   const hash = await hashPassword(password);
 
-  db.run(
+  await db.run(
     'INSERT INTO _nk_auth_users (id, email, name, password_hash) VALUES (?, ?, ?, ?)',
     id, email, name || null, hash,
   );
@@ -115,7 +115,7 @@ export async function authenticateUser(
   email: string,
   password: string,
 ): Promise<AuthUser | null> {
-  const row = db.get<any>('SELECT * FROM _nk_auth_users WHERE email = ?', email);
+  const row = await db.get<any>('SELECT * FROM _nk_auth_users WHERE email = ?', email);
   if (!row) return null;
 
   const valid = await verifyPassword(password, row.password_hash);
@@ -136,8 +136,8 @@ export async function authenticateUser(
 /**
  * Find a user by email (for account linking with OIDC).
  */
-export function findUserByEmail(db: Db, email: string): AuthUser | null {
-  const row = db.get<any>('SELECT * FROM _nk_auth_users WHERE email = ?', email);
+export async function findUserByEmail(db: Db, email: string): Promise<AuthUser | null> {
+  const row = await db.get<any>('SELECT * FROM _nk_auth_users WHERE email = ?', email);
   if (!row) return null;
 
   let roles: string[] = [];
@@ -156,10 +156,10 @@ export function findUserByEmail(db: Db, email: string): AuthUser | null {
  * Create or link a native user from OIDC claims (account linking by email).
  * Only links to existing native accounts if the OIDC provider has verified the email.
  */
-export function linkOidcUser(db: Db, oidcUser: AuthUser): AuthUser {
+export async function linkOidcUser(db: Db, oidcUser: AuthUser): Promise<AuthUser> {
   if (!oidcUser.email) return oidcUser;
 
-  const existing = db.get<any>('SELECT * FROM _nk_auth_users WHERE email = ?', oidcUser.email);
+  const existing = await db.get<any>('SELECT * FROM _nk_auth_users WHERE email = ?', oidcUser.email);
   if (existing) {
     // Only link if the OIDC provider has verified the email — prevents account takeover
     if (!(oidcUser as any).email_verified) {
@@ -181,7 +181,7 @@ export function linkOidcUser(db: Db, oidcUser: AuthUser): AuthUser {
   // Auto-create native user record from OIDC
   const id = crypto.randomUUID();
   const roles = JSON.stringify(oidcUser.roles || []);
-  db.run(
+  await db.run(
     `INSERT INTO _nk_auth_users (id, email, name, password_hash, roles) VALUES (?, ?, ?, '', ?)`,
     id, oidcUser.email, oidcUser.name || null, roles,
   );
@@ -220,14 +220,14 @@ export function verifyVerificationToken(token: string, secret: string): string |
 }
 
 /** Mark a user's email as verified. */
-export function verifyUserEmail(db: Db, userId: string): boolean {
-  const result = db.run('UPDATE _nk_auth_users SET email_verified = 1, updated_at = datetime("now") WHERE id = ?', userId);
+export async function verifyUserEmail(db: Db, userId: string): Promise<boolean> {
+  const result = await db.run('UPDATE _nk_auth_users SET email_verified = 1, updated_at = datetime("now") WHERE id = ?', userId);
   return result.changes > 0;
 }
 
 /** Check if a user's email is verified. */
-export function isEmailVerified(db: Db, userId: string): boolean {
-  const row = db.get<any>('SELECT email_verified FROM _nk_auth_users WHERE id = ?', userId);
+export async function isEmailVerified(db: Db, userId: string): Promise<boolean> {
+  const row = await db.get<any>('SELECT email_verified FROM _nk_auth_users WHERE id = ?', userId);
   return row?.email_verified === 1;
 }
 
@@ -285,25 +285,25 @@ export async function updatePassword(db: Db, userId: string, newPassword: string
   if (newPassword.length < minLength) throw new Error(`Password must be at least ${minLength} characters`);
   if (newPassword.length > 128) throw new Error('Password must be at most 128 characters');
   const hash = await hashPassword(newPassword);
-  db.run('UPDATE _nk_auth_users SET password_hash = ?, updated_at = datetime("now") WHERE id = ?', hash, userId);
+  await db.run('UPDATE _nk_auth_users SET password_hash = ?, updated_at = datetime("now") WHERE id = ?', hash, userId);
 }
 
 /** Find a user by email. Returns { id, email, name } or null. */
-export function findUserIdByEmail(db: Db, email: string): string | null {
-  const row = db.get<any>('SELECT id FROM _nk_auth_users WHERE email = ?', email);
+export async function findUserIdByEmail(db: Db, email: string): Promise<string | null> {
+  const row = await db.get<any>('SELECT id FROM _nk_auth_users WHERE email = ?', email);
   return row?.id || null;
 }
 
 // ── Session Revocation (Logout All) ─────────────────────────────
 
 /** Set sessions_revoked_at to now, invalidating all sessions created before this moment. */
-export function revokeAllSessions(db: Db, userId: string): void {
-  db.run('UPDATE _nk_auth_users SET sessions_revoked_at = datetime("now") WHERE id = ?', userId);
+export async function revokeAllSessions(db: Db, userId: string): Promise<void> {
+  await db.run('UPDATE _nk_auth_users SET sessions_revoked_at = datetime("now") WHERE id = ?', userId);
 }
 
 /** Get the epoch-seconds timestamp of the last logout-all, or null if never revoked. */
-export function getSessionsRevokedAt(db: Db, userId: string): number | null {
-  const row = db.get<any>('SELECT sessions_revoked_at FROM _nk_auth_users WHERE id = ?', userId);
+export async function getSessionsRevokedAt(db: Db, userId: string): Promise<number | null> {
+  const row = await db.get<any>('SELECT sessions_revoked_at FROM _nk_auth_users WHERE id = ?', userId);
   if (!row?.sessions_revoked_at) return null;
   return Math.floor(new Date(row.sessions_revoked_at + 'Z').getTime() / 1000);
 }

@@ -27,20 +27,20 @@ export async function handleTokenRefresh(
   }
 
   const { validateRefreshToken, deleteRefreshToken, storeRefreshToken, generateRefreshToken, issueAccessToken, ensureRefreshTokenTable } = await import('../token.js');
-  ensureRefreshTokenTable(db);
+  await ensureRefreshTokenTable(db);
 
-  const userId = validateRefreshToken(db, refreshToken);
+  const userId = await validateRefreshToken(db, refreshToken);
   if (!userId) {
     sendJson(res, 401, { error: 'Invalid or expired refresh token' });
     return true;
   }
 
   // Rotate: delete old, issue new
-  deleteRefreshToken(db, refreshToken);
+  await deleteRefreshToken(db, refreshToken);
 
   // Look up user from DB
   const { findUserByEmail } = await import('../native-auth.js');
-  const row = db.get('SELECT * FROM _nk_auth_users WHERE id = ?', userId);
+  const row = await db.get('SELECT * FROM _nk_auth_users WHERE id = ?', userId);
   if (!row) {
     sendJson(res, 401, { error: 'User not found' });
     return true;
@@ -52,7 +52,7 @@ export async function handleTokenRefresh(
 
   const newAccessToken = issueAccessToken(user, config.session.secret, config.token.accessTokenTTL);
   const newRefreshToken = generateRefreshToken();
-  storeRefreshToken(db, newRefreshToken, userId, config.token.refreshTokenTTL);
+  await storeRefreshToken(db, newRefreshToken, userId, config.token.refreshTokenTTL);
 
   sendJson(res, 200, { accessToken: newAccessToken, refreshToken: newRefreshToken, expiresIn: config.token.accessTokenTTL });
   return true;
@@ -82,7 +82,7 @@ export async function handleTokenRevoke(
   }
 
   const { deleteRefreshToken } = await import('../token.js');
-  deleteRefreshToken(db, refreshToken);
+  await deleteRefreshToken(db, refreshToken);
 
   sendJson(res, 200, { ok: true });
   return true;

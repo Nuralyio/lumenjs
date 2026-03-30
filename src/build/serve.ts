@@ -114,11 +114,54 @@ export async function serveProject(options: ServeOptions): Promise<void> {
       if (hasNativeAuth(authConfig)) {
         try {
           const { setProjectDir } = await import('../db/context.js');
-          const { useDb } = await import('../db/index.js');
+          const { useDb, waitForMigrations } = await import('../db/index.js');
           const { ensureUsersTable } = await import('../auth/native-auth.js');
           setProjectDir(projectDir);
           authDb = useDb();
-          ensureUsersTable(authDb);
+          await waitForMigrations();
+          await ensureUsersTable(authDb);
+          // Run seed if not yet applied (SQLite and PG)
+          {
+            const seedModule = path.join(serverDir, 'seed.js');
+            if (fs.existsSync(seedModule)) {
+              try {
+                if (authDb.isPg) {
+                  await authDb.exec(`CREATE TABLE IF NOT EXISTS _lumen_seed_applied (
+                    name TEXT PRIMARY KEY,
+                    applied_at TIMESTAMP NOT NULL DEFAULT NOW()
+                  )`);
+                } else {
+                  await authDb.exec(`CREATE TABLE IF NOT EXISTS _lumen_seed_applied (
+                    name TEXT PRIMARY KEY,
+                    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+                  )`);
+                }
+                const seedRow = authDb.isPg
+                  ? await authDb.get('SELECT 1 FROM _lumen_seed_applied WHERE name = $1', 'data/seed.ts')
+                  : await authDb.get('SELECT 1 FROM _lumen_seed_applied WHERE name = ?', 'data/seed.ts');
+                if (!seedRow) {
+                  if (authDb.isPg) {
+                    await authDb.run('INSERT INTO _lumen_seed_applied (name) VALUES ($1) ON CONFLICT DO NOTHING', 'data/seed.ts');
+                  } else {
+                    await authDb.run('INSERT OR IGNORE INTO _lumen_seed_applied (name) VALUES (?)', 'data/seed.ts');
+                  }
+                  logger.info('Running seed file (prod)...');
+                  const { default: seedFn } = await import(seedModule);
+                  if (typeof seedFn === 'function') await seedFn();
+                  logger.info('Seed applied (prod).');
+                }
+              } catch (seedErr) {
+                try {
+                  if (authDb.isPg) {
+                    await authDb.run('DELETE FROM _lumen_seed_applied WHERE name = $1', 'data/seed.ts');
+                  } else {
+                    await authDb.run('DELETE FROM _lumen_seed_applied WHERE name = ?', 'data/seed.ts');
+                  }
+                } catch {}
+                logger.warn('Seed failed', { error: (seedErr as any)?.message });
+              }
+            }
+          }
         } catch (dbErr) {
           logger.warn('Native auth DB init failed', { error: (dbErr as any)?.message });
         }

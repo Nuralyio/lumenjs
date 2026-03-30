@@ -100,7 +100,7 @@ export async function handleNativeLogin(
   }
 
   // Check email verification if required
-  if (nativeProvider.requireEmailVerification && !isEmailVerified(db, user.sub)) {
+  if (nativeProvider.requireEmailVerification && !await isEmailVerified(db, user.sub)) {
     sendJson(res, 403, { error: 'Please verify your email before signing in', code: 'EMAIL_NOT_VERIFIED' });
     return true;
   }
@@ -122,10 +122,10 @@ export async function handleNativeLogin(
   // Token mode: return bearer tokens instead of cookie
   if (isTokenMode(url, req) && config.token.enabled) {
     const { issueAccessToken, generateRefreshToken, storeRefreshToken, ensureRefreshTokenTable } = await import('../token.js');
-    ensureRefreshTokenTable(db);
+    await ensureRefreshTokenTable(db);
     const accessToken = issueAccessToken(user, config.session.secret, config.token.accessTokenTTL);
     const refreshToken = generateRefreshToken();
-    storeRefreshToken(db, refreshToken, user.sub, config.token.refreshTokenTTL);
+    await storeRefreshToken(db, refreshToken, user.sub, config.token.refreshTokenTTL);
     sendJson(res, 200, { accessToken, refreshToken, expiresIn: config.token.accessTokenTTL, tokenType: 'Bearer', user });
     return true;
   }

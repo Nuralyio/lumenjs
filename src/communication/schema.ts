@@ -4,11 +4,13 @@
  */
 
 interface Db {
-  exec(sql: string): void;
+  exec(sql: string): Promise<void>;
+  isPg?: boolean;
 }
 
-export function ensureCommunicationTables(db: Db): void {
-  db.exec(`
+export async function ensureCommunicationTables(db: Db): Promise<void> {
+  if (db.isPg) return;
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL CHECK(type IN ('direct', 'group')),

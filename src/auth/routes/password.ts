@@ -28,11 +28,11 @@ export async function handleForgotPassword(
   }
 
   const { findUserIdByEmail, generateResetToken } = await import('../native-auth.js');
-  const userId = findUserIdByEmail(db, email);
+  const userId = await findUserIdByEmail(db, email);
 
   // Always return success (don't reveal if email exists)
   if (userId && config.onEvent) {
-    const userRow = db.get('SELECT password_hash FROM _nk_auth_users WHERE id = ?', userId);
+    const userRow = await db.get('SELECT password_hash FROM _nk_auth_users WHERE id = ?', userId);
     const token = generateResetToken(userId, config.session.secret, 3600, userRow?.password_hash);
     const origin = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;
     const resetUrl = `${origin}/__nk_auth/reset-password?token=${encodeURIComponent(token)}`;
@@ -74,7 +74,7 @@ export async function handleResetPassword(
   const candidateUserId = decodeResetTokenUserId(token);
   let currentHash: string | undefined;
   if (candidateUserId) {
-    const userRow = db.get('SELECT password_hash FROM _nk_auth_users WHERE id = ?', candidateUserId);
+    const userRow = await db.get('SELECT password_hash FROM _nk_auth_users WHERE id = ?', candidateUserId);
     currentHash = userRow?.password_hash;
   }
   const userId = verifyResetToken(token, config.session.secret, currentHash);
@@ -94,7 +94,7 @@ export async function handleResetPassword(
   }
 
   // Notify via event hook
-  const row = db.get('SELECT email FROM _nk_auth_users WHERE id = ?', userId);
+  const row = await db.get('SELECT email FROM _nk_auth_users WHERE id = ?', userId);
   if (row && config.onEvent) {
     try { await config.onEvent({ type: 'password-changed', email: row.email, userId }); } catch {}
   }
@@ -136,7 +136,7 @@ export async function handleChangePassword(
 
   const { verifyPassword, updatePassword } = await import('../native-auth.js');
 
-  const row = db.get('SELECT password_hash FROM _nk_auth_users WHERE id = ?', user.sub);
+  const row = await db.get('SELECT password_hash FROM _nk_auth_users WHERE id = ?', user.sub);
   if (!row) {
     sendJson(res, 404, { error: 'User not found' });
     return true;
@@ -161,10 +161,10 @@ export async function handleChangePassword(
   // Invalidate all other sessions and refresh tokens after password change
   try {
     const { revokeAllSessions } = await import('../native-auth.js');
-    revokeAllSessions(db, user.sub);
+    await revokeAllSessions(db, user.sub);
     const { deleteAllRefreshTokens, ensureRefreshTokenTable } = await import('../token.js');
-    ensureRefreshTokenTable(db);
-    deleteAllRefreshTokens(db, user.sub);
+    await ensureRefreshTokenTable(db);
+    await deleteAllRefreshTokens(db, user.sub);
   } catch {}
 
   if (config.onEvent) {

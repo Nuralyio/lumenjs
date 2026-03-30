@@ -47,6 +47,12 @@ export async function buildServer(opts: BuildServerOptions): Promise<void> {
     serverEntries['auth-config'] = authConfigPath;
   }
 
+  // If data/seed.ts exists, include it in the server bundle for prod seed support
+  const seedPath = path.join(projectDir, 'data', 'seed.ts');
+  if (fs.existsSync(seedPath)) {
+    serverEntries['seed'] = seedPath;
+  }
+
   // Create SSR runtime entry — bundles @lit-labs/ssr alongside Lit so all
   // server modules share one Lit instance (avoids _$EM mismatches).
   const ssrEntryPath = path.join(projectDir, '__nk_ssr_entry.js');
@@ -95,6 +101,8 @@ export async function buildServer(opts: BuildServerOptions): Promise<void> {
               'os', 'fs', 'path', 'url', 'util', 'crypto', 'http', 'https', 'net',
               'stream', 'zlib', 'events', 'buffer', 'querystring', 'child_process',
               'worker_threads', 'cluster', 'dns', 'tls', 'assert', 'constants',
+              // Native addons — must not be bundled, loaded from node_modules at runtime
+              'better-sqlite3',
             ],
           },
         },

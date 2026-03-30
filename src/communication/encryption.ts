@@ -20,7 +20,7 @@ export interface EncryptionContext {
  * Handle a client uploading their public key bundle.
  * Server stores the bundle — it never sees private keys.
  */
-export function handleUploadKeys(ctx: EncryptionContext, data: KeyBundle): void {
+export async function handleUploadKeys(ctx: EncryptionContext, data: KeyBundle): Promise<void> {
   // Ensure the bundle belongs to the sender
   const bundle: KeyBundle = {
     ...data,
@@ -33,7 +33,7 @@ export function handleUploadKeys(ctx: EncryptionContext, data: KeyBundle): void 
 
   // Persist to DB if available
   if (ctx.db) {
-    ctx.db.run(
+    await ctx.db.run(
       `INSERT OR REPLACE INTO encryption_keys (user_id, identity_key, signed_pre_key_id, signed_pre_key, signed_pre_key_signature, uploaded_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
       ctx.userId,
@@ -45,9 +45,9 @@ export function handleUploadKeys(ctx: EncryptionContext, data: KeyBundle): void 
     );
 
     // Replace one-time pre-keys
-    ctx.db.run(`DELETE FROM encryption_prekeys WHERE user_id = ?`, ctx.userId);
+    await ctx.db.run(`DELETE FROM encryption_prekeys WHERE user_id = ?`, ctx.userId);
     for (const otk of bundle.oneTimePreKeys) {
-      ctx.db.run(
+      await ctx.db.run(
         `INSERT INTO encryption_prekeys (user_id, key_id, public_key) VALUES (?, ?, ?)`,
         ctx.userId,
         otk.keyId,
@@ -65,17 +65,17 @@ export function handleUploadKeys(ctx: EncryptionContext, data: KeyBundle): void 
  * Handle a client requesting another user's key bundle for session setup.
  * Pops one one-time pre-key (consumed once).
  */
-export function handleRequestKeys(ctx: EncryptionContext, data: { recipientId: string }): void {
+export async function handleRequestKeys(ctx: EncryptionContext, data: { recipientId: string }): Promise<void> {
   let bundle = ctx.store.getKeyBundle(data.recipientId);
 
   // Try loading from DB if not in memory
   if (!bundle && ctx.db) {
-    const row = ctx.db.get<any>(
+    const row = await ctx.db.get<any>(
       `SELECT * FROM encryption_keys WHERE user_id = ?`,
       data.recipientId,
     );
     if (row) {
-      const prekeys = ctx.db.all<any>(
+      const prekeys = await ctx.db.all<any>(
         `SELECT key_id, public_key FROM encryption_prekeys WHERE user_id = ? ORDER BY key_id`,
         data.recipientId,
       );
@@ -101,7 +101,7 @@ export function handleRequestKeys(ctx: EncryptionContext, data: { recipientId: s
 
   // Remove from DB too
   if (oneTimePreKey && ctx.db) {
-    ctx.db.run(
+    await ctx.db.run(
       `DELETE FROM encryption_prekeys WHERE user_id = ? AND key_id = ?`,
       data.recipientId,
       oneTimePreKey.keyId,

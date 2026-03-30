@@ -255,7 +255,7 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
 export function createCommunicationApiHandlers(db: LumenDb) {
   return {
     /** List conversations for a user */
-    getConversations(userId: string, opts?: { limit?: number; offset?: number }) {
+    async getConversations(userId: string, opts?: { limit?: number; offset?: number }) {
       const limit = opts?.limit || 50;
       const offset = opts?.offset || 0;
       return db.all(
@@ -272,7 +272,7 @@ export function createCommunicationApiHandlers(db: LumenDb) {
     },
 
     /** Get paginated message history for a conversation */
-    getMessages(conversationId: string, opts?: { limit?: number; before?: string }) {
+    async getMessages(conversationId: string, opts?: { limit?: number; before?: string }) {
       const limit = opts?.limit || 50;
       if (opts?.before) {
         return db.all(
@@ -289,26 +289,26 @@ export function createCommunicationApiHandlers(db: LumenDb) {
     },
 
     /** Create a new conversation */
-    createConversation(data: { type: 'direct' | 'group'; name?: string; participantIds: string[] }) {
+    async createConversation(data: { type: 'direct' | 'group'; name?: string; participantIds: string[] }) {
       const now = new Date().toISOString();
-      const result = db.run(
+      const convId = crypto.randomUUID();
+      await db.run(
         `INSERT INTO conversations (id, type, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-        crypto.randomUUID(), data.type, data.name || null, now, now,
+        convId, data.type, data.name || null, now, now,
       );
-      const convId = String(result.lastInsertRowid);
 
       for (const uid of data.participantIds) {
-        db.run(
+        await db.run(
           `INSERT INTO conversation_participants (conversation_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)`,
           convId, uid, now,
         );
       }
 
-      return db.get(`SELECT * FROM conversations WHERE rowid = ?`, result.lastInsertRowid);
+      return db.get(`SELECT * FROM conversations WHERE id = ?`, convId);
     },
 
     /** Search messages by content */
-    searchMessages(query: string, opts?: { conversationId?: string; limit?: number }) {
+    async searchMessages(query: string, opts?: { conversationId?: string; limit?: number }) {
       const limit = opts?.limit || 20;
       if (opts?.conversationId) {
         return db.all(
@@ -323,12 +323,12 @@ export function createCommunicationApiHandlers(db: LumenDb) {
     },
 
     /** Get a single message by ID */
-    getMessage(messageId: string) {
+    async getMessage(messageId: string) {
       return db.get(`SELECT * FROM messages WHERE id = ?`, messageId);
     },
 
     /** Delete a message (soft delete by setting content to empty) */
-    deleteMessage(messageId: string, userId: string) {
+    async deleteMessage(messageId: string, userId: string) {
       return db.run(
         `UPDATE messages SET content = '', type = 'system', updated_at = ? WHERE id = ? AND sender_id = ?`,
         new Date().toISOString(), messageId, userId,

@@ -3,13 +3,13 @@ import type { HandlerContext } from './context.js';
 
 // ── Messages ────────────────────────────────────────────────────
 
-export function handleMessageSend(
+export async function handleMessageSend(
   ctx: HandlerContext,
   data: { conversationId: string; content: string; type: Message['type']; replyTo?: string; attachment?: MessageAttachment; encrypted?: boolean; envelope?: EncryptedEnvelope },
-): void {
+): Promise<void> {
   // ── Membership check ──────────────────────────────────────────
   if (ctx.db) {
-    const row = ctx.db.get(
+    const row = await ctx.db.get(
       'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
       data.conversationId, ctx.userId,
     );
@@ -65,9 +65,9 @@ export function handleMessageSend(
     : data.content;
 
   if (ctx.db) {
-    const result = ctx.db.run(
+    const inserted = await ctx.db.get<{ id: number }>(
       `INSERT INTO messages (conversation_id, sender_id, content, type, reply_to, attachment, status, encrypted, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'sent', ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, 'sent', ?, ?) RETURNING id`,
       data.conversationId,
       ctx.userId,
       contentToStore,
@@ -79,7 +79,7 @@ export function handleMessageSend(
     );
 
     message = {
-      id: String(result.lastInsertRowid),
+      id: String(inserted?.id ?? 0),
       conversationId: data.conversationId,
       senderId: ctx.userId,
       content: contentToStore,
@@ -94,7 +94,7 @@ export function handleMessageSend(
     };
 
     // Update conversation's last activity
-    ctx.db.run(
+    await ctx.db.run(
       `UPDATE conversations SET updated_at = ? WHERE id = ?`,
       now,
       data.conversationId,
@@ -134,7 +134,7 @@ export function handleMessageSend(
 
   if (hasOnlineRecipient) {
     if (ctx.db) {
-      ctx.db.run(
+      await ctx.db.run(
         `UPDATE messages SET status = 'delivered' WHERE id = ? AND status = 'sent'`,
         message.id,
       );
@@ -144,16 +144,16 @@ export function handleMessageSend(
   }
 }
 
-export function handleMessageRead(
+export async function handleMessageRead(
   ctx: HandlerContext,
   data: { conversationId: string; messageId: string },
-): void {
+): Promise<void> {
   const now = new Date().toISOString();
   const receipt: ReadReceipt = { userId: ctx.userId, readAt: now };
 
   if (ctx.db) {
     // Insert read receipt (ignore duplicates)
-    ctx.db.run(
+    await ctx.db.run(
       `INSERT OR IGNORE INTO read_receipts (message_id, user_id, read_at) VALUES (?, ?, ?)`,
       data.messageId,
       ctx.userId,
@@ -161,7 +161,7 @@ export function handleMessageRead(
     );
 
     // Update message status to 'read' if all participants have read it
-    ctx.db.run(
+    await ctx.db.run(
       `UPDATE messages SET status = 'read' WHERE id = ? AND status != 'read'`,
       data.messageId,
     );
@@ -181,24 +181,24 @@ export function handleMessageRead(
 
 // ── Message Reactions ────────────────────────────────────────────
 
-export function handleMessageReact(
+export async function handleMessageReact(
   ctx: HandlerContext,
   data: { messageId: string; conversationId: string; emoji: string },
-): void {
+): Promise<void> {
   if (ctx.db) {
     // Toggle: if already reacted with this emoji, remove it
-    const existing = ctx.db.get(
+    const existing = await ctx.db.get(
       'SELECT 1 FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?',
       data.messageId, ctx.userId, data.emoji,
     );
     if (existing) {
-      ctx.db.run('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?', data.messageId, ctx.userId, data.emoji);
+      await ctx.db.run('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?', data.messageId, ctx.userId, data.emoji);
     } else {
-      ctx.db.run('INSERT INTO message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)', data.messageId, ctx.userId, data.emoji);
+      await ctx.db.run('INSERT INTO message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)', data.messageId, ctx.userId, data.emoji);
     }
 
     // Fetch all reactions for this message
-    const reactions = ctx.db.all(
+    const reactions = await ctx.db.all(
       'SELECT emoji, COUNT(*) as count, GROUP_CONCAT(user_id) as users FROM message_reactions WHERE message_id = ? GROUP BY emoji',
       data.messageId,
     );
@@ -217,18 +217,18 @@ export function handleMessageReact(
 
 // ── Message Edit ────────────────────────────────────────────────
 
-export function handleMessageEdit(
+export async function handleMessageEdit(
   ctx: HandlerContext,
   data: { messageId: string; conversationId: string; content: string },
-): void {
+): Promise<void> {
   const now = new Date().toISOString();
 
   if (ctx.db) {
     // Only allow sender to edit — return early if not the owner
-    const msg = ctx.db.get('SELECT sender_id FROM messages WHERE id = ?', data.messageId);
+    const msg = await ctx.db.get('SELECT sender_id FROM messages WHERE id = ?', data.messageId);
     if (!msg || (msg as any).sender_id !== ctx.userId) return;
 
-    ctx.db.run('UPDATE messages SET content = ?, updated_at = ? WHERE id = ? AND sender_id = ?',
+    await ctx.db.run('UPDATE messages SET content = ?, updated_at = ? WHERE id = ? AND sender_id = ?',
       data.content, now, data.messageId, ctx.userId);
   }
 
@@ -240,16 +240,16 @@ export function handleMessageEdit(
 
 // ── Message Delete ──────────────────────────────────────────────
 
-export function handleMessageDelete(
+export async function handleMessageDelete(
   ctx: HandlerContext,
   data: { messageId: string; conversationId: string },
-): void {
+): Promise<void> {
   if (ctx.db) {
     // Only allow sender to delete — return early if not the owner
-    const msg = ctx.db.get('SELECT sender_id FROM messages WHERE id = ?', data.messageId);
+    const msg = await ctx.db.get('SELECT sender_id FROM messages WHERE id = ?', data.messageId);
     if (!msg || (msg as any).sender_id !== ctx.userId) return;
 
-    ctx.db.run("UPDATE messages SET content = '', type = 'system', updated_at = ? WHERE id = ? AND sender_id = ?",
+    await ctx.db.run("UPDATE messages SET content = '', type = 'system', updated_at = ? WHERE id = ? AND sender_id = ?",
       new Date().toISOString(), data.messageId, ctx.userId);
   }
 
@@ -261,13 +261,13 @@ export function handleMessageDelete(
 
 // ── Message Forward ─────────────────────────────────────────────
 
-export function handleMessageForward(
+export async function handleMessageForward(
   ctx: HandlerContext,
   data: MessageForward,
-): void {
+): Promise<void> {
   // Verify user is a participant of both source and target conversations
   if (ctx.db) {
-    const inSource = ctx.db.get(
+    const inSource = await ctx.db.get(
       'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
       data.fromConversationId, ctx.userId,
     );
@@ -275,7 +275,7 @@ export function handleMessageForward(
       ctx.push({ event: 'message:error', data: { code: 'FORBIDDEN', message: 'Not a participant of the source conversation' } });
       return;
     }
-    const inTarget = ctx.db.get(
+    const inTarget = await ctx.db.get(
       'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?',
       data.toConversationId, ctx.userId,
     );
@@ -289,13 +289,13 @@ export function handleMessageForward(
 
   if (ctx.db) {
     // Fetch the original message
-    const original = ctx.db.get(`SELECT * FROM messages WHERE id = ?`, data.messageId) as any;
+    const original = await ctx.db.get(`SELECT * FROM messages WHERE id = ?`, data.messageId) as any;
     if (!original) return;
 
     // Insert a forwarded copy into the target conversation
-    const result = ctx.db.run(
+    const fwdInserted = await ctx.db.get<{ id: number }>(
       `INSERT INTO messages (conversation_id, sender_id, content, type, status, encrypted, created_at, forwarded_from_conversation_id, forwarded_from_message_id)
-       VALUES (?, ?, ?, ?, 'sent', ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, 'sent', ?, ?, ?, ?) RETURNING id`,
       data.toConversationId,
       ctx.userId,
       original.content,
@@ -307,7 +307,7 @@ export function handleMessageForward(
     );
 
     const forwarded: Message & { forwardedFrom?: { conversationId: string; messageId: string } } = {
-      id: String(result.lastInsertRowid),
+      id: String(fwdInserted?.id ?? 0),
       conversationId: data.toConversationId,
       senderId: ctx.userId,
       content: original.content,
@@ -322,7 +322,7 @@ export function handleMessageForward(
       },
     };
 
-    ctx.db.run(
+    await ctx.db.run(
       `UPDATE conversations SET updated_at = ? WHERE id = ?`,
       now, data.toConversationId,
     );

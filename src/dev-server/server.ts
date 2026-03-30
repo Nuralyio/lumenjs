@@ -157,10 +157,6 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       },
     },
     resolve: shared.resolve,
-    ssr: {
-      // Prevent framework alias packages from being externalized (nodeImport bypasses aliases)
-      noExternal: [/@nuraly\/lumenjs/, /@lumenjs\//],
-    },
     plugins: [
       ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
       ...shared.plugins,

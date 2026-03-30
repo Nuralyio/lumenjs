@@ -20,7 +20,7 @@ export interface SecurityHeadersConfig {
 const DEFAULTS: Required<SecurityHeadersConfig> = {
   // Note: 'unsafe-inline' for script-src is required for Lit's template system.
   // Override via securityHeaders config in lumenjs.config.ts for stricter policies.
-  contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'",
+  contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' ws: wss:; frame-ancestors 'none'",
   frameOptions: 'DENY',
   noSniff: true,
   hsts: 'max-age=31536000; includeSubDomains',

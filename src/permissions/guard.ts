@@ -14,14 +14,14 @@ export type GuardResult =
  *
  * Checks authentication first, then resource-level permission.
  */
-export function enforcePermissionGuard(
+export async function enforcePermissionGuard(
   authExport: { permission: string; resourceParam: string },
   user: AuthUser | null | undefined,
   loginUrl: string,
   pathname: string,
   urlParams: Record<string, string>,
   permissionService: PermissionService,
-): GuardResult {
+): Promise<GuardResult> {
   // Must be authenticated
   if (!user) {
     return { redirect: `${loginUrl}?returnTo=${encodeURIComponent(pathname)}` };
@@ -34,7 +34,7 @@ export function enforcePermissionGuard(
 
   const [resourceType] = authExport.permission.split(':');
 
-  const hasPermission = permissionService.canAccess(
+  const hasPermission = await permissionService.canAccess(
     user.sub,
     authExport.permission,
     resourceType,

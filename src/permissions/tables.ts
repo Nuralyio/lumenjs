@@ -2,8 +2,9 @@
  * Auto-create permission tables in the LumenJS SQLite database.
  * Follows the same pattern as ensureUsersTable() in auth/native-auth.ts.
  */
-export function ensurePermissionTables(db: any): void {
-  db.exec(`
+export async function ensurePermissionTables(db: any): Promise<void> {
+  if (db.isPg) return;
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS _nk_resource_permissions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       resource_type TEXT NOT NULL,

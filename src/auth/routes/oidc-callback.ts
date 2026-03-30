@@ -78,8 +78,8 @@ export async function handleOidcCallback(
   if (db && hasNativeAuth(config) && user.email) {
     try {
       const { linkOidcUser, ensureUsersTable } = await import('../native-auth.js');
-      ensureUsersTable(db);
-      user = linkOidcUser(db, user);
+      await ensureUsersTable(db);
+      user = await linkOidcUser(db, user);
     } catch {}
   }
 

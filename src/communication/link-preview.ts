@@ -51,8 +51,8 @@ interface LinkPreview {
 }
 
 interface Db {
-  get<T = any>(sql: string, ...params: any[]): T | undefined;
-  run(sql: string, ...params: any[]): any;
+  get<T = any>(sql: string, ...params: any[]): Promise<T | undefined>;
+  run(sql: string, ...params: any[]): Promise<any>;
 }
 
 /**
@@ -64,7 +64,7 @@ export async function fetchLinkPreview(url: string, db?: Db): Promise<LinkPrevie
 
   // Check cache
   if (db) {
-    const cached = db.get<any>('SELECT * FROM link_previews WHERE url_hash = ?', urlHash);
+    const cached = await db.get<any>('SELECT * FROM link_previews WHERE url_hash = ?', urlHash);
     if (cached) {
       return { url: cached.url, title: cached.title, description: cached.description, image: cached.image, domain: cached.domain };
     }
@@ -100,7 +100,7 @@ export async function fetchLinkPreview(url: string, db?: Db): Promise<LinkPrevie
 
     // Cache
     if (db) {
-      db.run(
+      await db.run(
         'INSERT OR REPLACE INTO link_previews (url_hash, url, title, description, image, domain) VALUES (?, ?, ?, ?, ?, ?)',
         urlHash, url, title, description, image, domain,
       );

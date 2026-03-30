@@ -31,7 +31,7 @@ export class PermissionService {
 
   // ── Audit logging ──────────────────────────────────────────────
 
-  private audit(
+  private async audit(
     action: string,
     actorId: string,
     opts: {
@@ -43,8 +43,8 @@ export class PermissionService {
       roleId?: string;
       details?: string;
     } = {},
-  ): void {
-    this.db.run(
+  ): Promise<void> {
+    await this.db.run(
       `INSERT INTO _nk_permission_audit_log
        (action, resource_type, resource_id, grantee_type, grantee_id, permission, role_id, actor_id, details)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -63,12 +63,12 @@ export class PermissionService {
   /**
    * Query audit log entries.
    */
-  getAuditLog(opts?: {
+  async getAuditLog(opts?: {
     resourceType?: string;
     resourceId?: string;
     actorId?: string;
     limit?: number;
-  }): AuditLogEntry[] {
+  }): Promise<AuditLogEntry[]> {
     let sql = 'SELECT * FROM _nk_permission_audit_log WHERE 1=1';
     const params: any[] = [];
 
@@ -102,13 +102,13 @@ export class PermissionService {
    * 4. Role-based permissions (global roles, then resource-scoped roles)
    * 5. Wildcard '*' permission matches any action
    */
-  canAccess(
+  async canAccess(
     userId: string | null,
     permissionType: string,
     resourceType: string,
     resourceId: string,
     anonymous?: boolean,
-  ): boolean {
+  ): Promise<boolean> {
     if (!this.config.enabled) return true;
 
     const [, action] = permissionType.includes(':')
@@ -117,7 +117,7 @@ export class PermissionService {
 
     // 1. Direct user grant
     if (userId) {
-      const userGrant = this.db.get(
+      const userGrant = await this.db.get(
         `SELECT 1 FROM _nk_resource_permissions
          WHERE resource_type = ? AND resource_id = ?
            AND grantee_type = 'user' AND grantee_id = ?
@@ -129,7 +129,7 @@ export class PermissionService {
     }
 
     // 2. Public grant
-    const publicGrant = this.db.get(
+    const publicGrant = await this.db.get(
       `SELECT 1 FROM _nk_resource_permissions
        WHERE resource_type = ? AND resource_id = ?
          AND grantee_type = 'public'
@@ -141,7 +141,7 @@ export class PermissionService {
 
     // 3. Anonymous grant
     if (anonymous) {
-      const anonGrant = this.db.get(
+      const anonGrant = await this.db.get(
         `SELECT 1 FROM _nk_resource_permissions
          WHERE resource_type = ? AND resource_id = ?
            AND grantee_type = 'anonymous'
@@ -154,7 +154,7 @@ export class PermissionService {
 
     // 4. Role-based: check user's roles → role permissions
     if (userId) {
-      const roleMatch = this.db.get(
+      const roleMatch = await this.db.get(
         `SELECT 1 FROM _nk_user_roles ur
          JOIN _nk_roles r ON r.id = ur.role_id
          WHERE ur.user_id = ?
@@ -181,16 +181,16 @@ export class PermissionService {
   /**
    * Get all resource IDs of a given type that a user can access.
    */
-  getAccessibleResourceIds(
+  async getAccessibleResourceIds(
     userId: string,
     resourceType: string,
     permission: string,
-  ): string[] {
+  ): Promise<string[]> {
     const [, action] = permission.includes(':')
       ? permission.split(':')
       : [resourceType, permission];
 
-    const rows = this.db.all(
+    const rows = await this.db.all(
       `SELECT DISTINCT resource_id FROM _nk_resource_permissions
        WHERE resource_type = ?
          AND (
@@ -208,10 +208,10 @@ export class PermissionService {
   /**
    * Get all permissions for a resource.
    */
-  getPermissionsForResource(
+  async getPermissionsForResource(
     resourceType: string,
     resourceId: string,
-  ): ResourcePermission[] {
+  ): Promise<ResourcePermission[]> {
     return this.db.all(
       `SELECT * FROM _nk_resource_permissions
        WHERE resource_type = ? AND resource_id = ?
@@ -226,20 +226,20 @@ export class PermissionService {
   /**
    * Initialize owner permissions when a resource is created.
    */
-  initOwnerPermissions(
+  async initOwnerPermissions(
     resourceType: string,
     resourceId: string,
     userId: string,
-  ): void {
+  ): Promise<void> {
     for (const perm of this.config.defaultOwnerGrants) {
-      this.db.run(
+      await this.db.run(
         `INSERT OR IGNORE INTO _nk_resource_permissions
          (resource_type, resource_id, grantee_type, grantee_id, permission, granted_by)
          VALUES (?, ?, 'user', ?, ?, ?)`,
         resourceType, resourceId, userId, perm, userId,
       );
     }
-    this.audit('init_owner', userId, {
+    await this.audit('init_owner', userId, {
       resourceType, resourceId,
       details: `Granted: ${this.config.defaultOwnerGrants.join(', ')}`,
     });
@@ -248,21 +248,21 @@ export class PermissionService {
   /**
    * Grant a permission on a resource.
    */
-  grant(
+  async grant(
     resourceType: string,
     resourceId: string,
     granteeType: string,
     granteeId: string | null,
     permission: string,
     grantedBy: string,
-  ): void {
-    this.db.run(
+  ): Promise<void> {
+    await this.db.run(
       `INSERT OR IGNORE INTO _nk_resource_permissions
        (resource_type, resource_id, grantee_type, grantee_id, permission, granted_by)
        VALUES (?, ?, ?, ?, ?, ?)`,
       resourceType, resourceId, granteeType, granteeId, permission, grantedBy,
     );
-    this.audit('grant', grantedBy, {
+    await this.audit('grant', grantedBy, {
       resourceType, resourceId, granteeType, granteeId, permission,
     });
   }
@@ -270,22 +270,22 @@ export class PermissionService {
   /**
    * Revoke a permission on a resource.
    */
-  revoke(
+  async revoke(
     resourceType: string,
     resourceId: string,
     granteeType: string,
     granteeId: string | null,
     permission: string,
     revokedBy: string,
-  ): void {
-    this.db.run(
+  ): Promise<void> {
+    await this.db.run(
       `DELETE FROM _nk_resource_permissions
        WHERE resource_type = ? AND resource_id = ?
          AND grantee_type = ? AND COALESCE(grantee_id, '') = COALESCE(?, '')
          AND permission = ?`,
       resourceType, resourceId, granteeType, granteeId, permission,
     );
-    this.audit('revoke', revokedBy, {
+    await this.audit('revoke', revokedBy, {
       resourceType, resourceId, granteeType, granteeId, permission,
     });
   }
@@ -293,38 +293,38 @@ export class PermissionService {
   /**
    * Make a resource publicly accessible (read).
    */
-  makePublic(resourceType: string, resourceId: string, grantedBy: string): void {
-    this.grant(resourceType, resourceId, 'public', null, 'read', grantedBy);
+  async makePublic(resourceType: string, resourceId: string, grantedBy: string): Promise<void> {
+    await this.grant(resourceType, resourceId, 'public', null, 'read', grantedBy);
   }
 
   /**
    * Remove public access from a resource.
    */
-  removePublic(resourceType: string, resourceId: string, removedBy: string): void {
-    this.db.run(
+  async removePublic(resourceType: string, resourceId: string, removedBy: string): Promise<void> {
+    await this.db.run(
       `DELETE FROM _nk_resource_permissions
        WHERE resource_type = ? AND resource_id = ? AND grantee_type = 'public'`,
       resourceType, resourceId,
     );
-    this.audit('remove_public', removedBy, { resourceType, resourceId });
+    await this.audit('remove_public', removedBy, { resourceType, resourceId });
   }
 
   /**
    * Assign a role to a user (globally or scoped to a resource).
    */
-  assignRole(
+  async assignRole(
     userId: string,
     roleId: string,
     assignedBy: string,
     resourceType?: string,
     resourceId?: string,
-  ): void {
-    this.db.run(
+  ): Promise<void> {
+    await this.db.run(
       `INSERT OR IGNORE INTO _nk_user_roles (user_id, role_id, resource_type, resource_id)
        VALUES (?, ?, ?, ?)`,
       userId, roleId, resourceType ?? null, resourceId ?? null,
     );
-    this.audit('assign_role', assignedBy, {
+    await this.audit('assign_role', assignedBy, {
       granteeType: 'user', granteeId: userId, roleId,
       resourceType, resourceId,
     });
@@ -333,21 +333,21 @@ export class PermissionService {
   /**
    * Remove a role from a user.
    */
-  removeRole(
+  async removeRole(
     userId: string,
     roleId: string,
     removedBy: string,
     resourceType?: string,
     resourceId?: string,
-  ): void {
-    this.db.run(
+  ): Promise<void> {
+    await this.db.run(
       `DELETE FROM _nk_user_roles
        WHERE user_id = ? AND role_id = ?
          AND COALESCE(resource_type, '') = COALESCE(?, '')
          AND COALESCE(resource_id, '') = COALESCE(?, '')`,
       userId, roleId, resourceType ?? null, resourceId ?? null,
     );
-    this.audit('remove_role', removedBy, {
+    await this.audit('remove_role', removedBy, {
       granteeType: 'user', granteeId: userId, roleId,
       resourceType, resourceId,
     });

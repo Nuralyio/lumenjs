@@ -17,12 +17,12 @@ export function communicationPlugin(projectDir: string): Plugin {
   let db: any = null;
   let api: ReturnType<typeof createCommunicationApiHandlers> | null = null;
 
-  function getApi() {
+  async function getApi() {
     if (api) return api;
     try {
       setProjectDir(projectDir);
       db = useDb();
-      ensureCommunicationTables(db);
+      await ensureCommunicationTables(db);
       api = createCommunicationApiHandlers(db);
       console.log('[LumenJS] Communication module initialized');
     } catch (err) {
@@ -64,7 +64,7 @@ export function communicationPlugin(projectDir: string): Plugin {
         const url = req.url || '';
         if (!url.startsWith('/__nk_comm/')) return next();
 
-        const commApi = getApi();
+        const commApi = await getApi();
         if (!commApi) {
           sendJson(res, 500, { error: 'Communication module not available' });
           return;
@@ -77,7 +77,7 @@ export function communicationPlugin(projectDir: string): Plugin {
           // GET /__nk_comm/conversations
           if (rest === 'conversations' && req.method === 'GET') {
             if (!userId) { sendJson(res, 401, { error: 'Unauthorized' }); return; }
-            const data = commApi.getConversations(userId);
+            const data = await commApi.getConversations(userId);
             sendJson(res, 200, data);
             return;
           }
@@ -86,7 +86,7 @@ export function communicationPlugin(projectDir: string): Plugin {
           if (rest === 'conversations' && req.method === 'POST') {
             if (!userId) { sendJson(res, 401, { error: 'Unauthorized' }); return; }
             const body = JSON.parse(await readBody(req));
-            const conv = commApi.createConversation({ ...body, participantIds: [userId, ...(body.participantIds || [])] });
+            const conv = await commApi.createConversation({ ...body, participantIds: [userId, ...(body.participantIds || [])] });
             sendJson(res, 201, conv);
             return;
           }
@@ -95,7 +95,7 @@ export function communicationPlugin(projectDir: string): Plugin {
           if (rest.startsWith('messages/') && req.method === 'GET') {
             if (!userId) { sendJson(res, 401, { error: 'Unauthorized' }); return; }
             const conversationId = rest.slice('messages/'.length);
-            const data = commApi.getMessages(conversationId);
+            const data = await commApi.getMessages(conversationId);
             sendJson(res, 200, data);
             return;
           }
@@ -104,7 +104,7 @@ export function communicationPlugin(projectDir: string): Plugin {
           if (rest === 'search' && req.method === 'GET') {
             if (!userId) { sendJson(res, 401, { error: 'Unauthorized' }); return; }
             const params = new URL(url, 'http://localhost').searchParams;
-            const data = commApi.searchMessages(params.get('q') || '');
+            const data = await commApi.searchMessages(params.get('q') || '');
             sendJson(res, 200, data);
             return;
           }
@@ -141,7 +141,7 @@ export function communicationPlugin(projectDir: string): Plugin {
               const fileUrl = `/__nk_comm/files/${id}`;
               if (db) {
                 db.run('INSERT INTO attachments (id, filename, mimetype, size, url, uploaded_by, encrypted) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                  id, req.headers['x-filename'] || `file-${id}`, contentType, body.length, fileUrl, userId, req.headers['x-encrypted'] === '1' ? 1 : 0);
+                  id, req.headers['x-filename'] || `file-${id}`, contentType, body.length, fileUrl, userId, req.headers['x-encrypted'] === '1' ? 1 : 0).catch(() => {});
               }
               sendJson(res, 201, { id, url: fileUrl, size: body.length });
             });
@@ -160,7 +160,7 @@ export function communicationPlugin(projectDir: string): Plugin {
             const stat = fs.statSync(filePath);
             let contentType = 'application/octet-stream';
             if (db) {
-              const att = db.get('SELECT mimetype FROM attachments WHERE id = ?', fileId);
+              const att = await db.get('SELECT mimetype FROM attachments WHERE id = ?', fileId);
               if (att) contentType = (att as any).mimetype;
             }
             res.writeHead(200, { 'Content-Type': contentType, 'Content-Length': stat.size, 'Cache-Control': 'public, max-age=86400' });

@@ -40,7 +40,7 @@ export async function handleNativeSignup(
 
   try {
     const { registerUser, ensureUsersTable, generateVerificationToken } = await import('../native-auth.js');
-    ensureUsersTable(db);
+    await ensureUsersTable(db);
     const user = await registerUser(db, email, password, name, nativeProvider);
 
     // Send verification email if required
@@ -71,10 +71,10 @@ export async function handleNativeSignup(
     // Token mode: return bearer tokens
     if (isTokenMode(url, req) && config.token.enabled) {
       const { issueAccessToken, generateRefreshToken, storeRefreshToken, ensureRefreshTokenTable } = await import('../token.js');
-      ensureRefreshTokenTable(db);
+      await ensureRefreshTokenTable(db);
       const accessToken = issueAccessToken(user, config.session.secret, config.token.accessTokenTTL);
       const refreshToken = generateRefreshToken();
-      storeRefreshToken(db, refreshToken, user.sub, config.token.refreshTokenTTL);
+      await storeRefreshToken(db, refreshToken, user.sub, config.token.refreshTokenTTL);
       sendJson(res, 201, { accessToken, refreshToken, expiresIn: config.token.accessTokenTTL, tokenType: 'Bearer', user });
       return true;
     }
