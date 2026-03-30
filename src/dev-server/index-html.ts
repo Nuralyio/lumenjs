@@ -74,7 +74,7 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
   <title>${escapeHtml(options.title)}</title>
-  <link rel="icon" type="image/svg+xml" href="/public/favicon.svg" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   ${options.integrations?.includes('nuralyui') ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@nuraly/lumenui@latest/packages/themes/dist/default.css">' : ''}${options.integrations?.includes('tailwind') ? '\n  <script type="module">import "/styles/tailwind.css";</script>' : ''}
   ${options.headContent || ''}
   <style>
