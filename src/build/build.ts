@@ -4,7 +4,7 @@ import { getSharedViteConfig } from '../dev-server/server.js';
 import { readProjectConfig } from '../dev-server/config.js';
 import type { BuildManifest } from '../shared/types.js';
 import { filePathToTagName } from '../shared/utils.js';
-import { scanPages, scanLayouts, scanApiRoutes, getLayoutDirsForPage } from './scan.js';
+import { scanPages, scanLayouts, scanApiRoutes, scanMiddleware, getLayoutDirsForPage } from './scan.js';
 import { buildClient } from './build-client.js';
 import { buildServer } from './build-server.js';
 import { prerenderPages } from './build-prerender.js';
@@ -32,10 +32,11 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   const { title, integrations, i18n: i18nConfig, prefetch: prefetchStrategy, prerender: globalPrerender } = readProjectConfig(projectDir);
   const shared = getSharedViteConfig(projectDir, { mode: 'production', integrations });
 
-  // Scan pages, layouts, and API routes for the manifest
+  // Scan pages, layouts, API routes, and middleware for the manifest
   const pageEntries = scanPages(pagesDir);
   const layoutEntries = scanLayouts(pagesDir);
   const apiEntries = scanApiRoutes(apiDir);
+  const middlewareEntries = scanMiddleware(pagesDir);
 
   // Check for auth config
   const authConfigPath = path.join(projectDir, 'lumenjs.auth.ts');
@@ -66,6 +67,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
     pageEntries,
     layoutEntries,
     apiEntries,
+    middlewareEntries,
     hasAuthConfig,
     authConfigPath,
     shared,
@@ -116,6 +118,12 @@ export async function buildProject(options: BuildOptions): Promise<void> {
       hasLoader: e.hasLoader,
       hasSubscribe: e.hasSubscribe,
     })),
+    ...(middlewareEntries.length > 0 ? {
+      middlewares: middlewareEntries.map(e => ({
+        dir: e.dir,
+        module: e.dir ? `middleware/${e.dir}/_middleware.js` : 'middleware/_middleware.js',
+      })),
+    } : {}),
     ...(i18nConfig ? { i18n: i18nConfig } : {}),
     ...(hasAuthConfig ? { auth: { configModule: 'auth-config.js' } } : {}),
     prefetch: prefetchStrategy,

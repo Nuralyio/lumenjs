@@ -1,7 +1,7 @@
 import { build as viteBuild, type UserConfig, type Plugin } from 'vite';
 import path from 'path';
 import fs from 'fs';
-import type { PageEntry, LayoutEntry, ApiEntry } from './scan.js';
+import type { PageEntry, LayoutEntry, ApiEntry, MiddlewareEntry } from './scan.js';
 
 export interface BuildServerOptions {
   projectDir: string;
@@ -9,6 +9,7 @@ export interface BuildServerOptions {
   pageEntries: PageEntry[];
   layoutEntries: LayoutEntry[];
   apiEntries: ApiEntry[];
+  middlewareEntries: MiddlewareEntry[];
   hasAuthConfig: boolean;
   authConfigPath: string;
   shared: {
@@ -19,7 +20,7 @@ export interface BuildServerOptions {
 }
 
 export async function buildServer(opts: BuildServerOptions): Promise<void> {
-  const { projectDir, serverDir, pageEntries, layoutEntries, apiEntries, hasAuthConfig, authConfigPath, shared } = opts;
+  const { projectDir, serverDir, pageEntries, layoutEntries, apiEntries, middlewareEntries, hasAuthConfig, authConfigPath, shared } = opts;
 
   console.log('[LumenJS] Building server bundle...');
 
@@ -41,6 +42,11 @@ export async function buildServer(opts: BuildServerOptions): Promise<void> {
 
   for (const entry of apiEntries) {
     serverEntries[`api/${entry.name}`] = entry.filePath;
+  }
+
+  for (const entry of middlewareEntries) {
+    const entryName = entry.dir ? `middleware/${entry.dir}/_middleware` : 'middleware/_middleware';
+    serverEntries[entryName] = entry.filePath;
   }
 
   if (hasAuthConfig) {
