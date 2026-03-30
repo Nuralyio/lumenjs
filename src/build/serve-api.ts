@@ -23,7 +23,9 @@ export async function handleApiRoute(
     return;
   }
 
-  const modulePath = path.join(serverDir, matched.route.module);
+  // Vite replaces [param] with _param_ in output filenames
+  const resolvedModule = matched.route.module.replace(/\[([^\]]+)\]/g, '_$1_');
+  const modulePath = path.join(serverDir, resolvedModule);
   if (!fs.existsSync(modulePath)) {
     res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ error: 'API route module not found' }));
@@ -63,6 +65,7 @@ export async function handleApiRoute(
       body,
       headers: req.headers,
       storage: useStorage(),
+      nkAuth: (req as any).nkAuth,
     });
 
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });

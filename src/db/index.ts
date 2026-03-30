@@ -100,9 +100,15 @@ class LumenDbPg extends LumenDb {
 
   /** Convert SQLite-flavoured SQL to PostgreSQL */
   private convertSql(sql: string): string {
+    // INSERT OR IGNORE → INSERT ... ON CONFLICT DO NOTHING
+    const isInsertOrIgnore = /^\s*INSERT\s+OR\s+IGNORE\s+INTO\b/i.test(sql);
+    let result = isInsertOrIgnore
+      ? sql.replace(/INSERT\s+OR\s+IGNORE\s+INTO\b/i, 'INSERT INTO')
+      : sql;
+
     // Replace ? with $1, $2, ... positional parameters
     let i = 0;
-    let result = sql.replace(/\?/g, () => `$${++i}`);
+    result = result.replace(/\?/g, () => `$${++i}`);
 
     // datetime('now', '+N unit') / datetime('now', '-N unit')
     result = result.replace(
@@ -115,6 +121,18 @@ class LumenDbPg extends LumenDb {
     );
     // datetime('now')
     result = result.replace(/datetime\s*\(\s*'now'\s*\)/gi, 'NOW()');
+
+    // json_each(expr) alias → jsonb_array_elements_text(expr::jsonb) AS alias
+    result = result.replace(
+      /\bjson_each\s*\(([^)]+)\)\s+(\w+)/gi,
+      (_m, expr: string, alias: string) => `jsonb_array_elements_text(${expr.trim()}::jsonb) AS ${alias}`,
+    );
+    // alias.value (from json_each) → alias (jsonb_array_elements_text column is the alias itself)
+    result = result.replace(/\b(\w+)\.value\b/g, '$1');
+
+    if (isInsertOrIgnore) {
+      result = result.trimEnd() + ' ON CONFLICT DO NOTHING';
+    }
 
     return result;
   }

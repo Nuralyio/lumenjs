@@ -22,7 +22,7 @@ interface TokenBucket {
 
 const DEFAULT_CONFIG: Required<RateLimitConfig> = {
   windowMs: 60_000,
-  max: 100,
+  max: 2000,
   keyGenerator: (req) => {
     // Uses X-Forwarded-For when behind a trusted reverse proxy.
     // If directly internet-facing, override keyGenerator to use req.socket.remoteAddress only.

@@ -84,7 +84,7 @@ export async function handlePageRoute(
         for (const lm of layoutModules) {
           patchLoaderDataSpread(lm.tagName);
         }
-        patchLoaderDataSpread(tagName);
+        if (tagName) patchLoaderDataSpread(tagName);
 
         if (tagName && ssrRuntime) {
           // SSR render with the bundled @lit-labs/ssr runtime
@@ -126,7 +126,6 @@ export async function handlePageRoute(
             const loaderDataScript = ssrDataObj !== undefined
               ? `<script type="application/json" id="__nk_ssr_data__">${JSON.stringify(ssrDataObj).replace(/</g, '\\u003c')}</script>`
               : '';
-            const hydrateScript = `<script type="module">import '@lit-labs/ssr-client/lit-element-hydrate-support.js';</script>`;
 
             // Auth: inline user data for client hydration
             const authUser = (req as any).nkAuth?.user ?? null;
@@ -135,8 +134,6 @@ export async function handlePageRoute(
               : '';
 
             let html_out = indexHtmlShell;
-            // Inject hydrate support BEFORE the first module script so it loads before Lit
-            html_out = html_out.replace('<script type="module"', `${hydrateScript}\n  <script type="module"`);
             html_out = html_out.replace(
               /<nk-app><\/nk-app>/,
               `${authScript}${loaderDataScript}<nk-app data-nk-ssr><div id="nk-router-outlet">${ssrHtml}</div></nk-app>`
