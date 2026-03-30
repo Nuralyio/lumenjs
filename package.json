@@ -43,24 +43,39 @@
   "license": "MIT",
   "dependencies": {
     "@lit-labs/ssr": "^3.2.0",
-    "better-sqlite3": "^12.8.0",
-    "codejar": "^4.2.0",
     "glob": "^10.3.0",
     "lit": "^3.1.0",
-    "pg": "^8.20.0",
-    "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3",
     "vite": "^5.4.0"
   },
   "peerDependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
-    "@aws-sdk/s3-request-presigner": "^3.0.0"
+    "@aws-sdk/s3-request-presigner": "^3.0.0",
+    "better-sqlite3": "^12.0.0",
+    "codejar": "^4.2.0",
+    "pg": "^8.0.0",
+    "socket.io": "^4.0.0",
+    "socket.io-client": "^4.0.0"
   },
   "peerDependenciesMeta": {
     "@aws-sdk/client-s3": {
       "optional": true
     },
     "@aws-sdk/s3-request-presigner": {
+      "optional": true
+    },
+    "better-sqlite3": {
+      "optional": true
+    },
+    "codejar": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    },
+    "socket.io": {
+      "optional": true
+    },
+    "socket.io-client": {
       "optional": true
     }
   },
