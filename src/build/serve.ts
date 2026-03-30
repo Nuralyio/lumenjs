@@ -213,14 +213,8 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         if (res.writableEnded) return;
       }
 
-      // -1. Auth routes (login, logout, me, signup, etc.)
-      if (authConfig && pathname.startsWith('/__nk_auth/')) {
-        const handled = await handleAuthRoutes(authConfig, req, res, authDb);
-        if (handled) return;
-      }
-
-      // 0. Run user middleware chain
-      if (middlewareModules.size > 0 && !pathname.includes('.') && !pathname.startsWith('/__nk_')) {
+      // 0. Run user middleware chain (runs before auth routes so middleware can gate signup etc.)
+      if (middlewareModules.size > 0 && !pathname.includes('.') && (!pathname.startsWith('/__nk_') || pathname.startsWith('/__nk_auth/'))) {
         const matching = getMiddlewareDirsForPathname(pathname, middlewareEntries);
         const allMw: ConnectMiddleware[] = [];
         for (const entry of matching) {
@@ -234,13 +228,19 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         }
       }
 
-      // 1. API routes
+      // 1. Auth routes (login, logout, me, signup, etc. — runs after user middleware so invite gate can intercept)
+      if (authConfig && pathname.startsWith('/__nk_auth/')) {
+        const handled = await handleAuthRoutes(authConfig, req, res, authDb);
+        if (handled) return;
+      }
+
+      // 2. API routes
       if (pathname.startsWith('/api/')) {
         await handleApiRoute(manifest, serverDir, pathname, queryString, method, req, res);
         return;
       }
 
-      // 2. Static assets — try to serve from client dir
+      // 3. Static assets — try to serve from client dir
       if (pathname.includes('.')) {
         const served = serveStaticFile(clientDir, pathname, req, res);
         if (served) return;
