@@ -138,6 +138,9 @@ export function getNuralyUIAliases(nuralyUIPath: string, nuralyCommonPath: strin
     aliases[pkg] = resolveComponentEntry(path.join(nuralyUIPath, dir));
   }
 
+  // Workflow canvas only — excludes whiteboard/mermaid for environments without mermaid
+  aliases['@nuraly/lumenui/workflow-canvas'] = path.join(nuralyUIPath, 'canvas/workflow-canvas-only.ts');
+
   aliases['@nuralyui/common/controllers'] = path.join(nuralyCommonPath, 'controllers.ts');
   aliases['@nuralyui/common/mixins'] = path.join(nuralyCommonPath, 'mixins.ts');
   aliases['@nuralyui/common/utils'] = path.join(nuralyCommonPath, 'utils.ts');
