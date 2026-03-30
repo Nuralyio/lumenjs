@@ -63,7 +63,9 @@ export async function serveProject(options: ServeOptions): Promise<void> {
     logger.fatal('No index.html found in build output.');
     process.exit(1);
   }
-  const indexHtmlShell = fs.readFileSync(indexHtmlPath, 'utf-8');
+  let indexHtmlShell = fs.readFileSync(indexHtmlPath, 'utf-8');
+  // Substitute env var placeholders (e.g. __UMAMI_WEBSITE_ID__)
+  indexHtmlShell = indexHtmlShell.replace(/__([A-Z0-9_]+)__/g, (_, key) => process.env[key] || '');
 
   // Load bundled SSR runtime first — its install-global-dom-shim sets up
   // the proper HTMLElement/window/document shims that @lit-labs/ssr needs.
