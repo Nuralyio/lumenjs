@@ -39,6 +39,7 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
   let prefetch: PrefetchStrategy = 'viewport';
   let prerender: boolean | undefined;
   let i18n: I18nConfig | undefined;
+  let securityHeaders: { contentSecurityPolicy?: string } | undefined;
 
   const configPath = path.join(projectDir, 'lumenjs.config.ts');
   if (fs.existsSync(configPath)) {
@@ -68,6 +69,13 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
       const prerenderMatch = configContent.match(/prerender\s*:\s*(true|false)/);
       if (prerenderMatch) {
         prerender = prerenderMatch[1] === 'true';
+      }
+
+      const secHeadersMatch = configContent.match(/securityHeaders\s*:\s*\{([\s\S]*?)\}/);
+      if (secHeadersMatch) {
+        const block = secHeadersMatch[1];
+        const cspMatch = block.match(/contentSecurityPolicy\s*:\s*['"`]([^'"`]+)['"`]/);
+        if (cspMatch) securityHeaders = { contentSecurityPolicy: cspMatch[1] };
       }
 
       const i18nMatch = configContent.match(/i18n\s*:\s*\{([\s\S]*?)\}/);
@@ -101,7 +109,7 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
     } catch { /* ignore */ }
   }
 
-  return { title, integrations, prefetch, version, ...(i18n ? { i18n } : {}), ...(prerender ? { prerender } : {}) };
+  return { title, integrations, prefetch, version, ...(i18n ? { i18n } : {}), ...(prerender ? { prerender } : {}), ...(securityHeaders ? { securityHeaders } : {}) };
 }
 
 /**
