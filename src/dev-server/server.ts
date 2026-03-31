@@ -324,7 +324,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     },
     ssr: {
       noExternal: true,
-      external: ['node-domexception', 'socket.io-client', 'xmlhttprequest-ssl', 'engine.io-client', 'better-sqlite3', '@lumenjs/db', '@lumenjs/permissions'],
+      external: ['node-domexception', 'socket.io-client', 'xmlhttprequest-ssl', 'engine.io-client', 'better-sqlite3', '@lumenjs/db', '@lumenjs/permissions', 'amqplib'],
       resolve: {
         conditions: ['node', 'import'],
       },
