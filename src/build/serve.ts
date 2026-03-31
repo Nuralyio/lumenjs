@@ -23,6 +23,7 @@ import { createHealthCheckHandler } from '../shared/health.js';
 import { createRequestIdMiddleware } from '../shared/request-id.js';
 import { getRequestId } from '../shared/request-id.js';
 import { setupGracefulShutdown } from '../shared/graceful-shutdown.js';
+import { setupSocketIO } from '../shared/socket-io-setup.js';
 
 export interface ServeOptions {
   projectDir: string;
@@ -325,6 +326,21 @@ export async function serveProject(options: ServeOptions): Promise<void> {
       logger.request(req, res.statusCode, duration, { requestId: getRequestId(req) });
     }
   });
+
+  // Socket.IO setup (attach before listen so it shares the HTTP server)
+  const socketRoutes = manifest.routes
+    .filter(r => r.hasSocket && r.module)
+    .map(r => ({ path: r.path, hasSocket: true, filePath: path.join(serverDir, r.module) }));
+  if (socketRoutes.length > 0) {
+    setupSocketIO({
+      httpServer: server,
+      loadModule: (fp) => import(fp),
+      routes: socketRoutes,
+      projectDir,
+    }).catch((err: any) => {
+      logger.warn('Socket.IO setup failed', { error: err?.message });
+    });
+  }
 
   // Graceful shutdown
   setupGracefulShutdown(server, {

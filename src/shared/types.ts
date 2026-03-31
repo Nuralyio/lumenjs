@@ -10,6 +10,7 @@ export interface ManifestRoute {
   module: string;
   hasLoader: boolean;
   hasSubscribe: boolean;
+  hasSocket?: boolean;
   hasAuth?: boolean;
   hasMeta?: boolean;
   authRoles?: string[];

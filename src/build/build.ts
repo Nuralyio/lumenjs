@@ -95,11 +95,12 @@ export async function buildProject(options: BuildOptions): Promise<void> {
       const relPath = path.relative(pagesDir, e.filePath).replace(/\\/g, '/');
       return {
         path: e.routePath,
-        module: (e.hasLoader || e.hasSubscribe || e.prerender) ? `pages/${e.name}.js` : '',
+        module: (e.hasLoader || e.hasSubscribe || e.hasSocket || e.prerender) ? `pages/${e.name}.js` : '',
         hasLoader: e.hasLoader,
         hasSubscribe: e.hasSubscribe,
         tagName: filePathToTagName(relPath),
         ...(routeLayouts.length > 0 ? { layouts: routeLayouts } : {}),
+        ...(e.hasSocket ? { hasSocket: true } : {}),
         ...(e.hasAuth ? { hasAuth: true } : {}),
         ...(e.hasMeta ? { hasMeta: true } : {}),
         ...(e.hasStandalone ? { hasStandalone: true } : {}),

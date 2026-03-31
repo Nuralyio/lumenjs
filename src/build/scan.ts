@@ -1,10 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import { filePathToRoute, fileHasLoader, fileHasSubscribe } from '../shared/utils.js';
+import { filePathToRoute, fileHasLoader, fileHasSubscribe, fileHasSocket } from '../shared/utils.js';
 
 /** Read a page file once and check all flags from the same content. */
 function analyzePageFile(filePath: string): {
-  hasLoader: boolean; hasSubscribe: boolean; hasAuth: boolean;
+  hasLoader: boolean; hasSubscribe: boolean; hasSocket: boolean; hasAuth: boolean;
   hasMeta: boolean; hasStandalone: boolean; prerender: boolean;
 } {
   try {
@@ -21,13 +21,14 @@ function analyzePageFile(filePath: string): {
     return {
       hasLoader: hasExportBefore(/export\s+(async\s+)?function\s+loader\s*\(/),
       hasSubscribe: hasExportBefore(/export\s+(async\s+)?function\s+subscribe\s*\(/),
+      hasSocket: /export\s+(function|const)\s+socket[\s(=]/.test(content),
       hasAuth: hasExportBefore(/export\s+const\s+auth\s*=/),
       hasMeta: hasExportBefore(/export\s+(const\s+meta\s*=|(async\s+)?function\s+meta\s*\()/),
       hasStandalone: hasExportBefore(/export\s+const\s+standalone\s*=/),
       prerender: /export\s+const\s+prerender\s*=\s*true/.test(content),
     };
   } catch {
-    return { hasLoader: false, hasSubscribe: false, hasAuth: false, hasMeta: false, hasStandalone: false, prerender: false };
+    return { hasLoader: false, hasSubscribe: false, hasSocket: false, hasAuth: false, hasMeta: false, hasStandalone: false, prerender: false };
   }
 }
 
@@ -37,6 +38,7 @@ export interface PageEntry {
   routePath: string;
   hasLoader: boolean;
   hasSubscribe: boolean;
+  hasSocket: boolean;
   hasAuth: boolean;
   hasMeta: boolean;
   hasStandalone: boolean;
