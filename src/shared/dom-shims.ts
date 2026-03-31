@@ -1,3 +1,7 @@
+// Use the proper SSR HTMLElement shim so that @lit-labs/ssr's LitElementRenderer.renderAttributes()
+// finds a working `element.attributes` property. A bare `class HTMLElement {}` leaves it undefined.
+import { HTMLElement as SSRHTMLElement } from '@lit-labs/ssr-dom-shim';
+
 /**
  * Install DOM shims needed for SSR rendering of Lit/NuralyUI components.
  * Consolidates the various partial shim implementations across the codebase.
@@ -7,7 +11,7 @@ export function installDomShims() {
   const noop = () => null;
 
   if (!g.HTMLElement) {
-    g.HTMLElement = class HTMLElement {};
+    g.HTMLElement = SSRHTMLElement;
   }
   if (!g.customElements) {
     const registry = new Map<string, any>();
