@@ -92,7 +92,7 @@ export async function handleNativeLogin(
     return true;
   }
 
-  const { authenticateUser, isEmailVerified } = await import('../native-auth.js');
+  const { authenticateUser, isEmailVerified, getTotpState } = await import('../native-auth.js');
   const user = await authenticateUser(db, email, password);
   if (!user) {
     sendJson(res, 401, { error: 'Invalid credentials' });
@@ -102,6 +102,30 @@ export async function handleNativeLogin(
   // Check email verification if required
   if (nativeProvider.requireEmailVerification && !await isEmailVerified(db, user.sub)) {
     sendJson(res, 403, { error: 'Please verify your email before signing in', code: 'EMAIL_NOT_VERIFIED' });
+    return true;
+  }
+
+  // Check TOTP — if enabled, issue a short-lived pending cookie instead of a full session
+  const totpState = await getTotpState(db, user.sub);
+  if (totpState.totpEnabled) {
+    const pendingData = {
+      accessToken: `totp-pending:${user.sub}`,
+      expiresAt: Math.floor(Date.now() / 1000) + 300,
+      user: { sub: user.sub, roles: [] as string[] },
+      provider: 'native' as const,
+      createdAt: Math.floor(Date.now() / 1000),
+    };
+    const pendingEncrypted = await encryptSession(pendingData, config.session.secret);
+    const pendingCookie = createSessionCookie('nk-totp-pending', pendingEncrypted, 300, config.session.secure);
+    const returnTo = safeReturnTo(url.searchParams.get('returnTo'), config.routes.postLogin);
+
+    if (req.headers.accept?.includes('application/json')) {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': pendingCookie });
+      res.end(JSON.stringify({ requires2fa: true, returnTo }));
+    } else {
+      res.writeHead(302, { Location: `/auth/totp-challenge?returnTo=${encodeURIComponent(returnTo)}`, 'Set-Cookie': pendingCookie });
+      res.end();
+    }
     return true;
   }
 

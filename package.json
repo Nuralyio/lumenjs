@@ -52,7 +52,9 @@
     "@aws-sdk/s3-request-presigner": "^3.0.0",
     "better-sqlite3": "^12.8.0",
     "codejar": "^4.2.0",
+    "otplib": "^12.0.0",
     "pg": "^8.0.0",
+    "qrcode": "^1.5.0",
     "socket.io": "^4.0.0",
     "socket.io-client": "^4.0.0"
   },
@@ -77,12 +79,21 @@
     },
     "socket.io-client": {
       "optional": true
+    },
+    "otplib": {
+      "optional": true
+    },
+    "qrcode": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.14.2",
+    "@types/qrcode": "^1.5.6",
     "@vitest/coverage-v8": "^4.0.18",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.4",
     "typescript": "^5.4.5",
     "vitest": "^4.0.18"
   },

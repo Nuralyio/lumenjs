@@ -8,6 +8,7 @@ import { handleLogout, handleLogoutAll } from './routes/logout.js';
 import { handleVerifyEmail } from './routes/verify.js';
 import { handleForgotPassword, handleResetPassword, handleChangePassword } from './routes/password.js';
 import { handleTokenRefresh, handleTokenRevoke } from './routes/token.js';
+import { handleTotpSetup, handleTotpVerifySetup, handleTotpDisable, handleTotpChallenge } from './routes/totp.js';
 
 /**
  * Validate Origin header on POST requests to prevent CSRF.
@@ -123,6 +124,20 @@ export async function handleAuthRoutes(
   // ── Revoke — invalidate refresh token (mobile logout) ─────────
   if (pathname === '/__nk_auth/revoke' && req.method === 'POST') {
     return handleTokenRevoke(req, res, db);
+  }
+
+  // ── TOTP 2FA ──────────────────────────────────────────────────
+  if (pathname === '/__nk_auth/totp/setup' && req.method === 'POST') {
+    return handleTotpSetup(config, req, res, db);
+  }
+  if (pathname === '/__nk_auth/totp/verify-setup' && req.method === 'POST') {
+    return handleTotpVerifySetup(config, req, res, db);
+  }
+  if (pathname === '/__nk_auth/totp/disable' && req.method === 'POST') {
+    return handleTotpDisable(config, req, res, db);
+  }
+  if (pathname === '/__nk_auth/totp/challenge' && req.method === 'POST') {
+    return handleTotpChallenge(config, req, res, db);
   }
 
   return false;

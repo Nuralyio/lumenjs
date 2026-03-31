@@ -59,6 +59,9 @@ export async function ensureUsersTable(db: Db): Promise<void> {
   try { await db.exec('ALTER TABLE _nk_auth_users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0'); } catch {};
   // Add sessions_revoked_at column for logout-all support
   try { await db.exec('ALTER TABLE _nk_auth_users ADD COLUMN sessions_revoked_at TEXT'); } catch {};
+  // Add TOTP columns
+  try { await db.exec('ALTER TABLE _nk_auth_users ADD COLUMN totp_secret TEXT'); } catch {};
+  try { await db.exec('ALTER TABLE _nk_auth_users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0'); } catch {};
 }
 
 /**
@@ -292,6 +295,50 @@ export async function updatePassword(db: Db, userId: string, newPassword: string
 export async function findUserIdByEmail(db: Db, email: string): Promise<string | null> {
   const row = await db.get<any>('SELECT id FROM _nk_auth_users WHERE email = ?', email);
   return row?.id || null;
+}
+
+// ── TOTP helpers ─────────────────────────────────────────────────
+
+const TOTP_IV_LEN = 12;
+const TOTP_ALGO = 'aes-256-gcm' as const;
+
+function deriveTotpKey(sessionSecret: string): Buffer {
+  return Buffer.from(crypto.hkdfSync('sha256', sessionSecret, 'totp-key', '', 32));
+}
+
+export async function encryptTotpSecret(secret: string, sessionSecret: string): Promise<string> {
+  const key = deriveTotpKey(sessionSecret);
+  const iv = crypto.randomBytes(TOTP_IV_LEN);
+  const cipher = crypto.createCipheriv(TOTP_ALGO, key, iv) as crypto.CipherGCM;
+  const enc = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString('base64url')}.${enc.toString('base64url')}.${tag.toString('base64url')}`;
+}
+
+export async function decryptTotpSecret(encrypted: string, sessionSecret: string): Promise<string> {
+  const [ivB64, encB64, tagB64] = encrypted.split('.');
+  if (!ivB64 || !encB64 || !tagB64) throw new Error('Invalid TOTP secret format');
+  const key = deriveTotpKey(sessionSecret);
+  const decipher = crypto.createDecipheriv(TOTP_ALGO, key, Buffer.from(ivB64, 'base64url')) as crypto.DecipherGCM;
+  decipher.setAuthTag(Buffer.from(tagB64, 'base64url'));
+  return decipher.update(Buffer.from(encB64, 'base64url')).toString('utf8') + decipher.final('utf8');
+}
+
+export async function saveTotpSecret(db: Db, userId: string, encryptedSecret: string): Promise<void> {
+  await db.run('UPDATE _nk_auth_users SET totp_secret = ?, totp_enabled = 0 WHERE id = ?', encryptedSecret, userId);
+}
+
+export async function enableTotp(db: Db, userId: string): Promise<void> {
+  await db.run('UPDATE _nk_auth_users SET totp_enabled = 1 WHERE id = ?', userId);
+}
+
+export async function disableTotp(db: Db, userId: string): Promise<void> {
+  await db.run('UPDATE _nk_auth_users SET totp_secret = NULL, totp_enabled = 0 WHERE id = ?', userId);
+}
+
+export async function getTotpState(db: Db, userId: string): Promise<{ totpEnabled: boolean; encryptedSecret: string | null }> {
+  const row = await db.get<any>('SELECT totp_enabled, totp_secret FROM _nk_auth_users WHERE id = ?', userId);
+  return { totpEnabled: !!row?.totp_enabled, encryptedSecret: row?.totp_secret || null };
 }
 
 // ── Session Revocation (Logout All) ─────────────────────────────
