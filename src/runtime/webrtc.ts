@@ -68,8 +68,17 @@ export class WebRTCManager {
       throw err;
     }
     try {
-      this._localStream = await navigator.mediaDevices.getUserMedia({ video, audio });
+      // Always request video so both peers negotiate a video track in the SDP.
+      // For audio-only calls the video track is immediately disabled (black frame)
+      // but stays in the SDP as sendrecv, allowing replaceTrack for screen sharing.
+      this._localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio });
       this._callbacks.onLocalStream(this._localStream);
+
+      if (!video) {
+        for (const vt of this._localStream.getVideoTracks()) {
+          vt.enabled = false;
+        }
+      }
 
       for (const track of this._localStream.getTracks()) {
         this._pc?.addTrack(track, this._localStream);
@@ -169,7 +178,7 @@ export class WebRTCManager {
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     const screenTrack = stream.getVideoTracks()[0];
 
-    if (this._pc && this._localStream) {
+    if (this._pc) {
       const sender = this._pc.getSenders().find(s => s.track?.kind === 'video');
       if (sender) {
         await sender.replaceTrack(screenTrack);
@@ -186,14 +195,11 @@ export class WebRTCManager {
 
   /** Revert from screen share back to camera */
   async stopScreenShare(): Promise<void> {
-    if (this._localStream && this._pc) {
-      const cameraTrack = this._localStream.getVideoTracks()[0];
-      if (cameraTrack) {
-        const sender = this._pc.getSenders().find(s => s.track?.kind === 'video');
-        if (sender) {
-          await sender.replaceTrack(cameraTrack);
-        }
-      }
+    if (!this._pc || !this._localStream) return;
+    const cameraTrack = this._localStream.getVideoTracks()[0] || null;
+    const sender = this._pc.getSenders().find(s => s.track?.kind === 'video');
+    if (sender) {
+      await sender.replaceTrack(cameraTrack);
     }
   }
 
