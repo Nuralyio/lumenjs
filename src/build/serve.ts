@@ -24,6 +24,7 @@ import { createRequestIdMiddleware } from '../shared/request-id.js';
 import { getRequestId } from '../shared/request-id.js';
 import { setupGracefulShutdown } from '../shared/graceful-shutdown.js';
 import { setupSocketIO } from '../shared/socket-io-setup.js';
+import crypto from 'crypto';
 
 export interface ServeOptions {
   projectDir: string;
@@ -240,6 +241,80 @@ export async function serveProject(options: ServeOptions): Promise<void> {
       // 2. API routes
       if (pathname.startsWith('/api/')) {
         await handleApiRoute(manifest, serverDir, pathname, queryString, method, req, res);
+        return;
+      }
+
+      // 2b. Communication file upload
+      if (pathname === '/__nk_comm/upload' && method === 'POST') {
+        const userId = (req as any).nkAuth?.user?.sub;
+        if (!userId) { res.statusCode = 401; res.end(JSON.stringify({ error: 'Unauthorized' })); return; }
+        const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+        const chunks: Buffer[] = [];
+        let uploadSize = 0;
+        let aborted = false;
+        req.on('data', (c: Buffer) => {
+          uploadSize += c.length;
+          if (uploadSize > MAX_UPLOAD_SIZE) { aborted = true; req.destroy(); res.statusCode = 413; res.end(JSON.stringify({ error: 'File too large' })); return; }
+          chunks.push(c);
+        });
+        req.on('end', async () => {
+          if (aborted) return;
+          try {
+            const body = Buffer.concat(chunks);
+            const id = crypto.randomUUID();
+            const fileName = (req.headers['x-filename'] as string) || `file-${id}`;
+            const mimeType = (req.headers['content-type'] as string) || 'application/octet-stream';
+            const ext = fileName.includes('.') ? `.${fileName.split('.').pop()}` : '';
+            const key = `chat-uploads/${id}${ext}`;
+
+            // Use R2/S3 if configured, otherwise fall back to local disk
+            if (process.env.R2_BUCKET && process.env.R2_ENDPOINT) {
+              const { S3StorageAdapter } = await import('../storage/adapters/s3.js');
+              const s3 = new S3StorageAdapter({
+                bucket: process.env.R2_BUCKET,
+                region: 'auto',
+                accessKeyId: process.env.LUMENJS_S3_ACCESS_KEY || '',
+                secretAccessKey: process.env.LUMENJS_S3_SECRET_KEY || '',
+                endpoint: process.env.R2_ENDPOINT,
+                publicBaseUrl: process.env.R2_PUBLIC_URL,
+              });
+              const stored = await s3.put(body, { key, mimeType, fileName });
+              res.statusCode = 201;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ id, url: stored.url, size: body.length }));
+            } else {
+              // Local fallback
+              const uploadDir = path.join(projectDir, 'data', 'uploads');
+              if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+              fs.writeFileSync(path.join(uploadDir, `${id}.bin`), body);
+              fs.writeFileSync(path.join(uploadDir, `${id}.meta.json`), JSON.stringify({ id, filename: fileName, mimetype: mimeType, size: body.length }));
+              res.statusCode = 201;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ id, url: `/__nk_comm/files/${id}`, size: body.length }));
+            }
+          } catch (err: any) {
+            logger.error('Upload failed', { error: err?.message });
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: 'Upload failed' }));
+          }
+        });
+        return;
+      }
+      // Serve locally stored files (fallback when R2 is not configured)
+      if (pathname.startsWith('/__nk_comm/files/') && method === 'GET') {
+        const fileId = pathname.slice('/__nk_comm/files/'.length);
+        if (!/^[a-zA-Z0-9._-]+$/.test(fileId)) { res.statusCode = 400; res.end('Invalid file ID'); return; }
+        const uploadDir = path.join(projectDir, 'data', 'uploads');
+        const filePath = path.resolve(uploadDir, `${fileId}.bin`);
+        if (!filePath.startsWith(path.resolve(uploadDir))) { res.statusCode = 400; res.end('Invalid file ID'); return; }
+        if (!fs.existsSync(filePath)) { res.statusCode = 404; res.end('File not found'); return; }
+        let contentType = 'application/octet-stream';
+        try { const meta = JSON.parse(fs.readFileSync(path.resolve(uploadDir, `${fileId}.meta.json`), 'utf-8')); contentType = meta.mimetype || contentType; } catch {}
+        const stat = fs.statSync(filePath);
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Length', stat.size);
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        fs.createReadStream(filePath).pipe(res);
         return;
       }
 

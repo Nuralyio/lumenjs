@@ -96,16 +96,18 @@ export class S3StorageAdapter implements StorageAdapter {
     const acl = options?.acl ?? 'public-read';
     const { s3, PutObjectCommand } = await this.getClient();
 
-    await s3.send(new PutObjectCommand({
+    const cmd: any = {
       Bucket: this.options.bucket,
       Key: key,
       Body: data,
       ContentType: mimeType,
-      ACL: acl,
       ...(options?.fileName
         ? { ContentDisposition: `inline; filename="${options.fileName.replace(/[\r\n"\\]/g, '_')}"` }
         : {}),
-    }));
+    };
+    // R2 and some S3-compatible APIs don't support ACL
+    if (!this.options.endpoint) cmd.ACL = acl;
+    await s3.send(new PutObjectCommand(cmd));
 
     return {
       key,
