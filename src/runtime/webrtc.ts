@@ -62,6 +62,11 @@ export class WebRTCManager {
 
   /** Acquire local media (camera/mic) and add tracks to the peer connection */
   async startLocalMedia(video: boolean = true, audio: boolean = true): Promise<MediaStream> {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const err = new Error('Media devices unavailable — HTTPS is required for calls');
+      this._callbacks.onError(err);
+      throw err;
+    }
     try {
       this._localStream = await navigator.mediaDevices.getUserMedia({ video, audio });
       this._callbacks.onLocalStream(this._localStream);
@@ -158,6 +163,9 @@ export class WebRTCManager {
 
   /** Replace video track with screen share */
   async startScreenShare(): Promise<MediaStream> {
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      throw new Error('Screen sharing unavailable — HTTPS is required');
+    }
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     const screenTrack = stream.getVideoTracks()[0];
 
