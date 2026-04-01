@@ -25,6 +25,7 @@ export class WebRTCManager {
   private _callbacks: WebRTCCallbacks;
   private _pendingCandidates: RTCIceCandidateInit[] = [];
   private _role: CallRole = 'caller';
+  private _screenStream: MediaStream | null = null;
 
   constructor(callbacks: WebRTCCallbacks, iceServers?: RTCIceServer[]) {
     this._callbacks = callbacks;
@@ -185,6 +186,8 @@ export class WebRTCManager {
       }
     }
 
+    this._screenStream = stream;
+
     // When user stops sharing via browser UI
     screenTrack.onended = () => {
       this.stopScreenShare();
@@ -195,6 +198,11 @@ export class WebRTCManager {
 
   /** Revert from screen share back to camera */
   async stopScreenShare(): Promise<void> {
+    // Stop all screen share tracks so the OS stops the sharing indicator
+    if (this._screenStream) {
+      for (const track of this._screenStream.getTracks()) track.stop();
+      this._screenStream = null;
+    }
     if (!this._pc || !this._localStream) return;
     const cameraTrack = this._localStream.getVideoTracks()[0] || null;
     const sender = this._pc.getSenders().find(s => s.track?.kind === 'video');
@@ -205,6 +213,10 @@ export class WebRTCManager {
 
   /** Clean up everything */
   destroy(): void {
+    if (this._screenStream) {
+      for (const track of this._screenStream.getTracks()) track.stop();
+      this._screenStream = null;
+    }
     if (this._localStream) {
       for (const track of this._localStream.getTracks()) {
         track.stop();
