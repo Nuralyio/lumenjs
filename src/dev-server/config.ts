@@ -39,7 +39,7 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
   let prefetch: PrefetchStrategy = 'viewport';
   let prerender: boolean | undefined;
   let i18n: I18nConfig | undefined;
-  let securityHeaders: { contentSecurityPolicy?: string } | undefined;
+  let securityHeaders: { contentSecurityPolicy?: string; permissionsPolicy?: string } | undefined;
 
   const configPath = path.join(projectDir, 'lumenjs.config.ts');
   if (fs.existsSync(configPath)) {
@@ -77,7 +77,15 @@ export function readProjectConfig(projectDir: string): ProjectConfig {
         const cspMatch = block.match(/contentSecurityPolicy\s*:\s*"([^"]+)"/)
           || block.match(/contentSecurityPolicy\s*:\s*'([^']+)'/)
           || block.match(/contentSecurityPolicy\s*:\s*`([^`]+)`/);
-        if (cspMatch) securityHeaders = { contentSecurityPolicy: cspMatch[1] };
+        const ppMatch = block.match(/permissionsPolicy\s*:\s*'([^']+)'/)
+          || block.match(/permissionsPolicy\s*:\s*"([^"]+)"/)
+          || block.match(/permissionsPolicy\s*:\s*`([^`]+)`/);
+        if (cspMatch || ppMatch) {
+          securityHeaders = {
+            ...(cspMatch ? { contentSecurityPolicy: cspMatch[1] } : {}),
+            ...(ppMatch ? { permissionsPolicy: ppMatch[1] } : {}),
+          };
+        }
       }
 
       const i18nMatch = configContent.match(/i18n\s*:\s*\{([\s\S]*?)\}/);

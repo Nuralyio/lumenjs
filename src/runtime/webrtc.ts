@@ -166,7 +166,7 @@ export class WebRTCManager {
     if (!navigator.mediaDevices?.getDisplayMedia) {
       throw new Error('Screen sharing unavailable — HTTPS is required');
     }
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     const screenTrack = stream.getVideoTracks()[0];
 
     if (this._pc && this._localStream) {
