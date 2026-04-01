@@ -109,6 +109,11 @@ export async function buildServer(opts: BuildServerOptions): Promise<void> {
               'worker_threads', 'cluster', 'dns', 'tls', 'assert', 'constants',
               // Native addons — must not be bundled, loaded from node_modules at runtime
               'better-sqlite3',
+              // AWS SDK — optional peer dep, keep as runtime import so app can provide it
+              '@aws-sdk/client-s3',
+              '@aws-sdk/s3-request-presigner',
+              /^@aws-sdk\//,
+              /^@smithy\//,
             ],
           },
         },
