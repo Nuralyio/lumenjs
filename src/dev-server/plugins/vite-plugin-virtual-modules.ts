@@ -150,13 +150,18 @@ globalThis.litElementHydrateSupport = ({LitElement}) => {
       try {
         hydrate(value, this.renderRoot, this.renderOptions);
       } catch (err) {
-        // Digest mismatch — clear SSR content and render fresh (CSR fallback)
-        console.warn('[LumenJS] Hydration failed for <' + this.localName + '>, falling back to CSR:', err.message);
+        // Digest mismatch — re-render fresh but avoid visible flash
+        console.warn('[LumenJS] Hydration mismatch for <' + this.localName + '>, falling back to CSR');
         const root = this.renderRoot;
-        while (root.firstChild) root.removeChild(root.firstChild);
-        delete root._$litPart$;
-        // Re-adopt styles since clearing removed SSR <style> tags
+        // Preserve adopted styles so content is never unstyled
         adoptElementStyles(this);
+        // Remove only non-style children to keep styles applied during re-render
+        const toRemove = [];
+        for (let c = root.firstChild; c; c = c.nextSibling) {
+          if (c.nodeName !== 'STYLE') toRemove.push(c);
+        }
+        toRemove.forEach(c => root.removeChild(c));
+        delete root._$litPart$;
         render(value, root, this.renderOptions);
       }
     } else {
