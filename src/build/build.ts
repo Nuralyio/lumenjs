@@ -95,7 +95,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
       const relPath = path.relative(pagesDir, e.filePath).replace(/\\/g, '/');
       return {
         path: e.routePath,
-        module: (e.hasLoader || e.hasSubscribe || e.hasSocket || e.prerender) ? `pages/${e.name}.js` : '',
+        module: (e.hasLoader || e.hasSubscribe || e.hasSocket || e.prerender) ? `pages/${e.name.replace(/\[(\w+)\]/g, '_$1_')}.js` : '',
         hasLoader: e.hasLoader,
         hasSubscribe: e.hasSubscribe,
         tagName: filePathToTagName(relPath),
@@ -109,7 +109,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
     }),
     apiRoutes: apiEntries.map(e => ({
       path: `/api/${e.routePath}`,
-      module: `api/${e.name}.js`,
+      module: `api/${e.name.replace(/\[(\w+)\]/g, '_$1_')}.js`,
       hasLoader: false,
       hasSubscribe: false,
     })),
