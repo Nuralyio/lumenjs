@@ -52,8 +52,8 @@ export async function ensureUsersTable(db: Db): Promise<void> {
     password_hash TEXT NOT NULL,
     email_verified INTEGER NOT NULL DEFAULT 0,
     roles TEXT NOT NULL DEFAULT '[]',
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT NOW(),
+    updated_at TEXT NOT NULL DEFAULT NOW()
   )`);
   // Add email_verified column if table already exists without it
   try { await db.exec('ALTER TABLE _nk_auth_users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0'); } catch {};

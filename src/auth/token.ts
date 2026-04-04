@@ -72,11 +72,11 @@ interface Db {
 
 export async function ensureRefreshTokenTable(db: Db): Promise<void> {
   await db.exec(`CREATE TABLE IF NOT EXISTS _nk_auth_refresh_tokens (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     token_hash TEXT NOT NULL UNIQUE,
     user_id TEXT NOT NULL,
     expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT NOW()
   )`);
 }
 

@@ -3,10 +3,16 @@
  * Wraps RTCPeerConnection and wires to the LumenJS communication SDK signaling.
  */
 
-const ICE_SERVERS: RTCIceServer[] = [
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
+
+function getIceServers(custom?: RTCIceServer[]): RTCIceServer[] {
+  return custom
+    || (typeof window !== 'undefined' && (window as any).__NK_ICE_SERVERS)
+    || DEFAULT_ICE_SERVERS;
+}
 
 export type CallRole = 'caller' | 'callee';
 
@@ -29,7 +35,7 @@ export class WebRTCManager {
 
   constructor(callbacks: WebRTCCallbacks, iceServers?: RTCIceServer[]) {
     this._callbacks = callbacks;
-    this._createPeerConnection(iceServers || ICE_SERVERS);
+    this._createPeerConnection(getIceServers(iceServers));
   }
 
   private _createPeerConnection(iceServers: RTCIceServer[]): void {
@@ -234,5 +240,246 @@ export class WebRTCManager {
       this._pc = null;
     }
     this._pendingCandidates = [];
+  }
+}
+
+// ── Group WebRTC Manager (mesh topology) ──────────────────────────
+
+const MAX_GROUP_PARTICIPANTS = 8;
+
+export interface GroupWebRTCCallbacks {
+  onLocalStream: (stream: MediaStream) => void;
+  onRemoteStream: (userId: string, stream: MediaStream) => void;
+  onRemoteStreamRemoved: (userId: string) => void;
+  onConnectionStateChange: (userId: string, state: RTCPeerConnectionState) => void;
+  onIceCandidate: (toUserId: string, candidate: RTCIceCandidate) => void;
+  onError: (error: Error) => void;
+}
+
+interface PeerEntry {
+  pc: RTCPeerConnection;
+  remoteStream: MediaStream | null;
+  pendingCandidates: RTCIceCandidateInit[];
+}
+
+export class GroupWebRTCManager {
+  private _peers: Map<string, PeerEntry> = new Map();
+  private _localStream: MediaStream | null = null;
+  private _callbacks: GroupWebRTCCallbacks;
+  private _iceServers: RTCIceServer[];
+  private _screenStream: MediaStream | null = null;
+
+  constructor(callbacks: GroupWebRTCCallbacks, iceServers?: RTCIceServer[]) {
+    this._callbacks = callbacks;
+    this._iceServers = getIceServers(iceServers);
+  }
+
+  get localStream(): MediaStream | null { return this._localStream; }
+  get peerCount(): number { return this._peers.size; }
+
+  getRemoteStream(userId: string): MediaStream | null {
+    return this._peers.get(userId)?.remoteStream ?? null;
+  }
+
+  getRemoteStreams(): Map<string, MediaStream> {
+    const result = new Map<string, MediaStream>();
+    for (const [uid, entry] of this._peers) {
+      if (entry.remoteStream) result.set(uid, entry.remoteStream);
+    }
+    return result;
+  }
+
+  /** Acquire local media — call once before adding peers */
+  async startLocalMedia(video: boolean = true, audio: boolean = true): Promise<MediaStream> {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const err = new Error('Media devices unavailable — HTTPS is required for calls');
+      this._callbacks.onError(err);
+      throw err;
+    }
+    try {
+      this._localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio });
+      this._callbacks.onLocalStream(this._localStream);
+      if (!video) {
+        for (const vt of this._localStream.getVideoTracks()) vt.enabled = false;
+      }
+      return this._localStream;
+    } catch (err) {
+      this._callbacks.onError(new Error(`Failed to access media: ${(err as Error).message}`));
+      throw err;
+    }
+  }
+
+  /** Create a peer connection for a remote user and optionally create an offer */
+  async addPeer(userId: string, isCaller: boolean): Promise<string | void> {
+    if (this._peers.has(userId)) return;
+    if (this._peers.size >= MAX_GROUP_PARTICIPANTS - 1) {
+      this._callbacks.onError(new Error(`Group call limit reached (${MAX_GROUP_PARTICIPANTS} participants)`));
+      return;
+    }
+
+    const pc = new RTCPeerConnection({ iceServers: this._iceServers });
+    const entry: PeerEntry = { pc, remoteStream: null, pendingCandidates: [] };
+    this._peers.set(userId, entry);
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        this._callbacks.onIceCandidate(userId, event.candidate);
+      }
+    };
+
+    pc.ontrack = (event) => {
+      if (!entry.remoteStream) {
+        entry.remoteStream = new MediaStream();
+        this._callbacks.onRemoteStream(userId, entry.remoteStream);
+      }
+      entry.remoteStream.addTrack(event.track);
+    };
+
+    pc.onconnectionstatechange = () => {
+      this._callbacks.onConnectionStateChange(userId, pc.connectionState);
+      if (pc.connectionState === 'failed') {
+        this.removePeer(userId);
+      }
+    };
+
+    // Add local tracks
+    if (this._localStream) {
+      for (const track of this._localStream.getTracks()) {
+        pc.addTrack(track, this._localStream);
+      }
+    }
+
+    if (isCaller) {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      return offer.sdp!;
+    }
+  }
+
+  /** Remove and close a peer connection */
+  removePeer(userId: string): void {
+    const entry = this._peers.get(userId);
+    if (!entry) return;
+    entry.pc.close();
+    if (entry.remoteStream) {
+      for (const track of entry.remoteStream.getTracks()) track.stop();
+    }
+    this._peers.delete(userId);
+    this._callbacks.onRemoteStreamRemoved(userId);
+  }
+
+  /** Handle an SDP offer from a remote peer and return an answer */
+  async handleOffer(fromUserId: string, sdp: string): Promise<string> {
+    let entry = this._peers.get(fromUserId);
+    if (!entry) {
+      // Auto-create peer for the offerer
+      await this.addPeer(fromUserId, false);
+      entry = this._peers.get(fromUserId)!;
+    }
+    const { pc } = entry;
+    await pc.setRemoteDescription({ type: 'offer', sdp });
+    await this._flushPendingCandidates(fromUserId);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    return answer.sdp!;
+  }
+
+  /** Handle an SDP answer from a remote peer */
+  async handleAnswer(fromUserId: string, sdp: string): Promise<void> {
+    const entry = this._peers.get(fromUserId);
+    if (!entry) return;
+    await entry.pc.setRemoteDescription({ type: 'answer', sdp });
+    await this._flushPendingCandidates(fromUserId);
+  }
+
+  /** Add an ICE candidate for a specific peer */
+  async addIceCandidate(fromUserId: string, candidate: string, sdpMLineIndex: number | null, sdpMid: string | null): Promise<void> {
+    const init: RTCIceCandidateInit = {
+      candidate,
+      sdpMLineIndex: sdpMLineIndex ?? undefined,
+      sdpMid: sdpMid ?? undefined,
+    };
+    const entry = this._peers.get(fromUserId);
+    if (!entry) return;
+    if (!entry.pc.remoteDescription) {
+      entry.pendingCandidates.push(init);
+      return;
+    }
+    try {
+      await entry.pc.addIceCandidate(init);
+    } catch (err) {
+      console.warn(`[GroupWebRTC] Failed to add ICE candidate for ${fromUserId}:`, err);
+    }
+  }
+
+  private async _flushPendingCandidates(userId: string): Promise<void> {
+    const entry = this._peers.get(userId);
+    if (!entry) return;
+    for (const c of entry.pendingCandidates) {
+      try { await entry.pc.addIceCandidate(c); } catch {}
+    }
+    entry.pendingCandidates = [];
+  }
+
+  /** Toggle audio for all peers */
+  setAudioEnabled(enabled: boolean): void {
+    if (this._localStream) {
+      for (const track of this._localStream.getAudioTracks()) track.enabled = enabled;
+    }
+  }
+
+  /** Toggle video for all peers */
+  setVideoEnabled(enabled: boolean): void {
+    if (this._localStream) {
+      for (const track of this._localStream.getVideoTracks()) track.enabled = enabled;
+    }
+  }
+
+  /** Replace camera track with screen share on all peers */
+  async startScreenShare(): Promise<MediaStream> {
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      throw new Error('Screen sharing unavailable — HTTPS is required');
+    }
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    const screenTrack = stream.getVideoTracks()[0];
+
+    for (const [, entry] of this._peers) {
+      const sender = entry.pc.getSenders().find(s => s.track?.kind === 'video');
+      if (sender) await sender.replaceTrack(screenTrack);
+    }
+
+    this._screenStream = stream;
+    screenTrack.onended = () => { this.stopScreenShare(); };
+    return stream;
+  }
+
+  /** Revert from screen share back to camera on all peers */
+  async stopScreenShare(): Promise<void> {
+    if (this._screenStream) {
+      for (const track of this._screenStream.getTracks()) track.stop();
+      this._screenStream = null;
+    }
+    if (!this._localStream) return;
+    const cameraTrack = this._localStream.getVideoTracks()[0] || null;
+    for (const [, entry] of this._peers) {
+      const sender = entry.pc.getSenders().find(s => s.track?.kind === 'video');
+      if (sender) await sender.replaceTrack(cameraTrack);
+    }
+  }
+
+  /** Clean up everything */
+  destroy(): void {
+    if (this._screenStream) {
+      for (const track of this._screenStream.getTracks()) track.stop();
+      this._screenStream = null;
+    }
+    const userIds = [...this._peers.keys()];
+    for (const userId of userIds) {
+      this.removePeer(userId);
+    }
+    if (this._localStream) {
+      for (const track of this._localStream.getTracks()) track.stop();
+      this._localStream = null;
+    }
   }
 }
