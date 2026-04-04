@@ -16,6 +16,7 @@ export interface Route {
   tagName: string;
   hasLoader?: boolean;
   hasSubscribe?: boolean;
+  hasSocket?: boolean;
   hasMeta?: boolean;
   load?: () => Promise<any>;
   layouts?: LayoutInfo[];
@@ -34,6 +35,7 @@ export class NkRouter {
   private currentTag: string | null = null;
   private currentLayoutTags: string[] = [];
   private subscriptions: EventSource[] = [];
+  private _sockets = new Map<string, any>();
   private siteTitle: string;
   public params: Record<string, string> = {};
 
@@ -126,6 +128,9 @@ export class NkRouter {
       es.close();
     }
     this.subscriptions = [];
+    // Disconnect any active socket.io connections
+    for (const [, sock] of this._sockets) sock.disconnect();
+    this._sockets.clear();
   }
 
   async navigate(fullPath: string, pushState = true) {
@@ -207,6 +212,40 @@ export class NkRouter {
         if (pageEl) (pageEl as any).liveData = JSON.parse(e.data);
       };
       this.subscriptions.push(es);
+    }
+
+    // Page socket (bidirectional via Socket.IO)
+    if (match.route.hasSocket) {
+      import('socket.io-client').then(({ io }) => {
+        const ns = `/nk${pathname === '/' ? '/index' : pathname}`;
+        const query: Record<string, string> = {};
+        if (Object.keys(match.params).length > 0) query.__params = JSON.stringify(match.params);
+        try { const locale = getLocale(); if (locale) query.__locale = locale; } catch {}
+
+        const existing = this._sockets.get(pathname);
+        if (existing) existing.disconnect();
+
+        const socket = io(ns, { path: '/__nk_socketio/', query });
+        this._sockets.set(pathname, socket);
+
+        const injectEmit = () => {
+          const pageEl = this.findPageElement(match.route.tagName);
+          if (pageEl) {
+            (pageEl as any).emit = (event: string, payload?: any) => {
+              socket.emit(`nk:${event}`, payload);
+            };
+          }
+        };
+
+        injectEmit();
+        socket.on('nk:data', (data: any) => {
+          const pageEl = this.findPageElement(match.route.tagName);
+          if (pageEl) {
+            (pageEl as any).liveData = data;
+            injectEmit();
+          }
+        });
+      }).catch(err => console.error('[NkRouter] Socket connection failed:', err));
     }
 
     // Layout subscriptions

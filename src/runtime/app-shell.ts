@@ -1,5 +1,6 @@
 import { routes } from 'virtual:lumenjs-routes';
 import { NkRouter } from './router.js';
+import './island.js';
 
 type PrefetchStrategy = 'hover' | 'viewport' | 'none';
 

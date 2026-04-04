@@ -103,7 +103,8 @@ function handleHostMessage(event: MessageEvent) {
 }
 
 function initEditorBridge() {
-  if (window.self !== window.top) {
+  const forceStandalone = new URLSearchParams(window.location.search).has('_nk_standalone');
+  if (!forceStandalone && window.self !== window.top) {
     // Running inside Studio iframe — use postMessage bridge
     startAnnotator();
     setupClickToSelect();

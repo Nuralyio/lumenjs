@@ -1,7 +1,7 @@
 import { Plugin } from 'vite';
 import fs from 'fs';
 import path from 'path';
-import { dirToLayoutTagName, fileHasLoader, fileHasSubscribe, fileHasAuth, fileHasMeta, fileHasStandalone, filePathToRoute, filePathToTagName } from '../../shared/utils.js';
+import { dirToLayoutTagName, fileHasLoader, fileHasSubscribe, fileHasSocket, fileHasAuth, fileHasMeta, fileHasStandalone, filePathToRoute, filePathToTagName } from '../../shared/utils.js';
 
 export interface RouteEntry {
   path: string;
@@ -127,6 +127,7 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
           .map(r => {
             const hasLoader = fileHasLoader(r.componentPath);
             const hasSubscribe = fileHasSubscribe(r.componentPath);
+            const hasSocketFlag = fileHasSocket(r.componentPath);
             const hasAuth = fileHasAuth(r.componentPath);
             const hasMeta = fileHasMeta(r.componentPath);
             const isStandalone = fileHasStandalone(r.componentPath);
@@ -145,7 +146,7 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
               layoutsStr = `, layouts: [${items.join(', ')}]`;
             }
 
-            return `  { path: ${JSON.stringify(r.path)}, tagName: ${JSON.stringify(r.tagName)}${hasLoader ? ', hasLoader: true' : ''}${hasSubscribe ? ', hasSubscribe: true' : ''}${hasMeta ? ', hasMeta: true' : ''}${hasAuth ? ', __nk_has_auth: true' : ''}, load: () => import('${componentPath}')${layoutsStr} }`;
+            return `  { path: ${JSON.stringify(r.path)}, tagName: ${JSON.stringify(r.tagName)}${hasLoader ? ', hasLoader: true' : ''}${hasSubscribe ? ', hasSubscribe: true' : ''}${hasSocketFlag ? ', hasSocket: true' : ''}${hasMeta ? ', hasMeta: true' : ''}${hasAuth ? ', __nk_has_auth: true' : ''}, load: () => import('${componentPath}')${layoutsStr} }`;
           })
           .join(',\n');
 

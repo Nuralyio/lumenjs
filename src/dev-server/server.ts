@@ -142,6 +142,25 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
 
   const shared = getSharedViteConfig(projectDir, { integrations });
 
+  // Load user-defined Vite plugins from lumenjs.plugins.js (if present).
+  // This allows apps to add custom Vite plugins (e.g. proxy middleware)
+  // that run at the raw Connect level, before LumenJS's own middleware.
+  let userPlugins: Plugin[] = [];
+  const pluginsPath = path.join(projectDir, 'lumenjs.plugins.js');
+  if (fs.existsSync(pluginsPath)) {
+    try {
+      // Use a temporary Vite server to load the TS file via ssrLoadModule
+      // would be circular, so we import it directly via dynamic import
+      // after Vite transforms it. Instead, read and eval the JS-compatible parts.
+      // Simplest: the file exports an array of plugin objects.
+      const pluginsMod = await import(pathToFileURL(pluginsPath).href);
+      const exported = pluginsMod.default || pluginsMod.plugins || pluginsMod;
+      if (Array.isArray(exported)) userPlugins = exported;
+    } catch (err) {
+      console.warn(`[LumenJS] Failed to load lumenjs.plugins.js:`, (err as any)?.message);
+    }
+  }
+
   const server = await createViteServer({
     root: projectDir,
     publicDir: fs.existsSync(publicDir) ? publicDir : undefined,
@@ -151,13 +170,19 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       strictPort: false,
       allowedHosts: true,
       cors: true,
-      hmr: process.env.HMR_CLIENT_PORT ? { clientPort: parseInt(process.env.HMR_CLIENT_PORT), protocol: process.env.HMR_PROTOCOL || 'wss', host: process.env.HMR_HOST || undefined } : true,
+      hmr: (process.env.HMR_CLIENT_PORT || process.env.HMR_PATH) ? {
+        ...(process.env.HMR_CLIENT_PORT ? { clientPort: parseInt(process.env.HMR_CLIENT_PORT), port: parseInt(process.env.HMR_CLIENT_PORT) } : {}),
+        ...(process.env.HMR_PROTOCOL ? { protocol: process.env.HMR_PROTOCOL } : {}),
+        ...(process.env.HMR_HOST ? { host: process.env.HMR_HOST } : {}),
+        ...(process.env.HMR_PATH ? { path: process.env.HMR_PATH } : {}),
+      } : true,
       fs: {
         allow: [projectDir, getLumenJSNodeModules(), path.resolve(getLumenJSNodeModules(), '..')],
       },
     },
     resolve: shared.resolve,
     plugins: [
+      ...userPlugins,
       ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
       ...shared.plugins,
       ...(integrations.includes('communication') ? [communicationPlugin(projectDir)] : []),

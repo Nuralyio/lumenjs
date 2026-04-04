@@ -21,6 +21,7 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     'communication': 'communication.js',
     'webrtc': 'webrtc.js',
     'error-boundary': 'error-boundary.js',
+    'island': 'island.js',
     'hydrate-support': '__virtual__',
   };
 
@@ -40,17 +41,27 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     'standalone-overlay-styles': 'standalone-overlay-styles.js',
     'standalone-file-panel': 'standalone-file-panel.js',
     'overlay-utils': 'overlay-utils.js',
+    'overlay-events': 'overlay-events.js',
+    'overlay-hmr': 'overlay-hmr.js',
+    'overlay-selection': 'overlay-selection.js',
     'text-toolbar': 'text-toolbar.js',
+    'toolbar-styles': 'toolbar-styles.js',
     'editor-toolbar': 'editor-toolbar.js',
     'css-rules': 'css-rules.js',
     'ast-modification': 'ast-modification.js',
     'ast-service': 'ast-service.js',
     'file-service': 'file-service.js',
+    'file-editor': 'file-editor.js',
+    'syntax-highlighter': 'syntax-highlighter.js',
     'property-registry': 'property-registry.js',
     'properties-panel': 'properties-panel.js',
+    'properties-panel-persist': 'properties-panel-persist.js',
+    'properties-panel-rows': 'properties-panel-rows.js',
+    'properties-panel-styles': 'properties-panel-styles.js',
     'i18n-key-gen': 'i18n-key-gen.js',
     'ai-chat-panel': 'ai-chat-panel.js',
     'ai-project-panel': 'ai-project-panel.js',
+    'ai-markdown': 'ai-markdown.js',
   };
 
   function rewriteRelativeImports(code: string, modules: Record<string, string>): string {
@@ -59,9 +70,16 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
       // Aliased modules use @lumenjs/name (resolved by Vite alias).
       // Virtual modules use /@lumenjs/name (resolved by this plugin).
       const prefix = aliasedModules.has(name) ? '@lumenjs' : '/@lumenjs';
+      const escaped = file.replace('.', '\\.');
+      // Rewrite `from './file.js'`
       code = code.replace(
-        new RegExp(`from\\s+['"]\\.\\/${file.replace('.', '\\.')}['"]`, 'g'),
+        new RegExp(`from\\s+['"]\\.\\/${escaped}['"]`, 'g'),
         `from '${prefix}/${name}'`
+      );
+      // Rewrite side-effect `import './file.js'`
+      code = code.replace(
+        new RegExp(`import\\s+['"]\\.\\/${escaped}['"]`, 'g'),
+        `import '${prefix}/${name}'`
       );
     }
     return code;

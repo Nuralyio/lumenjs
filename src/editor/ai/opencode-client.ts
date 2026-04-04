@@ -4,9 +4,9 @@
  */
 
 import type { AiChatOptions, AiChatResult, AiStatusResult } from './types.js';
-import { SYSTEM_PROMPT, buildPrompt } from './types.js';
+import { buildPrompt } from './types.js';
 
-const OPENCODE_URL = process.env.OPENCODE_URL || 'http://localhost:3500';
+const OPENCODE_URL = process.env.OPENCODE_URL || 'http://localhost:4096';
 const OPENCODE_PASSWORD = process.env.OPENCODE_SERVER_PASSWORD || '';
 
 function buildHeaders(): Record<string, string> {
@@ -19,7 +19,7 @@ function buildHeaders(): Record<string, string> {
 
 /**
  * Stream an AI chat message via OpenCode's REST API.
- * Uses the /api/session and /api/message endpoints.
+ * Creates a session, sends message, and parses the response.
  */
 export function streamAiChat(projectDir: string, options: AiChatOptions): AiChatResult {
   const tokenCallbacks: ((text: string) => void)[] = [];
@@ -34,10 +34,10 @@ export function streamAiChat(projectDir: string, options: AiChatOptions): AiChat
     try {
       // Create a new session if we don't have one
       if (!sessionId) {
-        const createRes = await fetch(`${OPENCODE_URL}/api/session`, {
+        const createRes = await fetch(`${OPENCODE_URL}/session`, {
           method: 'POST',
           headers: buildHeaders(),
-          body: JSON.stringify({ path: projectDir, system: SYSTEM_PROMPT }),
+          body: JSON.stringify({ path: projectDir }),
           signal: controller.signal,
         });
         if (!createRes.ok) {
@@ -47,53 +47,29 @@ export function streamAiChat(projectDir: string, options: AiChatOptions): AiChat
         sessionId = sessionData.id || sessionData.sessionId || '';
       }
 
-      // Send message and stream response
-      const msgRes = await fetch(`${OPENCODE_URL}/api/session/${sessionId}/message`, {
+      // Send message — OpenCode returns JSON with parts array
+      const msgRes = await fetch(`${OPENCODE_URL}/session/${sessionId}/message`, {
         method: 'POST',
-        headers: { ...buildHeaders(), 'Accept': 'text/event-stream' },
-        body: JSON.stringify({ content: enrichedPrompt }),
+        headers: buildHeaders(),
+        body: JSON.stringify({ parts: [{ type: 'text', text: enrichedPrompt }] }),
         signal: controller.signal,
       });
 
       if (!msgRes.ok) {
-        throw new Error(`OpenCode message failed: ${msgRes.status}`);
+        const errText = await msgRes.text().catch(() => '');
+        throw new Error(`OpenCode message failed: ${msgRes.status} ${errText}`);
       }
 
-      const reader = msgRes.body?.getReader();
-      if (!reader) throw new Error('No response body from OpenCode');
-
-      const decoder = new TextDecoder();
+      // OpenCode returns JSON response with parts array
+      const data = await msgRes.json() as any;
       let fullText = '';
-      let buffer = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(data);
-              // Handle different event formats from OpenCode
-              const text = parsed.content || parsed.text || parsed.delta || '';
-              if (text) {
-                fullText += text;
-                for (const cb of tokenCallbacks) cb(text);
-              }
-            } catch {
-              // Non-JSON data line, treat as raw text
-              if (data) {
-                fullText += data;
-                for (const cb of tokenCallbacks) cb(data);
-              }
-            }
-          }
+      // Extract text from response parts
+      const parts = data.parts || [];
+      for (const part of parts) {
+        if (part.type === 'text' && part.text) {
+          fullText += part.text;
+          for (const cb of tokenCallbacks) cb(part.text);
         }
       }
 
@@ -121,7 +97,7 @@ export function streamAiChat(projectDir: string, options: AiChatOptions): AiChat
  */
 export async function checkAiStatus(): Promise<AiStatusResult> {
   try {
-    const res = await fetch(`${OPENCODE_URL}/api/status`, {
+    const res = await fetch(`${OPENCODE_URL}/global/health`, {
       headers: buildHeaders(),
       signal: AbortSignal.timeout(3000),
     });
