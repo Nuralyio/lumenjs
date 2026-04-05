@@ -256,18 +256,16 @@ export async function serveProject(options: ServeOptions): Promise<void> {
                 proxyRes.on('data', (c: Buffer) => chunks.push(c));
                 proxyRes.on('end', () => {
                   let body = Buffer.concat(chunks).toString('utf-8');
-                  // Inject fetch interceptor for internal API calls
-                  body = body.replace('<head>',
-                    `<head><script>(function(){` +
+                  // The user app container runs Vite with base=/__app_dev/{id}/
+                  // so all asset URLs already include the proxy prefix.
+                  // Just inject the fetch interceptor for API calls.
+                  body = body.replace('</head>',
+                    `<script>(function(){` +
                     `var B='${base}';` +
                     `var P=['/__nk_editor/','/__nk_loader/','/__nk_subscribe/'];` +
                     `var F=window.fetch;` +
                     `window.fetch=function(u,o){if(typeof u==='string')for(var i=0;i<P.length;i++){if(u.startsWith(P[i])){u=B+u;break;}}return F.call(this,u,o)};` +
-                    `})();</script>`);
-                  // Rewrite /@* paths so they load through the proxy
-                  body = body.replace(/src="\/(@[^"]+)"/g, `src="${base}/$1"`);
-                  body = body.replace(/from '\/(@[^']+)'/g, `from '${base}/$1'`);
-                  body = body.replace(/from "\/(@[^"]+)"/g, `from "${base}/$1"`);
+                    `})();</script></head>`);
                   const h = { ...proxyRes.headers };
                   delete h['content-length'];
                   delete h['content-encoding'];
