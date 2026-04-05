@@ -238,6 +238,29 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         if (handled) return;
       }
 
+      // 1b. App dev proxy — forward /__app_dev/{appId}/* to user app containers
+      if (pathname.startsWith('/__app_dev/')) {
+        const m = pathname.match(/^\/__app_dev\/([a-f0-9-]+)(\/.*)?$/);
+        if (m) {
+          const appId = m[1];
+          const containerHost = `nuraly-app-${appId}`;
+          const targetPath = (m[2] || '/') + (queryString ? `?${queryString}` : '');
+          const proxyReq = http.request(
+            { hostname: containerHost, port: 3000, path: targetPath, method, headers: { ...req.headers, host: containerHost } },
+            (proxyRes) => {
+              res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+              proxyRes.pipe(res);
+            },
+          );
+          proxyReq.on('error', () => {
+            res.writeHead(502, { 'Content-Type': 'text/plain' });
+            res.end('Dev server not reachable');
+          });
+          req.pipe(proxyReq);
+          return;
+        }
+      }
+
       // 2. API routes
       if (pathname.startsWith('/api/')) {
         await handleApiRoute(manifest, serverDir, pathname, queryString, method, req, res);
