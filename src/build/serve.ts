@@ -245,11 +245,39 @@ export async function serveProject(options: ServeOptions): Promise<void> {
           const appId = m[1];
           const containerHost = `nuraly-app-${appId}`;
           const targetPath = (m[2] || '/') + (queryString ? `?${queryString}` : '');
+          const base = `/__app_dev/${appId}`;
           const proxyReq = http.request(
             { hostname: containerHost, port: 3000, path: targetPath, method, headers: { ...req.headers, host: containerHost } },
             (proxyRes) => {
-              res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
-              proxyRes.pipe(res);
+              const ct = proxyRes.headers['content-type'] || '';
+              if (ct.includes('text/html') && method === 'GET') {
+                // Buffer HTML to rewrite asset paths through the proxy
+                const chunks: Buffer[] = [];
+                proxyRes.on('data', (c: Buffer) => chunks.push(c));
+                proxyRes.on('end', () => {
+                  let body = Buffer.concat(chunks).toString('utf-8');
+                  // Inject fetch interceptor for internal API calls
+                  body = body.replace('<head>',
+                    `<head><script>(function(){` +
+                    `var B='${base}';` +
+                    `var P=['/__nk_editor/','/__nk_loader/','/__nk_subscribe/'];` +
+                    `var F=window.fetch;` +
+                    `window.fetch=function(u,o){if(typeof u==='string')for(var i=0;i<P.length;i++){if(u.startsWith(P[i])){u=B+u;break;}}return F.call(this,u,o)};` +
+                    `})();</script>`);
+                  // Rewrite /@* paths so they load through the proxy
+                  body = body.replace(/src="\/(@[^"]+)"/g, `src="${base}/$1"`);
+                  body = body.replace(/from '\/(@[^']+)'/g, `from '${base}/$1'`);
+                  body = body.replace(/from "\/(@[^"]+)"/g, `from "${base}/$1"`);
+                  const h = { ...proxyRes.headers };
+                  delete h['content-length'];
+                  delete h['content-encoding'];
+                  res.writeHead(proxyRes.statusCode || 200, h);
+                  res.end(body);
+                });
+              } else {
+                res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+                proxyRes.pipe(res);
+              }
             },
           );
           proxyReq.on('error', () => {
