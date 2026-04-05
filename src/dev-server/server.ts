@@ -163,6 +163,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
 
   const server = await createViteServer({
     root: projectDir,
+    base,
     publicDir: fs.existsSync(publicDir) ? publicDir : undefined,
     server: {
       port,
