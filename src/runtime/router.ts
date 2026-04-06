@@ -420,6 +420,9 @@ export class NkRouter {
     const title = pageTitle || this.siteTitle;
     document.title = title;
 
+    // Let layout components adjust title (e.g. prepend badge counts)
+    window.dispatchEvent(new CustomEvent('nk-title-updated'));
+
     // Announce route change to screen readers
     const announcer = document.getElementById('nk-route-announcer');
     if (announcer) {
