@@ -326,6 +326,12 @@ function renderQuickActions(targets: HTMLElement[]): void {
 function positionBubble(el: HTMLElement): void {
   if (wasDragged) return;
   const rect = el.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) {
+    // Element not laid out (shadow DOM, disconnected, or hidden) — park offscreen
+    panel.style.left = '-9999px';
+    panel.style.top = '-9999px';
+    return;
+  }
   const pw = 340; // panel width
   const ph = panel.offsetHeight || 420;
   const gap = 6;
@@ -378,7 +384,26 @@ export function showAiChatForElements(els: HTMLElement[]): void {
   // Re-render quick actions based on current selection
   renderQuickActions(els);
 
-  // Position first, then make visible — prevents flash at default position
+  // Only show once we have a valid position — prevents flash at top-left
+  const rect = primary.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) {
+    // Element not yet laid out — retry positioning over next few frames
+    let retries = 0;
+    const tryPosition = () => {
+      if (currentTargets[0] !== primary || !primary.isConnected) return;
+      const r = primary.getBoundingClientRect();
+      if (r.width > 0 || r.height > 0) {
+        positionBubble(primary);
+        panel.classList.add('open');
+      } else if (retries < 3) {
+        retries++;
+        requestAnimationFrame(tryPosition);
+      }
+    };
+    requestAnimationFrame(tryPosition);
+    return;
+  }
+
   positionBubble(primary);
   panel.classList.add('open');
 }
