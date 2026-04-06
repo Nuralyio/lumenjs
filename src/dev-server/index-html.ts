@@ -13,6 +13,7 @@ export interface IndexHtmlOptions {
   prefetch?: string;
   authUser?: any;
   headContent?: string;
+  base?: string;
 }
 
 /**
@@ -20,6 +21,9 @@ export interface IndexHtmlOptions {
  * Includes the router, app shell, and optionally the editor bridge.
  */
 export function generateIndexHtml(options: IndexHtmlOptions): string {
+  // Note: script src uses /@lumenjs/ (no base prefix) because Vite's
+  // transformIndexHtml already prepends config.base to absolute URLs.
+  // Including base here would double it when base != '/'.
   const editorScript = options.editorMode
     ? `<script type="module" src="/@lumenjs/editor-bridge"></script>`
     : '';

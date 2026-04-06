@@ -32,9 +32,16 @@ export async function hydrateInitialRoute(
     authScript.remove();
   }
 
-  // Strip locale prefix for route matching (routes are locale-agnostic)
+  // Strip Vite base path and locale prefix for route matching
+  let matchPath = location.pathname;
+  const base = (import.meta as any).env?.BASE_URL;
+  if (base && base !== '/' && matchPath.startsWith(base)) {
+    matchPath = '/' + matchPath.slice(base.length);
+  }
   const config = getI18nConfig();
-  const matchPath = config ? stripLocalePrefix(location.pathname) : location.pathname;
+  if (config) {
+    matchPath = stripLocalePrefix(matchPath);
+  }
 
   const match = matchRoute(matchPath);
   if (!match) return;

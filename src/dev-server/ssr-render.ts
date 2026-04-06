@@ -42,11 +42,19 @@ export async function ssrRenderPage(
     invalidateSsrModule(server, filePath);
     clearSsrCustomElement(g);
 
+    // Use root-relative paths for ssrLoadModule so the module graph entry
+    // gets url='/pages/index.ts' instead of the filesystem path. Vite's
+    // idToModuleMap is shared between SSR and client — if SSR creates the
+    // entry first with a filesystem-path URL, the client inherits it and
+    // HMR breaks (createHotContext gets the wrong path).
+    const projectRoot = path.resolve(pagesDir, '..');
+    const pageModuleUrl = '/' + path.relative(projectRoot, filePath).replace(/\\/g, '/');
+
     // Load the page module via Vite (registers the custom element, applies transforms)
     // Bypass get() so auto-define re-registers fresh classes
     const registry = g.customElements;
     if (registry) registry.__nk_bypass_get = true;
-    const mod = await server.ssrLoadModule(filePath);
+    const mod = await server.ssrLoadModule(pageModuleUrl);
     if (registry) registry.__nk_bypass_get = false;
 
     // Run loader if present
@@ -73,8 +81,9 @@ export async function ssrRenderPage(
       invalidateSsrModule(server, layout.filePath);
       clearSsrCustomElement(g);
 
+      const layoutModuleUrl = '/' + path.relative(projectRoot, layout.filePath).replace(/\\/g, '/');
       if (registry) registry.__nk_bypass_get = true;
-      const layoutMod = await server.ssrLoadModule(layout.filePath);
+      const layoutMod = await server.ssrLoadModule(layoutModuleUrl);
       if (registry) registry.__nk_bypass_get = false;
       let layoutLoaderData: any = undefined;
 

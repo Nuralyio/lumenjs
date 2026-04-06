@@ -85,10 +85,19 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     return code;
   }
 
+  let viteBase = '/';
+
   return {
     name: 'lumenjs-virtual-modules',
     enforce: 'pre' as const,
+    configResolved(config) {
+      viteBase = config.base || '/';
+    },
     resolveId(id) {
+      // Strip Vite base prefix if present (e.g. /__app_dev/{id}/@lumenjs/foo → /@lumenjs/foo)
+      if (viteBase !== '/' && id.startsWith(viteBase)) {
+        id = '/' + id.slice(viteBase.length);
+      }
       const match = id.match(/^\/@lumenjs\/(.+)$/);
       if (!match) return;
       const name = match[1];

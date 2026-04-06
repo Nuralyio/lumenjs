@@ -60,7 +60,8 @@ export function reselectAfterHmr() {
 
 export function setupHmrListener() {
   try {
-    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`, 'vite-hmr');
+    const base = ((import.meta as any).env?.BASE_URL || '/').replace(/\/$/, '');
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${base}`, 'vite-hmr');
     ws.addEventListener('message', (ev) => {
       try {
         const msg = JSON.parse(ev.data);

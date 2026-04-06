@@ -471,8 +471,13 @@ export class NkRouter {
     ]);
   }
 
-  /** Strip locale prefix from a path for internal route matching. */
+  /** Strip base and locale prefix from a path for internal route matching. */
   private stripLocale(path: string): string {
+    // Strip Vite base path (e.g. /__app_dev/{id}/) before route matching
+    const base = (import.meta as any).env?.BASE_URL;
+    if (base && base !== '/' && path.startsWith(base)) {
+      path = '/' + path.slice(base.length);
+    }
     const config = getI18nConfig();
     return config ? stripLocalePrefix(path) : path;
   }

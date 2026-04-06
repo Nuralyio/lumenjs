@@ -171,17 +171,20 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       strictPort: false,
       allowedHosts: true,
       cors: true,
-      hmr: (process.env.HMR_CLIENT_PORT || process.env.HMR_PATH) ? {
-        ...(process.env.HMR_CLIENT_PORT ? { clientPort: parseInt(process.env.HMR_CLIENT_PORT), port: parseInt(process.env.HMR_CLIENT_PORT) } : {}),
+      hmr: process.env.HMR_CLIENT_PORT ? {
+        clientPort: parseInt(process.env.HMR_CLIENT_PORT),
+        port: parseInt(process.env.HMR_CLIENT_PORT),
         ...(process.env.HMR_PROTOCOL ? { protocol: process.env.HMR_PROTOCOL } : {}),
         ...(process.env.HMR_HOST ? { host: process.env.HMR_HOST } : {}),
-        ...(process.env.HMR_PATH ? { path: process.env.HMR_PATH } : {}),
       } : true,
       fs: {
         allow: [projectDir, getLumenJSNodeModules(), path.resolve(getLumenJSNodeModules(), '..')],
       },
     },
     resolve: shared.resolve,
+    // 'custom' prevents Vite from adding SPA fallback and indexHtml middleware,
+    // which would interfere with LumenJS's own HTML handler (especially when base != '/')
+    appType: 'custom',
     plugins: [
       ...userPlugins,
       ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
@@ -193,6 +196,29 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       ...(i18nConfig ? [i18nPlugin(projectDir, i18nConfig)] : []),
       ...(editorMode ? [sourceAnnotatorPlugin(projectDir), editorApiPlugin(projectDir)] : []),
       lumenSocketIOPlugin(pagesDir),
+      ...(base !== '/' ? [{
+        // Fix HMR fetch URLs when Vite runs behind a base path.
+        // Vite's import analysis injects createHotContext() with the full filesystem
+        // path (e.g. /data/user-apps/.../bb2/pages/index.ts) instead of root-relative.
+        // When @vite/client fetches the updated module it builds the URL as
+        //   base + filesystemPath.slice(1) → /__app_dev/{id}/data/.../pages/index.ts
+        // which 404s because transformMiddleware resolves relative to root, doubling
+        // the path. This pre-hook middleware strips the projectDir prefix so
+        // baseMiddleware sees the correct root-relative path.
+        name: 'lumenjs-hmr-path-fix',
+        configureServer(server: ViteDevServer) {
+          const projSlash = projectDir.replace(/\\/g, '/');
+          server.middlewares.use((req: any, _res: any, next: any) => {
+            if (req.url) {
+              const prefix = base + projSlash.slice(1) + '/';
+              if (req.url.startsWith(prefix)) {
+                req.url = base + req.url.slice(prefix.length);
+              }
+            }
+            next();
+          });
+        },
+      } as Plugin] : []),
       {
         // Clear SSR module cache on file changes so the next SSR request uses fresh code.
         // Without this, HMR updates the client but SSR keeps serving stale modules.
@@ -232,37 +258,40 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
           }
         },
         configureServer(server) {
-          server.middlewares.use(async (req: any, res: any, next: any) => {
-            const pathname = (req.url || '/').split('?')[0];
-            if (pathname.startsWith('/@') || pathname.startsWith('/node_modules') || pathname.includes('.')) {
-              return next();
-            }
-
-            const middlewareEntries = scanMiddleware(pagesDir);
-            if (middlewareEntries.length === 0) return next();
-
-            const matchingDirs = getMiddlewareDirsForPathname(pathname, middlewareEntries);
-            if (matchingDirs.length === 0) return next();
-
-            const allMw: ConnectMiddleware[] = [];
-            for (const entry of matchingDirs) {
-              try {
-                const mod = await server.ssrLoadModule(entry.filePath);
-                allMw.push(...extractMiddleware(mod));
-              } catch (err) {
-                console.error(`[LumenJS] Failed to load _middleware.ts (${entry.dir || 'root'}):`, err);
+          return () => {
+            server.middlewares.use(async (req: any, res: any, next: any) => {
+              const pathname = (req.url || '/').split('?')[0];
+              if (pathname.startsWith('/@') || pathname.startsWith('/node_modules') || pathname.includes('.')) {
+                return next();
               }
-            }
 
-            if (allMw.length === 0) return next();
-            runMiddlewareChain(allMw, req, res, next);
-          });
+              const middlewareEntries = scanMiddleware(pagesDir);
+              if (middlewareEntries.length === 0) return next();
+
+              const matchingDirs = getMiddlewareDirsForPathname(pathname, middlewareEntries);
+              if (matchingDirs.length === 0) return next();
+
+              const allMw: ConnectMiddleware[] = [];
+              for (const entry of matchingDirs) {
+                try {
+                  const mod = await server.ssrLoadModule(entry.filePath);
+                  allMw.push(...extractMiddleware(mod));
+                } catch (err) {
+                  console.error(`[LumenJS] Failed to load _middleware.ts (${entry.dir || 'root'}):`, err);
+                }
+              }
+
+              if (allMw.length === 0) return next();
+              runMiddlewareChain(allMw, req, res, next);
+            });
+          };
         }
       },
       {
         name: 'lumenjs-index-html',
         configureServer(server) {
-          server.middlewares.use((req, res, next) => {
+          return () => {
+            server.middlewares.use((req, res, next) => {
             // Guard against malformed percent-encoded URLs that crash Vite's transformIndexHtml
             if (req.url) {
               try {
@@ -310,6 +339,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                   prefetch: prefetchStrategy,
                   authUser: ssrResult?.authUser ?? (req as any).nkAuth?.user ?? undefined,
                   headContent,
+                  base,
                 });
                 const transformed = await server.transformIndexHtml(req.url!, shellHtml);
                 const finalHtml = ssrResult
@@ -320,7 +350,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                 res.end(finalHtml);
               }).catch(err => {
                 console.error('[LumenJS] SSR/HTML generation error:', err);
-                const html = generateIndexHtml({ title, editorMode, integrations, locale, i18nConfig: i18nConfig || undefined, translations, prefetch: prefetchStrategy, headContent });
+                const html = generateIndexHtml({ title, editorMode, integrations, locale, i18nConfig: i18nConfig || undefined, translations, prefetch: prefetchStrategy, headContent, base });
                 server.transformIndexHtml(req.url!, html).then(transformed => {
                   res.setHeader('Content-Type', 'text/html');
                   res.setHeader('Cache-Control', 'no-store');
@@ -331,6 +361,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
             }
             next();
           });
+          };
         }
       }
     ],
