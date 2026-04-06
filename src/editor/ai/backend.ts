@@ -7,7 +7,7 @@
 import type { AiChatOptions, AiChatResult, AiStatusResult } from './types.js';
 export type { AiChatOptions, AiChatResult, AiStatusResult } from './types.js';
 
-type Backend = 'claude-code' | 'opencode';
+type Backend = 'claude-code' | 'opencode' | 'deepseek';
 
 let resolvedBackend: Backend | null = null;
 
@@ -15,13 +15,20 @@ async function detectBackend(): Promise<Backend> {
   if (resolvedBackend) return resolvedBackend;
 
   const explicit = process.env.AI_BACKEND as Backend | undefined;
-  if (explicit === 'claude-code' || explicit === 'opencode') {
+  if (explicit === 'claude-code' || explicit === 'opencode' || explicit === 'deepseek') {
     resolvedBackend = explicit;
     console.log(`[LumenJS] AI backend: ${explicit} (from AI_BACKEND env)`);
     return resolvedBackend;
   }
 
-  // Auto-detect: try Claude Code first (subscription-based, no server needed)
+  // Auto-detect: try DeepSeek if API key is set
+  if (process.env.DEEPSEEK_API_KEY) {
+    resolvedBackend = 'deepseek';
+    console.log('[LumenJS] AI backend: deepseek (auto-detected from DEEPSEEK_API_KEY)');
+    return resolvedBackend;
+  }
+
+  // Auto-detect: try Claude Code (subscription-based, no server needed)
   try {
     const cc = await import('./claude-code-client.js');
     const status = await cc.checkAiStatus();
@@ -44,6 +51,9 @@ async function getClient() {
   const backend = await detectBackend();
   if (backend === 'claude-code') {
     return import('./claude-code-client.js');
+  }
+  if (backend === 'deepseek') {
+    return import('./deepseek-client.js');
   }
   return import('./opencode-client.js');
 }
