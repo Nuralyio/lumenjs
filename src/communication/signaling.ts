@@ -9,6 +9,8 @@ export interface SignalingContext {
   emitToSocket: (socketId: string, data: any) => void;
   /** Broadcast to all sockets in a room */
   broadcastAll: (room: string, data: any) => void;
+  /** Optional database for persisting call logs */
+  db?: any;
 }
 
 /** Emit data to all sockets belonging to a user */
@@ -171,6 +173,53 @@ export function handleCallHangup(
         data: { callId: data.callId, state: 'ended', endReason: data.reason },
       });
     }
+
+    // Persist call log as a message in the conversation
+    if (ctx.db && call.conversationId) {
+      try {
+        const callStatus = data.reason === 'rejected' ? 'declined'
+          : data.reason === 'no-answer' ? 'missed'
+          : 'completed';
+        const attachment = JSON.stringify({
+          callType: call.type || 'audio',
+          callStatus,
+          duration: (data as any).duration || null,
+        });
+        const msgId = `call-${data.callId}`;
+        const isPg = !!ctx.db.isPg;
+        if (isPg) {
+          ctx.db.run(
+            `INSERT INTO messages (id, conversation_id, sender_id, content, type, attachment, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW()) ON CONFLICT (id) DO NOTHING`,
+            msgId, call.conversationId, call.callerId, '', 'call', attachment
+          );
+          ctx.db.run(`UPDATE conversations SET updated_at = NOW() WHERE id = $1`, call.conversationId);
+        } else {
+          ctx.db.run(
+            `INSERT OR IGNORE INTO messages (id, conversation_id, sender_id, content, type, attachment, created_at)
+             VALUES (?, ?, ?, '', 'call', ?, datetime('now'))`,
+            msgId, call.conversationId, call.callerId, attachment
+          );
+          ctx.db.run(`UPDATE conversations SET updated_at = datetime('now') WHERE id = ?`, call.conversationId);
+        }
+        // Broadcast call message to all participants
+        const callMsg = {
+          id: msgId,
+          conversationId: call.conversationId,
+          senderId: call.callerId,
+          content: '',
+          type: 'call',
+          attachment: { callType: call.type || 'audio', callStatus, duration: (data as any).duration || null },
+          createdAt: new Date().toISOString(),
+        };
+        for (const uid of allUsers) {
+          emitToUser(ctx, uid, { event: 'message:new', data: callMsg });
+        }
+        // Also emit to the caller
+        emitToUser(ctx, ctx.userId, { event: 'message:new', data: callMsg });
+      } catch {}
+    }
+
     ctx.store.removeCall(data.callId);
   }
 }

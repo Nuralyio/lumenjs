@@ -150,6 +150,7 @@ export function createCommunicationHandler(options: CommunicationHandlerOptions 
         }
       },
       broadcastAll: ctx.room.broadcastAll,
+      db: options.db,
     };
 
     // Broadcast online status if this is the user's first socket
