@@ -2,7 +2,7 @@
 
 Full-stack Lit web component framework with file-based routing, server loaders, SSR, and API routes.
 
-Published as `@nuraly/lumenjs` (MIT, v0.2.1). Mirrored to `Nuralyio/lumenjs`.
+Published as `@nuraly/lumenjs` (MIT, v0.3.0). Mirrored to `Nuralyio/lumenjs`.
 
 ## Source Structure
 

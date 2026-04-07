@@ -7,6 +7,8 @@
 
 # LumenJS
 
+> **Mirror**: This repository is a read-only mirror of the original private repository, automatically synced on push to main.
+
 A full-stack web framework for [Lit](https://lit.dev/) web components. File-based routing, server loaders, real-time subscriptions (SSE), SSR with hydration, nested layouts, API routes, i18n, and a visual editor — all powered by Vite.
 
 ## Getting Started
