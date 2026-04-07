@@ -75,17 +75,11 @@ export class WebRTCManager {
       throw err;
     }
     try {
-      // Always request video so both peers negotiate a video track in the SDP.
-      // For audio-only calls the video track is immediately disabled (black frame)
-      // but stays in the SDP as sendrecv, allowing replaceTrack for screen sharing.
-      this._localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio });
+      // Only request video when the call type is video.
+      // For audio-only calls, skip the camera entirely to avoid the permission
+      // prompt and camera LED. Screen sharing can add a video track later.
+      this._localStream = await navigator.mediaDevices.getUserMedia({ video, audio });
       this._callbacks.onLocalStream(this._localStream);
-
-      if (!video) {
-        for (const vt of this._localStream.getVideoTracks()) {
-          vt.enabled = false;
-        }
-      }
 
       for (const track of this._localStream.getTracks()) {
         this._pc?.addTrack(track, this._localStream);
@@ -297,11 +291,8 @@ export class GroupWebRTCManager {
       throw err;
     }
     try {
-      this._localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio });
+      this._localStream = await navigator.mediaDevices.getUserMedia({ video, audio });
       this._callbacks.onLocalStream(this._localStream);
-      if (!video) {
-        for (const vt of this._localStream.getVideoTracks()) vt.enabled = false;
-      }
       return this._localStream;
     } catch (err) {
       this._callbacks.onError(new Error(`Failed to access media: ${(err as Error).message}`));
