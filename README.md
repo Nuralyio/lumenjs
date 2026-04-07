@@ -186,6 +186,45 @@ npx lumenjs add tailwind    # Tailwind CSS via @tailwindcss/vite
 export default { integrations: ['nuralyui'] };
 ```
 
+## Visual Editor
+
+Start the dev server with `--editor-mode` to edit pages visually in the browser:
+
+```bash
+npx lumenjs dev --editor-mode
+```
+
+Click elements to select them, edit properties and styles in the side panel, double-click text to edit inline, or ask the AI assistant to make changes for you. Everything saves directly to your source files.
+
+### AI Backend
+
+The editor includes an AI assistant that can modify your components. It supports three backends:
+
+**Claude Code** (recommended) — uses your Pro/Max subscription, no API key needed:
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude login
+npm install @anthropic-ai/claude-agent-sdk
+npx lumenjs dev --editor-mode
+```
+
+**OpenCode** — works with any LLM provider (OpenAI, Anthropic API, local models):
+
+```bash
+npm install -g opencode
+opencode serve                        # terminal 1
+npx lumenjs dev --editor-mode         # terminal 2
+```
+
+**DeepSeek** — direct API integration:
+
+```bash
+DEEPSEEK_API_KEY=sk-your-key npx lumenjs dev --editor-mode
+```
+
+Set `AI_BACKEND` to force a specific backend (`claude-code`, `opencode`, or `deepseek`). Without it, the editor auto-detects in order: DeepSeek (if API key set) → Claude Code (if CLI logged in) → OpenCode (fallback).
+
 ## CLI
 
 ```
