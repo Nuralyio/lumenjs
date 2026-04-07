@@ -90,6 +90,7 @@ export function lumenLlmsPlugin(projectDir: string): Plugin {
             integrations: config.integrations,
             i18n: config.i18n ? { locales: config.i18n.locales, defaultLocale: config.i18n.defaultLocale } : undefined,
             db: config.db,
+            baseUrl: '',
           });
 
           res.setHeader('Content-Type', 'text/plain; charset=utf-8');

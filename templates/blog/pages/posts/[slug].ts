@@ -29,8 +29,19 @@ export async function loader({ params }: { params: { slug: string } }) {
 }
 
 export class PagePost extends LitElement {
-  static properties = { loaderData: { type: Object }, slug: { type: String } };
-  loaderData: any = {};
+  static properties = {
+    title: { type: String },
+    date: { type: String },
+    content: { type: String },
+    readingTime: { type: Number },
+    notFound: { type: Boolean },
+    slug: { type: String },
+  };
+  title = '';
+  date = '';
+  content = '';
+  readingTime = 0;
+  notFound = false;
   slug = '';
 
   static styles = css`
@@ -44,7 +55,7 @@ export class PagePost extends LitElement {
   `;
 
   render() {
-    if (this.loaderData.notFound) {
+    if (this.notFound) {
       return html`
         <a class="back" href="/posts">← Back to posts</a>
         <p class="not-found">Post not found.</p>
@@ -52,9 +63,9 @@ export class PagePost extends LitElement {
     }
     return html`
       <a class="back" href="/">← Back to posts</a>
-      <h1>${this.loaderData.title}</h1>
-      <div class="date">${this.loaderData.date} · ${this.loaderData.readingTime} min read</div>
-      <p class="content">${this.loaderData.content}</p>
+      <h1>${this.title}</h1>
+      <div class="date">${this.date} · ${this.readingTime} min read</div>
+      <p class="content">${this.content}</p>
     `;
   }
 }

@@ -209,7 +209,7 @@ export class NkRouter {
       const es = connectSubscribe(pathname, match.params);
       es.onmessage = (e) => {
         const pageEl = this.findPageElement(match.route.tagName);
-        if (pageEl) (pageEl as any).liveData = JSON.parse(e.data);
+        if (pageEl) this.spreadData(pageEl, JSON.parse(e.data));
       };
       this.subscriptions.push(es);
     }
@@ -241,7 +241,7 @@ export class NkRouter {
         socket.on('nk:data', (data: any) => {
           const pageEl = this.findPageElement(match.route.tagName);
           if (pageEl) {
-            (pageEl as any).liveData = data;
+            this.spreadData(pageEl, data);
             injectEmit();
           }
         });
@@ -254,7 +254,7 @@ export class NkRouter {
         const es = connectLayoutSubscribe(layout.loaderPath || '');
         es.onmessage = (e) => {
           const layoutEl = this.outlet?.querySelector(layout.tagName);
-          if (layoutEl) (layoutEl as any).liveData = JSON.parse(e.data);
+          if (layoutEl) this.spreadData(layoutEl, JSON.parse(e.data));
         };
         this.subscriptions.push(es);
       }

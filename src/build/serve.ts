@@ -318,7 +318,7 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         return;
       }
 
-      // 3. Static assets — try to serve from client dir
+      // 3. Static assets — try to serve from client dir (includes pre-generated .md files)
       if (pathname.includes('.')) {
         const served = serveStaticFile(clientDir, pathname, req, res);
         if (served) return;

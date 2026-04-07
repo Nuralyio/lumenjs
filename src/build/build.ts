@@ -3,11 +3,14 @@ import fs from 'fs';
 import { getSharedViteConfig } from '../dev-server/server.js';
 import { readProjectConfig } from '../dev-server/config.js';
 import type { BuildManifest } from '../shared/types.js';
-import { filePathToTagName } from '../shared/utils.js';
+import { filePathToTagName, fileGetApiMethods } from '../shared/utils.js';
 import { scanPages, scanLayouts, scanApiRoutes, scanMiddleware, getLayoutDirsForPage } from './scan.js';
 import { buildClient } from './build-client.js';
 import { buildServer } from './build-server.js';
 import { prerenderPages } from './build-prerender.js';
+import { generateMarkdownPages } from './build-markdown.js';
+import { generateLlmsTxt } from '../llms/generate.js';
+import type { LlmsPage, LlmsApiRoute } from '../llms/generate.js';
 
 export interface BuildOptions {
   projectDir: string;
@@ -95,7 +98,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
       const relPath = path.relative(pagesDir, e.filePath).replace(/\\/g, '/');
       return {
         path: e.routePath,
-        module: (e.hasLoader || e.hasSubscribe || e.hasSocket || e.prerender) ? `pages/${e.name.replace(/\[(\w+)\]/g, '_$1_')}.js` : '',
+        module: `pages/${e.name.replace(/\[(\w+)\]/g, '_$1_')}.js`,
         hasLoader: e.hasLoader,
         hasSubscribe: e.hasSubscribe,
         tagName: filePathToTagName(relPath),
@@ -135,6 +138,29 @@ export async function buildProject(options: BuildOptions): Promise<void> {
     JSON.stringify(manifest, null, 2)
   );
 
+  // --- Generate llms.txt ---
+  const publicLlms = path.join(publicDir, 'llms.txt');
+  if (!fs.existsSync(publicLlms)) {
+    const llmsPages: LlmsPage[] = pageEntries.map(e => ({
+      path: e.routePath,
+      hasLoader: e.hasLoader,
+      hasSubscribe: e.hasSubscribe,
+    }));
+    const llmsApiRoutes: LlmsApiRoute[] = apiEntries.map(e => ({
+      path: e.routePath,
+      methods: fileGetApiMethods(e.filePath),
+    })).filter(r => r.methods.length > 0);
+    const llmsContent = generateLlmsTxt({
+      title,
+      pages: llmsPages,
+      apiRoutes: llmsApiRoutes,
+      integrations,
+      i18n: i18nConfig ? { locales: i18nConfig.locales, defaultLocale: i18nConfig.defaultLocale } : undefined,
+    });
+    fs.writeFileSync(path.join(clientDir, 'llms.txt'), llmsContent);
+    console.log('[LumenJS] Generated llms.txt');
+  }
+
   // --- Pre-render phase ---
   await prerenderPages({
     serverDir,
@@ -142,6 +168,15 @@ export async function buildProject(options: BuildOptions): Promise<void> {
     pagesDir,
     pageEntries,
     layoutEntries,
+    manifest,
+  });
+
+  // --- Generate .md files for each page (llms.txt per-page support) ---
+  await generateMarkdownPages({
+    serverDir,
+    clientDir,
+    pagesDir,
+    pageEntries,
     manifest,
   });
 

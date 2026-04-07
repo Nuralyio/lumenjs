@@ -33,8 +33,8 @@ export async function loader() {
 }
 
 export class PageIndex extends LitElement {
-  static properties = { loaderData: { type: Object } };
-  loaderData: any = {};
+  static properties = { posts: { type: Array } };
+  posts: any[] = [];
 
   static styles = css`
     :host { display: block; }
@@ -49,7 +49,7 @@ export class PageIndex extends LitElement {
   `;
 
   render() {
-    const posts = this.loaderData.posts || [];
+    const posts = this.posts || [];
     return html`
       <h1>Blog</h1>
       <p class="subtitle">Thoughts and tutorials</p>

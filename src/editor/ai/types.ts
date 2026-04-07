@@ -49,11 +49,11 @@ Auto-registration:
 
 Server loaders:
 - \`export async function loader({ params, query, url, headers, locale })\` at file top level.
-- Return a data object → available as \`this.loaderData\` on the page element.
+- Return a data object → each key is spread as an individual property on the page element (e.g., return \`{ posts }\` → access as \`this.posts\`).
 
 Subscribe (SSE):
 - \`export async function subscribe({ params, headers, locale, push })\` for real-time data.
-- Call \`push(data)\` to send events → available as \`this.liveData\` on the page element.
+- Call \`push(data)\` to send events → each key is spread as an individual property on the page element (same as loader data).
 
 Middleware:
 - \`_middleware.ts\` in any directory applies to that route subtree.

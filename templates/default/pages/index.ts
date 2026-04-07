@@ -5,8 +5,8 @@ export async function loader() {
 }
 
 export class PageIndex extends LitElement {
-  static properties = { loaderData: { type: Object } };
-  loaderData: any = {};
+  static properties = { title: { type: String } };
+  title = '';
 
   static styles = css`
     :host { display: block; max-width: 640px; margin: 0 auto; padding: 2rem; font-family: system-ui; }
@@ -17,7 +17,7 @@ export class PageIndex extends LitElement {
 
   render() {
     return html`
-      <h1>${this.loaderData.title}</h1>
+      <h1>${this.title}</h1>
       <p>Edit <code>pages/index.ts</code> to get started.</p>
     `;
   }

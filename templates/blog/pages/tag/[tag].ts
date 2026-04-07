@@ -11,8 +11,9 @@ export async function loader({ params }: { params: { tag: string } }) {
 }
 
 export class PageTag extends LitElement {
-  static properties = { loaderData: { type: Object } };
-  loaderData: any = {};
+  static properties = { tag: { type: String }, posts: { type: Array } };
+  tag = '';
+  posts: any[] = [];
 
   static styles = css`
     :host { display: block; }
@@ -28,12 +29,11 @@ export class PageTag extends LitElement {
   `;
 
   render() {
-    const { tag, posts } = this.loaderData;
     return html`
       <a class="back" href="/">← All posts</a>
-      <h1>Tagged: ${tag}</h1>
-      <p class="subtitle">${posts?.length || 0} post${posts?.length !== 1 ? 's' : ''}</p>
-      ${(posts || []).map((p: any) => html`
+      <h1>Tagged: ${this.tag}</h1>
+      <p class="subtitle">${this.posts?.length || 0} post${this.posts?.length !== 1 ? 's' : ''}</p>
+      ${(this.posts || []).map((p: any) => html`
         <div class="post">
           <a href="/posts/${p.slug}">${p.title}</a>
           <div class="meta">${p.date}</div>

@@ -13,6 +13,8 @@ export interface LlmsApiRoute {
 
 export interface LlmsTxtInput {
   title: string;
+  description?: string;
+  baseUrl?: string;
   pages: LlmsPage[];
   apiRoutes: LlmsApiRoute[];
   integrations: string[];
@@ -21,65 +23,55 @@ export interface LlmsTxtInput {
 }
 
 /**
- * Generate the llms.txt content from project metadata and resolved page data.
+ * Generate the llms.txt content following the llmstxt.org spec.
+ *
+ * Structure: H1 title, blockquote summary, H2 sections with
+ * markdown links to each page (linking to .md versions).
  */
 export function generateLlmsTxt(input: LlmsTxtInput): string {
   const lines: string[] = [];
+  const base = input.baseUrl ? input.baseUrl.replace(/\/$/, '') : '';
 
   lines.push(`# ${input.title}`);
   lines.push('');
-  lines.push('> Built with LumenJS');
+  lines.push(`> ${input.description || `${input.title}. Built with LumenJS.`}`);
   lines.push('');
 
-  // Pages section
-  if (input.pages.length > 0) {
-    lines.push('## Pages');
+  // Group pages by top-level path segment
+  const groups = new Map<string, LlmsPage[]>();
+  for (const page of input.pages) {
+    const segments = page.path.split('/').filter(Boolean);
+    const section = segments.length > 0 ? segments[0] : 'pages';
+    if (!groups.has(section)) groups.set(section, []);
+    groups.get(section)!.push(page);
+  }
+
+  // Pages — grouped by section with links
+  for (const [section, pages] of groups) {
+    const sectionTitle = section.charAt(0).toUpperCase() + section.slice(1);
+    lines.push(`## ${sectionTitle}`);
     lines.push('');
-
-    for (const page of input.pages) {
-      lines.push(`### ${page.path}`);
-
+    for (const page of pages) {
       const isDynamic = page.path.includes(':');
-
-      if (isDynamic) {
-        // Dynamic route — show expanded entries if available
-        if (page.dynamicEntries && page.dynamicEntries.length > 0) {
-          lines.push(`Dynamic route — ${page.dynamicEntries.length} ${page.dynamicEntries.length === 1 ? 'entry' : 'entries'}:`);
-          lines.push('');
-          for (const entry of page.dynamicEntries) {
-            lines.push(`#### ${entry.path}`);
-            if (entry.loaderData) {
-              lines.push(flattenData(entry.loaderData));
-            }
-            lines.push('');
-          }
-        } else {
-          lines.push('- Dynamic route');
-          lines.push('');
-        }
-      } else if (page.loaderData && typeof page.loaderData === 'object') {
-        // Static page with loader data
-        lines.push(flattenData(page.loaderData));
-        lines.push('');
-      } else {
-        // Simple page
-        const features: string[] = [];
-        if (page.hasLoader) features.push('with loader data');
-        if (page.hasSubscribe) features.push('with live data');
-        lines.push(`- Server-rendered page${features.length ? ' ' + features.join(', ') : ''}`);
-        lines.push('');
-      }
+      const label = page.path === '/' ? 'Home' : page.path;
+      const features: string[] = [];
+      if (isDynamic) features.push('dynamic');
+      if (page.hasLoader) features.push('server data');
+      if (page.hasSubscribe) features.push('live data');
+      const desc = features.length > 0 ? `: ${features.join(', ')}` : '';
+      // Link to .md version for LLM-readable content (skip dynamic routes)
+      const href = !isDynamic ? `${base}${page.path}.md` : `${base}${page.path}`;
+      lines.push(`- [${label}](${href})${desc}`);
     }
+    lines.push('');
   }
 
   // API Routes section
   if (input.apiRoutes.length > 0) {
-    lines.push('## API Routes');
+    lines.push('## API');
     lines.push('');
     for (const route of input.apiRoutes) {
-      for (const method of route.methods) {
-        lines.push(`- ${method} /api/${route.path}`);
-      }
+      lines.push(`- [${route.methods.join(', ')} /api/${route.path}](${base}/api/${route.path})`);
     }
     lines.push('');
   }
@@ -102,6 +94,29 @@ export function generateLlmsTxt(input: LlmsTxtInput): string {
     for (const feature of features) {
       lines.push(`- ${feature}`);
     }
+    lines.push('');
+  }
+
+  return lines.join('\n').trimEnd() + '\n';
+}
+
+/**
+ * Generate llms-full.txt — all page content inlined as one markdown document.
+ */
+export function generateLlmsFullTxt(input: LlmsTxtInput & { pageContents: { path: string; markdown: string }[] }): string {
+  const lines: string[] = [];
+
+  lines.push(`# ${input.title}`);
+  lines.push('');
+  lines.push(`> ${input.description || `${input.title}. Built with LumenJS.`}`);
+  lines.push('');
+
+  for (const page of input.pageContents) {
+    lines.push('---');
+    lines.push(`source: ${page.path}`);
+    lines.push('---');
+    lines.push('');
+    lines.push(page.markdown.trim());
     lines.push('');
   }
 

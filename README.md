@@ -68,6 +68,8 @@ export class PageIndex extends LitElement {
 
 Export a `loader()` to fetch data server-side. It runs on SSR and via `/__nk_loader/<path>` during client-side navigation. Automatically stripped from client bundles.
 
+Declare each returned key as its own property — the framework spreads loader data onto the element automatically.
+
 ```typescript
 // pages/blog/[slug].ts
 export async function loader({ params }) {
@@ -77,11 +79,11 @@ export async function loader({ params }) {
 }
 
 export class BlogPost extends LitElement {
-  static properties = { loaderData: { type: Object } };
-  loaderData: any = {};
+  static properties = { post: { type: Object } };
+  post: any = null;
 
   render() {
-    return html`<h1>${this.loaderData.post?.title}</h1>`;
+    return html`<h1>${this.post?.title}</h1>`;
   }
 }
 ```
@@ -110,16 +112,20 @@ export function subscribe({ push }) {
 }
 
 export class PageDashboard extends LitElement {
-  static properties = { liveData: { type: Object } };
-  liveData: any = null;
+  static properties = {
+    time: { type: String },
+    count: { type: Number },
+  };
+  time = '';
+  count = 0;
 
   render() {
-    return html`<p>Server time: ${this.liveData?.time}</p>`;
+    return html`<p>Server time: ${this.time}</p>`;
   }
 }
 ```
 
-Return a cleanup function — it runs when the client disconnects.
+Each key from `push()` is spread as an individual property on the component — same as loader data. Return a cleanup function — it runs when the client disconnects.
 
 ## Layouts
 

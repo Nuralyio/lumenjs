@@ -31,11 +31,11 @@ export function subscribe({ push }: { push: (data: any) => void }) {
 
 export class PageIndex extends LitElement {
   static properties = {
-    loaderData: { type: Object },
-    liveData: { type: Object },
+    stats: { type: Array },
+    updatedAt: { type: String },
   };
-  loaderData: any = {};
-  liveData: any = null;
+  stats: any[] = [];
+  updatedAt = '';
 
   static styles = css`
     :host { display: block; }
@@ -50,8 +50,8 @@ export class PageIndex extends LitElement {
   `;
 
   render() {
-    const stats = this.liveData?.stats || this.loaderData.stats || [];
-    const isLive = !!this.liveData;
+    const stats = this.stats || [];
+    const isLive = !!this.updatedAt;
     return html`
       <h1>Overview</h1>
       <div class="grid">
@@ -64,7 +64,7 @@ export class PageIndex extends LitElement {
       </div>
       ${isLive ? html`
         <div class="status">
-          <span class="dot"></span>Live — updated ${this.liveData.updatedAt ? new Date(this.liveData.updatedAt).toLocaleTimeString() : ''}
+          <span class="dot"></span>Live — updated ${this.updatedAt ? new Date(this.updatedAt).toLocaleTimeString() : ''}
         </div>
       ` : ''}
     `;

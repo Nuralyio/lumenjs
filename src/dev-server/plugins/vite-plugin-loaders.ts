@@ -18,15 +18,16 @@ import { installDomShims } from '../../shared/dom-shims.js';
  *   }
  *
  *   export class PageItem extends LitElement {
- *     @property({ type: Object }) loaderData = {};
+ *     @property({ type: Object }) item = null;
+ *     @property({ type: Number }) timestamp = 0;
  *     render() {
- *       return html`<h1>${this.loaderData.item?.name}</h1>`;
+ *       return html`<h1>${this.item?.name}</h1>`;
  *     }
  *   }
  *
  * The loader runs server-side via /__nk_loader/<page-path>
  * Layout loaders run via /__nk_loader/__layout/?__dir=<dir>
- * The router auto-fetches and passes the result as `loaderData` property.
+ * The router auto-fetches and spreads each key as an individual property on the element.
  */
 export function lumenLoadersPlugin(pagesDir: string): Plugin {
   return {

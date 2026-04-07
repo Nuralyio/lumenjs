@@ -27,10 +27,9 @@ export async function buildServer(opts: BuildServerOptions): Promise<void> {
   // Collect server entry points (pages with loaders + layouts with loaders + API routes)
   const serverEntries: Record<string, string> = {};
 
+  // Include all pages in server build (enables SSR for .md endpoints)
   for (const entry of pageEntries) {
-    if (entry.hasLoader || entry.hasSubscribe || entry.prerender) {
-      serverEntries[`pages/${entry.name}`] = entry.filePath;
-    }
+    serverEntries[`pages/${entry.name}`] = entry.filePath;
   }
 
   for (const entry of layoutEntries) {

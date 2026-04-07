@@ -96,6 +96,7 @@ src/
 - `[slug]` = dynamic param, `[...rest]` = catch-all
 - `_layout.ts` in any directory = nested layout (uses `<slot>`, persists across navigation)
 - `_middleware.ts` in any directory = Express-style middleware for that route subtree
+- `_`-prefixed folders/files are ignored by the router (except `_layout` and `_middleware`). Use for colocated components: `pages/feed/_components/post-card.ts`
 - `api/` → API routes with named exports: `GET`, `POST`, `PUT`, `DELETE`
 
 ### Auto-registration
@@ -105,14 +106,15 @@ src/
 
 ### Server loaders
 - `export async function loader({ params, query, url, headers, locale })` — runs server-side
-- Return data object → available as `this.loaderData` on the page element
-- Loader data keys are also spread as individual properties on the element (e.g., `this.stats` if loader returns `{ stats: [...] }`)
-- Both approaches work: `this.loaderData.stats` (classic) or `this.stats` (individual properties)
+- Each key in the returned object is auto-spread as an individual property on the element
+- Declare each key as its own property (e.g., `static properties = { stats: { type: Array } }` if loader returns `{ stats: [...] }`)
+- Access directly as `this.stats` — no `loaderData` wrapper needed
 - Return `{ __nk_redirect: true, location: '/path', status: 302 }` for redirects
 
 ### Subscribe (SSE)
 - `export async function subscribe({ params, headers, locale, push })` — server-sent events
-- Call `push(data)` to send events → available as `this.liveData` on the page element
+- Each key from `push(data)` is spread as an individual property on the element (same as loader data)
+- Declare matching properties for each key pushed
 - Return a cleanup function
 
 ### Config file

@@ -39,7 +39,7 @@ Conversion rule for tag names: strip extension, replace `/` and `\` with `-`, re
 
 Priority: static > dynamic `[param]` > catch-all `[...param]`.
 
-Only `.ts` and `.js` files are scanned. Files starting with `_` are ignored (except `_layout`).
+Only `.ts` and `.js` files are scanned. Files and folders starting with `_` are ignored (except `_layout` and `_middleware`). Use `_`-prefixed folders to colocate components alongside pages without creating routes (e.g., `pages/feed/_components/post-card.ts`).
 
 ## Pages
 
@@ -49,13 +49,14 @@ Class must: extend `LitElement`, be exported. Class name is irrelevant to tag �
 
 ## Loaders
 
-Named export `loader()` on any page or layout runs server-side, result injected as `loaderData` property.
+Named export `loader()` on any page or layout runs server-side. Each key in the returned object is spread as an individual property on the page element.
 
 ```
 export async function loader(ctx: { params, query, url, headers, locale }) → object
 ```
 
-- Property name is exactly `loaderData` (declared as `static properties = { loaderData: { type: Object } }; loaderData: any = {}`)
+- Declare each returned key as its own property (e.g., `static properties = { posts: { type: Array } }; posts: any[] = []`)
+- The framework auto-spreads loader data onto the element — no need for a `loaderData` wrapper
 - Stripped from client bundles automatically
 - Runs on SSR and on client navigation via `/__nk_loader/<path>`
 - Must return serializable objects
@@ -77,9 +78,9 @@ Named export `subscribe()` on any page or layout enables persistent server-side 
 export function subscribe(ctx: { params, push, headers, locale }) → () => void
 ```
 
-- `push(data)` sends an SSE event to the client — data is JSON-serialized
+- `push(data)` sends an SSE event to the client — each key is spread as an individual property on the component (same as loader data)
+- Declare matching properties for each key pushed (e.g., `static properties = { time: { type: Number } }`)
 - Return a cleanup function — called when client navigates away or disconnects
-- Property name on the component is exactly `liveData` (declared as `static properties = { liveData: { type: Object } }; liveData: any = null`)
 - Stripped from client bundles automatically (like `loader()`)
 - Transport: SSE via `/__nk_subscribe/<path>` (pages) or `/__nk_subscribe/__layout/?__dir=<dir>` (layouts)
 - `subscribe` must be named export function (not default, not arrow const)
@@ -94,10 +95,10 @@ export function subscribe({ push }) {
 }
 
 export class PageDashboard extends LitElement {
-  static properties = { loaderData: { type: Object } }; loaderData: any = {};
-  static properties = { liveData: { type: Object } }; liveData: any = null;
+  static properties = { time: { type: Number } };
+  time = 0;
   render() {
-    return html`<p>Live: ${this.liveData?.time}</p>`;
+    return html`<p>Live: ${this.time}</p>`;
   }
 }
 ```
@@ -287,7 +288,7 @@ Build output: `.lumenjs/{client/, server/, locales/, manifest.json}`.
 
 1. No `@customElement()` — auto-define handles it; decorator causes double-registration
 2. No `res.send()`/`res.json()` in API routes — return objects
-3. Property name is `loaderData` exactly
+3. Declare individual properties for each loader return key (no `loaderData` wrapper needed)
 4. Layouts require `<slot></slot>`
 5. `@lumenjs/*` are virtual modules — no files, no relative imports
 6. `loader` must be named export function (not default, not arrow const)
@@ -296,4 +297,4 @@ Build output: `.lumenjs/{client/, server/, locales/, manifest.json}`.
 9. Class must `extends LitElement` (auto-define checks source text)
 10. Use `loader()` for data — not `connectedCallback` fetch
 11. `subscribe` must be named export function (not default, not arrow const) — same rule as `loader`
-12. Property name for live data is `liveData` exactly
+12. Declare individual properties for each key pushed by `subscribe()` (same pattern as loader data)
