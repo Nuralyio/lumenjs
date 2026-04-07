@@ -209,7 +209,7 @@ npm install @anthropic-ai/claude-agent-sdk
 npx lumenjs dev --editor-mode
 ```
 
-**OpenCode** — works with any LLM provider (OpenAI, Anthropic API, local models):
+**OpenCode** — coding agent server, configure it with DeepSeek or any LLM provider:
 
 ```bash
 npm install -g opencode
@@ -217,13 +217,9 @@ opencode serve                        # terminal 1
 npx lumenjs dev --editor-mode         # terminal 2
 ```
 
-**DeepSeek** — direct API integration:
+Configure the connection: `OPENCODE_URL` (default `http://localhost:4096`) and `OPENCODE_SERVER_PASSWORD` if auth is required.
 
-```bash
-DEEPSEEK_API_KEY=sk-your-key npx lumenjs dev --editor-mode
-```
-
-Set `AI_BACKEND` to force a specific backend (`claude-code`, `opencode`, or `deepseek`). Without it, the editor auto-detects in order: DeepSeek (if API key set) → Claude Code (if CLI logged in) → OpenCode (fallback).
+Set `AI_BACKEND` to force a specific backend (`claude-code` or `opencode`). Without it, the editor auto-detects: Claude Code (if CLI logged in) → OpenCode (fallback).
 
 ## CLI
 
