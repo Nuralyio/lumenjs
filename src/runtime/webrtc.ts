@@ -284,19 +284,60 @@ export class GroupWebRTCManager {
   }
 
   /** Acquire local media — call once before adding peers */
-  async startLocalMedia(video: boolean = true, audio: boolean = true): Promise<MediaStream> {
+  async startLocalMedia(
+    video: boolean = true,
+    audio: boolean = true,
+    deviceIds?: { audioInputId?: string | null; videoInputId?: string | null },
+  ): Promise<MediaStream> {
     if (!navigator.mediaDevices?.getUserMedia) {
       const err = new Error('Media devices unavailable — HTTPS is required for calls');
       this._callbacks.onError(err);
       throw err;
     }
     try {
-      this._localStream = await navigator.mediaDevices.getUserMedia({ video, audio });
+      const audioConstraint: boolean | MediaTrackConstraints = audio
+        ? (deviceIds?.audioInputId ? { deviceId: { exact: deviceIds.audioInputId } } : true)
+        : false;
+      const videoConstraint: boolean | MediaTrackConstraints = video
+        ? (deviceIds?.videoInputId ? { deviceId: { exact: deviceIds.videoInputId } } : true)
+        : false;
+      this._localStream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraint,
+        video: videoConstraint,
+      });
       this._callbacks.onLocalStream(this._localStream);
       return this._localStream;
     } catch (err) {
       this._callbacks.onError(new Error(`Failed to access media: ${(err as Error).message}`));
       throw err;
+    }
+  }
+
+  /** Replace the audio track on all peer connections (for switching mic mid-call) */
+  async replaceAudioTrack(newTrack: MediaStreamTrack): Promise<void> {
+    // Replace in local stream
+    if (this._localStream) {
+      const old = this._localStream.getAudioTracks()[0];
+      if (old) { this._localStream.removeTrack(old); old.stop(); }
+      this._localStream.addTrack(newTrack);
+    }
+    // Replace on all peer connections
+    for (const [, entry] of this._peers) {
+      const sender = entry.pc.getSenders().find(s => s.track?.kind === 'audio');
+      if (sender) await sender.replaceTrack(newTrack);
+    }
+  }
+
+  /** Replace the video track on all peer connections (for switching camera mid-call) */
+  async replaceVideoTrack(newTrack: MediaStreamTrack): Promise<void> {
+    if (this._localStream) {
+      const old = this._localStream.getVideoTracks()[0];
+      if (old) { this._localStream.removeTrack(old); old.stop(); }
+      this._localStream.addTrack(newTrack);
+    }
+    for (const [, entry] of this._peers) {
+      const sender = entry.pc.getSenders().find(s => s.track?.kind === 'video');
+      if (sender) await sender.replaceTrack(newTrack);
     }
   }
 
