@@ -1,13 +1,13 @@
 /**
  * Client-side communication SDK.
- * Connects to the server via Socket.io and provides a clean API for chat, typing, and presence.
+ * Connects to the server via Socket.io and provides a clean API for chat, typing, presence, and calls.
  */
 
 let _socket: any = null;
 let _handlers: Map<string, Set<Function>> = new Map();
 
 function emit(event: string, data: any): void {
-  if (!_socket) throw new Error('Communication not connected. Call connectChat() first.');
+  if (!_socket) return;
   _socket.emit(`nk:${event}`, data);
 }
 
@@ -23,14 +23,18 @@ function removeHandler(event: string, handler: Function): void {
 
 /**
  * Connect to the communication socket.
- * Must be called before using any other functions.
+ * Reuses an existing socket if one is already connected.
  */
-export async function connectChat(params?: Record<string, string>): Promise<void> {
-  if (_socket) return;
+export async function connectChat(params?: Record<string, string>): Promise<any> {
+  if (_socket?.connected) return _socket;
   const { io } = await import('socket.io-client');
   _socket = io('/nk/messages', {
     path: '/__nk_socketio/',
     query: { ...params, __params: JSON.stringify(params || {}) },
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 10000,
   });
 
   _socket.on('nk:data', (data: any) => {
@@ -41,26 +45,53 @@ export async function connectChat(params?: Record<string, string>): Promise<void
       }
     }
   });
+
+  return _socket;
 }
 
-/** Join a conversation room to receive messages */
-export function joinConversation(conversationId: string): void {
-  emit('conversation:join', { conversationId });
+/** Get the underlying socket instance (for call-service or other integrations) */
+export function getSocket(): any { return _socket; }
+
+/** Set an externally-created socket (e.g. from call-service or router) */
+export function setSocket(socket: any): void {
+  if (_socket === socket) return;
+  _socket = socket;
+  // Attach the nk:data handler if not already attached
+  if (_socket && !(_socket as any).__nk_comm_attached) {
+    (_socket as any).__nk_comm_attached = true;
+    _socket.on('nk:data', (data: any) => {
+      if (data?.event) {
+        const handlers = _handlers.get(data.event);
+        if (handlers) {
+          for (const h of handlers) h(data.data);
+        }
+      }
+    });
+  }
 }
 
-/** Leave a conversation room */
-export function leaveConversation(conversationId: string): void {
-  emit('conversation:leave', { conversationId });
+// ── Messages ─────────────────────────────────────────────────────
+
+/** Send a message (text, image, file, audio) */
+export function sendMessage(conversationId: string, content: string, opts?: {
+  type?: string;
+  attachment?: any;
+  replyTo?: any;
+  encrypted?: boolean;
+}): void {
+  emit('message:send', {
+    conversationId,
+    content,
+    type: opts?.type || 'text',
+    ...(opts?.attachment ? { attachment: opts.attachment } : {}),
+    ...(opts?.replyTo ? { replyTo: opts.replyTo } : {}),
+    ...(opts?.encrypted ? { encrypted: true } : {}),
+  });
 }
 
-/** Send a message */
-export function sendMessage(conversationId: string, content: string, type: string = 'text'): void {
-  emit('message:send', { conversationId, content, type });
-}
-
-/** Mark a message as read */
-export function markRead(conversationId: string, messageId: string): void {
-  emit('message:read', { conversationId, messageId });
+/** Mark messages as read */
+export function markRead(conversationId: string, messageIds?: string[]): void {
+  emit('message:read', { conversationId, ...(messageIds ? { messageIds } : {}) });
 }
 
 /** React to a message with an emoji (toggle) */
@@ -76,6 +107,76 @@ export function editMessage(messageId: string, conversationId: string, content: 
 /** Delete a message */
 export function deleteMessage(messageId: string, conversationId: string): void {
   emit('message:delete', { messageId, conversationId });
+}
+
+/** Load messages for a conversation (lazy-load) */
+export function loadMessages(conversationId: string): void {
+  emit('conversation:load-messages', { conversationId });
+}
+
+/** Join a conversation room to receive messages */
+export function joinConversation(conversationId: string): void {
+  emit('conversation:join', { conversationId });
+}
+
+/** Leave a conversation room */
+export function leaveConversation(conversationId: string): void {
+  emit('conversation:leave', { conversationId });
+}
+
+// ── Typing ───────────────────────────────────────────────────────
+
+/** Start typing indicator */
+export function startTyping(conversationId: string): void {
+  emit('typing:start', { conversationId });
+}
+
+/** Stop typing indicator */
+export function stopTyping(conversationId: string): void {
+  emit('typing:stop', { conversationId });
+}
+
+// ── Presence ─────────────────────────────────────────────────────
+
+/** Update presence status */
+export function updatePresence(status: 'online' | 'offline' | 'away' | 'busy'): void {
+  emit('presence:update', { status });
+}
+
+/** Request bulk presence sync for a list of user IDs */
+export function requestPresenceSync(userIds: string[]): void {
+  emit('presence:sync', { userIds });
+}
+
+/** Refresh notification/message badge counts */
+export function refreshBadge(): void {
+  emit('badge:refresh', {});
+}
+
+// ── Event Listeners ──────────────────────────────────────────────
+
+/** Listen for new messages */
+export function onMessage(handler: (message: any) => void): () => void {
+  addHandler('message:new', handler);
+  return () => removeHandler('message:new', handler);
+}
+
+/** Listen for typing updates */
+export function onTyping(handler: (data: { conversationId: string; userId: string; isTyping: boolean }) => void): () => void {
+  addHandler('typing:update', handler);
+  return () => removeHandler('typing:update', handler);
+}
+
+/** Listen for presence changes */
+export function onPresence(handler: (data: { userId: string; status: string; lastSeen: string }) => void): () => void {
+  addHandler('presence:changed', handler);
+  return () => removeHandler('presence:changed', handler);
+}
+
+/** Listen for bulk presence sync response */
+export function onPresenceSync(handler: (data: { presences: Record<string, any> }) => void): () => void {
+  addHandler('presence:sync', handler);
+  return () => removeHandler('presence:sync', handler);
 }
 
 /** Listen for reaction updates */
@@ -95,6 +196,20 @@ export function onMessageDeleted(handler: (data: { messageId: string; conversati
   addHandler('message:deleted', handler);
   return () => removeHandler('message:deleted', handler);
 }
+
+/** Listen for read receipts */
+export function onReadReceipt(handler: (data: any) => void): () => void {
+  addHandler('read-receipt:update', handler);
+  return () => removeHandler('read-receipt:update', handler);
+}
+
+/** Listen for lazy-loaded conversation messages */
+export function onConversationMessages(handler: (data: { conversationId: string; messages: any[]; participants: any[] }) => void): () => void {
+  addHandler('conversation:messages', handler);
+  return () => removeHandler('conversation:messages', handler);
+}
+
+// ── File Uploads & Link Previews ─────────────────────────────────
 
 /** Upload a file (returns attachment metadata) */
 export async function uploadFile(file: Blob, filename: string, encrypted = false): Promise<{ id: string; url: string; size: number }> {
@@ -123,46 +238,7 @@ export async function fetchLinkPreviews(text: string): Promise<any[]> {
   return data.previews || [];
 }
 
-/** Start typing indicator */
-export function startTyping(conversationId: string): void {
-  emit('typing:start', { conversationId });
-}
-
-/** Stop typing indicator */
-export function stopTyping(conversationId: string): void {
-  emit('typing:stop', { conversationId });
-}
-
-/** Update presence status */
-export function updatePresence(status: 'online' | 'offline' | 'away' | 'busy'): void {
-  emit('presence:update', { status });
-}
-
-/** Listen for new messages */
-export function onMessage(handler: (message: any) => void): () => void {
-  addHandler('message:new', handler);
-  return () => removeHandler('message:new', handler);
-}
-
-/** Listen for typing updates */
-export function onTyping(handler: (data: { conversationId: string; userId: string; isTyping: boolean }) => void): () => void {
-  addHandler('typing:update', handler);
-  return () => removeHandler('typing:update', handler);
-}
-
-/** Listen for presence changes */
-export function onPresence(handler: (data: { userId: string; status: string; lastSeen: string }) => void): () => void {
-  addHandler('presence:changed', handler);
-  return () => removeHandler('presence:changed', handler);
-}
-
-/** Listen for read receipts */
-export function onReadReceipt(handler: (data: any) => void): () => void {
-  addHandler('read-receipt:update', handler);
-  return () => removeHandler('read-receipt:update', handler);
-}
-
-// ── Calls ─────────────────────────────────────────────────────────
+// ── Calls ────────────────────────────────────────────────────────
 
 /** Listen for incoming calls */
 export function onIncomingCall(handler: (call: any) => void): () => void {
@@ -170,7 +246,7 @@ export function onIncomingCall(handler: (call: any) => void): () => void {
   return () => removeHandler('call:incoming', handler);
 }
 
-/** Listen for call state changes (initiating, ringing, connecting, connected, ended) */
+/** Listen for call state changes */
 export function onCallStateChanged(handler: (data: { callId: string; state: string; endReason?: string }) => void): () => void {
   addHandler('call:state-changed', handler);
   return () => removeHandler('call:state-changed', handler);
@@ -195,8 +271,10 @@ export function onMediaChanged(handler: (data: { callId: string; userId: string;
 }
 
 /** Initiate an audio or video call */
-export function initiateCall(conversationId: string, type: 'audio' | 'video', calleeIds: string[]): void {
-  emit('call:initiate', { conversationId, type, calleeIds });
+export function initiateCall(conversationId: string, type: 'audio' | 'video', calleeIds: string[], caller?: {
+  callerName?: string; callerInitials?: string; callerColor?: string;
+}): void {
+  emit('call:initiate', { conversationId, type, calleeIds, ...caller });
 }
 
 /** Respond to an incoming call */
@@ -205,8 +283,8 @@ export function respondToCall(callId: string, action: 'accept' | 'reject'): void
 }
 
 /** Hang up an active call */
-export function hangup(callId: string, reason: string = 'completed'): void {
-  emit('call:hangup', { callId, reason });
+export function hangup(callId: string, reason: string = 'completed', duration?: string | null): void {
+  emit('call:hangup', { callId, reason, ...(duration ? { duration } : {}) });
 }
 
 /** Toggle audio/video/screenshare during a call */
@@ -214,7 +292,7 @@ export function toggleMedia(callId: string, opts: { audio?: boolean; video?: boo
   emit('call:media-toggle', { callId, ...opts });
 }
 
-// ── WebRTC Signaling ──────────────────────────────────────────────
+// ── WebRTC Signaling ─────────────────────────────────────────────
 
 /** Send SDP offer to a peer */
 export function sendOffer(callId: string, toUserId: string, sdp: string): void {
