@@ -25,7 +25,6 @@ export const MIME_TYPES: Record<string, string> = {
   '.eot': 'application/vnd.ms-fontobject',
   '.otf': 'font/otf',
   '.map': 'application/json',
-  '.txt': 'text/plain; charset=utf-8',
   '.xml': 'application/xml',
   '.webmanifest': 'application/manifest+json',
 };

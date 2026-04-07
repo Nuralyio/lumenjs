@@ -1,6 +1,6 @@
 {
   "name": "@nuraly/lumenjs",
-  "version": "0.3.0",
+  "version": "0.2.1",
   "description": "Full-stack Lit web component framework with file-based routing, server loaders, SSR, and API routes",
   "type": "module",
   "main": "dist/cli.js",
@@ -43,7 +43,7 @@
   "license": "MIT",
   "dependencies": {
     "@lit-labs/ssr": "^3.2.0",
-    "glob": "^10.3.0",
+    "glob": "^10.2.1",
     "lit": "^3.1.0",
     "vite": "^5.4.0"
   },

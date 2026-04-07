@@ -2,7 +2,7 @@
 
 Full-stack Lit web component framework with file-based routing, server loaders, SSR, and API routes.
 
-Published as `@nuraly/lumenjs` (MIT, v0.3.0). Mirrored to `Nuralyio/lumenjs`.
+Published as `@nuraly/lumenjs` (MIT, v0.2.1). Mirrored to `Nuralyio/lumenjs`.
 
 ## Source Structure
 
@@ -135,7 +135,7 @@ src/
 
 ## Dependencies
 
-- `lit` ^3.1.0, `@lit-labs/ssr` ^3.2.0, `vite` ^5.4.0, `glob` ^10.3.0
+- `lit` ^3.1.0, `@lit-labs/ssr` ^3.2.0, `vite` ^5.4.0, `glob` ^10.2.1
 - Node.js 18+
 - TypeScript compiled via `tsc` (not Vite)
 
