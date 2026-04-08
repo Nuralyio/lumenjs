@@ -178,7 +178,7 @@ export function handleCallHangup(
     if (ctx.db && call.conversationId) {
       try {
         const callStatus = data.reason === 'rejected' ? 'declined'
-          : data.reason === 'no-answer' ? 'missed'
+          : data.reason === 'missed' ? 'missed'
           : 'completed';
         const attachment = JSON.stringify({
           callType: call.type || 'audio',
