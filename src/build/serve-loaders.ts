@@ -259,7 +259,18 @@ export async function handleLoaderRequest(
 
   try {
     const mod = await import(modulePath);
-    if (!mod.loader || typeof mod.loader !== 'function') {
+    let loaderFn: Function | null = mod.loader && typeof mod.loader === 'function' ? mod.loader : null;
+
+    // Fallback: co-located _loader.js for folder index pages
+    if (!loaderFn && path.basename(modulePath, '.js') === 'index') {
+      const colocated = path.join(path.dirname(modulePath), '_loader.js');
+      if (fs.existsSync(colocated)) {
+        const loaderMod = await import(colocated);
+        if (loaderMod.loader && typeof loaderMod.loader === 'function') loaderFn = loaderMod.loader;
+      }
+    }
+
+    if (!loaderFn) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ __nk_no_loader: true }));
       return;
@@ -268,7 +279,7 @@ export async function handleLoaderRequest(
     const locale = query.__locale;
     delete query.__locale;
 
-    const result = await mod.loader({ params: matched.params, query, url: pagePath, headers, locale, user: user ?? null });
+    const result = await loaderFn({ params: matched.params, query, url: pagePath, headers, locale, user: user ?? null });
     if (isRedirectResponse(result)) {
       res.writeHead(result.status || 302, { Location: result.location });
       res.end();

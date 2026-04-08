@@ -90,6 +90,36 @@ export class BlogPost extends LitElement {
 }
 ```
 
+### Splitting large loaders
+
+For folder routes (`pages/foo/index.ts`), you can move the loader into a co-located `_loader.ts` file. The framework discovers it automatically — no import or wrapper needed in the page file.
+
+```
+pages/
+└── dashboard/
+    ├── index.ts      ← page component only
+    └── _loader.ts    ← auto-discovered loader
+```
+
+```typescript
+// pages/dashboard/_loader.ts
+export async function loader({ user }) {
+  const stats = await db.getStats(user.id);
+  return { stats };
+}
+```
+
+```typescript
+// pages/dashboard/index.ts — no loader here at all
+export class PageDashboard extends LitElement {
+  static properties = { stats: { type: Array } };
+  stats = [];
+  render() { ... }
+}
+```
+
+Both patterns work side by side — the inline loader always takes precedence. Only folder routes (`index.ts`) support `_loader.ts` discovery; flat pages (`about.ts`) keep the loader inline.
+
 ### Loader Context
 
 | Property | Type | Description |

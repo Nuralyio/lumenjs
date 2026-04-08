@@ -110,6 +110,7 @@ src/
 - Declare each key as its own property (e.g., `static properties = { stats: { type: Array } }` if loader returns `{ stats: [...] }`)
 - Access directly as `this.stats` — no `loaderData` wrapper needed
 - Return `{ __nk_redirect: true, location: '/path', status: 302 }` for redirects
+- **Co-located loader**: for folder routes (`pages/foo/index.ts`), place a `_loader.ts` in the same directory — auto-discovered, no import or wrapper needed in the page file. Inline loader always wins if both exist. Only works for `index.ts` pages; flat pages keep the loader inline.
 
 ### Subscribe (SSE)
 - `export async function subscribe({ params, headers, locale, push })` — server-sent events
@@ -139,10 +140,29 @@ src/
 - Node.js 18+
 - TypeScript compiled via `tsc` (not Vite)
 
+## Commit Convention
+
+LumenJS uses scoped conventional commits. CI auto-publishes to npm based on these scopes — **always use the correct scope** or the release won't trigger.
+
+| Type | Scope | Version bump | Example |
+|---|---|---|---|
+| `fix` | `lumenjs` | patch `0.3.x` | `fix(lumenjs): resolve _loader.ts SSR edge case` |
+| `feat` | `lumenjs` | minor `0.x.0` | `feat(lumenjs): add _loader.ts co-location` |
+| `feat!` / `BREAKING` | `lumenjs` | major `x.0.0` | `feat(lumenjs)!: rename subscribe API` |
+| anything | other scope | none | `feat(api): add webhook` — ignored by lumenjs CI |
+| `chore`, `docs`, `test`, `refactor` | `lumenjs` | none | `chore(lumenjs): update tests` — no release |
+
+**Rules:**
+- Only `feat(lumenjs)` and `fix(lumenjs)` trigger a release
+- The version-bump commit itself uses `chore(lumenjs): release vX.Y.Z [skip ci]` — never manually write this
+- Never bump `libs/lumenjs/package.json` by hand — CI owns the version
+- The bump commit is mirrored to `Nuralyio/lumenjs` automatically via the mirror workflow
+
 ## Don't
 
 - Don't import `lumenjs.config.ts` dynamically — it's parsed via regex in `config.ts`
 - Don't add `@customElement` decorators to pages/layouts — auto-define handles registration
 - Don't put loader/subscribe exports after `export class` — `hasTopLevelExport()` checks ordering
+- Don't add a `_loader.ts` to a flat page file (e.g. `pages/about.ts`) — co-located loader discovery only applies to folder routes (`index.ts`)
 - Don't duplicate Lit instances — `litDedupPlugin` and `manualChunks` exist to prevent this
 - Don't modify virtual module IDs (`virtual:lumenjs-routes`, `@lumenjs/i18n`) without updating all consumers

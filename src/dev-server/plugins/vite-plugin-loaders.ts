@@ -179,7 +179,23 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
 
           const mod = await server.ssrLoadModule(filePath);
 
-          if (!mod.loader || typeof mod.loader !== 'function') {
+          let loaderFn: Function | null = mod.loader && typeof mod.loader === 'function' ? mod.loader : null;
+
+          // Fallback: co-located _loader.ts for folder index pages
+          if (!loaderFn && path.basename(filePath).replace(/\.(ts|js)$/, '') === 'index') {
+            for (const ext of ['.ts', '.js']) {
+              const colocated = path.join(path.dirname(filePath), `_loader${ext}`);
+              if (fs.existsSync(colocated)) {
+                const loaderMod = await server.ssrLoadModule(colocated);
+                if (loaderMod.loader && typeof loaderMod.loader === 'function') {
+                  loaderFn = loaderMod.loader;
+                }
+                break;
+              }
+            }
+          }
+
+          if (!loaderFn) {
             // No loader — return empty data
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
@@ -227,7 +243,7 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
             } catch {}
           }
 
-          const result = await mod.loader({ params, query, url: pagePath, headers: req.headers, locale, user });
+          const result = await loaderFn({ params, query, url: pagePath, headers: req.headers, locale, user });
 
           if (isRedirectResponse(result)) {
             res.statusCode = result.status || 302;

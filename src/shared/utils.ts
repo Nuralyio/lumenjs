@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 
 /**
  * Strip the outer Lit SSR template markers from rendered HTML.
@@ -160,6 +161,13 @@ export function fileHasPrerender(filePath: string): boolean {
  */
 export function fileHasLoader(filePath: string): boolean {
   try {
+    // Check for co-located _loader.ts (folder route convention: index.ts + _loader.ts)
+    if (path.basename(filePath).replace(/\.(ts|js)$/, '') === 'index') {
+      const dir = path.dirname(filePath);
+      if (fs.existsSync(path.join(dir, '_loader.ts')) || fs.existsSync(path.join(dir, '_loader.js'))) {
+        return true;
+      }
+    }
     const content = fs.readFileSync(filePath, 'utf-8');
     return hasTopLevelExport(content, 'loader');
   } catch { return false; }

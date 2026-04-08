@@ -18,8 +18,12 @@ function analyzePageFile(filePath: string): {
       return true;
     };
 
+    const hasColocatedLoader = path.basename(filePath).replace(/\.(ts|js)$/, '') === 'index' &&
+      (fs.existsSync(path.join(path.dirname(filePath), '_loader.ts')) ||
+       fs.existsSync(path.join(path.dirname(filePath), '_loader.js')));
+
     return {
-      hasLoader: hasExportBefore(/export\s+(async\s+)?function\s+loader\s*\(/),
+      hasLoader: hasExportBefore(/export\s+(async\s+)?function\s+loader\s*\(/) || hasColocatedLoader,
       hasSubscribe: hasExportBefore(/export\s+(async\s+)?function\s+subscribe\s*\(/),
       hasSocket: /export\s+(function|const)\s+socket[\s(=]/.test(content),
       hasAuth: hasExportBefore(/export\s+const\s+auth\s*=/),

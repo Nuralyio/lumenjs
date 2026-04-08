@@ -35,10 +35,18 @@ export async function handlePageRoute(
       try {
         const mod = await import(modulePath);
 
-        // Run loader
+        // Run loader (inline or co-located _loader.js)
         let loaderData: any = undefined;
-        if (mod.loader && typeof mod.loader === 'function') {
-          loaderData = await mod.loader({ params: matched.params, query: {}, url: pathname, headers: req.headers, user: (req as any).nkAuth?.user ?? null });
+        let loaderFn: Function | null = mod.loader && typeof mod.loader === 'function' ? mod.loader : null;
+        if (!loaderFn && path.basename(modulePath, '.js') === 'index') {
+          const colocated = path.join(path.dirname(modulePath), '_loader.js');
+          if (fs.existsSync(colocated)) {
+            const loaderMod = await import(colocated);
+            if (loaderMod.loader && typeof loaderMod.loader === 'function') loaderFn = loaderMod.loader;
+          }
+        }
+        if (loaderFn) {
+          loaderData = await loaderFn({ params: matched.params, query: {}, url: pathname, headers: req.headers, user: (req as any).nkAuth?.user ?? null });
           if (isRedirectResponse(loaderData)) {
             res.writeHead(loaderData.status || 302, { Location: loaderData.location });
             res.end();

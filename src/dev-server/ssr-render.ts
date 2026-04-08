@@ -57,10 +57,21 @@ export async function ssrRenderPage(
     const mod = await server.ssrLoadModule(pageModuleUrl);
     if (registry) registry.__nk_bypass_get = false;
 
-    // Run loader if present
+    // Run loader if present (inline or co-located _loader.ts)
     let loaderData: any = undefined;
-    if (mod.loader && typeof mod.loader === 'function') {
-      loaderData = await mod.loader({ params, query: {}, url: pathname, headers: headers || {}, locale, user: user ?? null });
+    let loaderFn: Function | null = mod.loader && typeof mod.loader === 'function' ? mod.loader : null;
+    if (!loaderFn && path.basename(filePath).replace(/\.(ts|js)$/, '') === 'index') {
+      for (const ext of ['.ts', '.js']) {
+        const colocated = path.join(path.dirname(filePath), `_loader${ext}`);
+        if (fs.existsSync(colocated)) {
+          const loaderMod = await server.ssrLoadModule('/' + path.relative(path.resolve(pagesDir, '..'), colocated).replace(/\\/g, '/'));
+          if (loaderMod.loader && typeof loaderMod.loader === 'function') loaderFn = loaderMod.loader;
+          break;
+        }
+      }
+    }
+    if (loaderFn) {
+      loaderData = await loaderFn({ params, query: {}, url: pathname, headers: headers || {}, locale, user: user ?? null });
       if (loaderData && typeof loaderData === 'object' && loaderData.__nk_redirect) {
         return { html: '', loaderData: null, redirect: { location: loaderData.location, status: loaderData.status || 302 } };
       }
