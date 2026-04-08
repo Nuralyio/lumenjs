@@ -154,7 +154,7 @@ LumenJS uses scoped conventional commits. CI auto-publishes to npm based on thes
 
 **Rules:**
 - Only `feat(lumenjs)` and `fix(lumenjs)` trigger a release
-- The version-bump commit itself uses `chore(lumenjs): release vX.Y.Z [skip ci]` — never manually write this
+- The version-bump commit itself uses `chore(lumenjs): release vX.Y.Z` — never manually write this
 - Never bump `libs/lumenjs/package.json` by hand — CI owns the version
 - The bump commit is mirrored to `Nuralyio/lumenjs` automatically via the mirror workflow
 
