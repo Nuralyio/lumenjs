@@ -112,6 +112,14 @@ src/
 - Return `{ __nk_redirect: true, location: '/path', status: 302 }` for redirects
 - **Co-located loader**: for folder routes (`pages/foo/index.ts`), place a `_loader.ts` in the same directory — auto-discovered, no import or wrapper needed in the page file. Inline loader always wins if both exist. Only works for `index.ts` pages; flat pages keep the loader inline.
 
+### Socket (Socket.IO)
+- `export function socket({ on, push, room, params, headers, locale, socket })` — bidirectional Socket.IO handler
+- `push(data)` spreads keys as individual properties on the element (same as loader/subscribe)
+- `on(event, handler)` listens for `nk:{event}` from the client; `emit(event, payload)` on the element sends to server
+- `room.join(name)`, `.broadcast(name, data)`, `.broadcastAll(name, data)` for room management
+- Return a cleanup function from `socket()` — called on disconnect
+- **Co-located socket**: place a `_socket.ts` next to `index.ts` with `export function socket(...)` — auto-discovered, no import needed. Inline socket always wins if both exist. Only works for folder routes.
+
 ### Subscribe (SSE)
 - `export async function subscribe({ params, headers, locale, push })` — server-sent events
 - Each key from `push(data)` is spread as an individual property on the element (same as loader data)

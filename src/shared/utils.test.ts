@@ -12,6 +12,7 @@ import {
   escapeHtml,
   fileHasLoader,
   fileHasSubscribe,
+  fileHasSocket,
   filePathToRoute,
 } from './utils.js';
 
@@ -260,6 +261,70 @@ describe('fileHasSubscribe', () => {
 
   it('returns false for non-existent file', () => {
     expect(fileHasSubscribe('/nonexistent/file.ts')).toBe(false);
+  });
+});
+
+describe('fileHasSocket', () => {
+  let tmpDir: string;
+
+  afterEach(() => {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns true for inline export function socket', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const file = path.join(tmpDir, 'page.ts');
+    fs.writeFileSync(file, 'export function socket({ on, push }) {}\nexport class Page {}');
+    expect(fileHasSocket(file)).toBe(true);
+  });
+
+  it('returns true for inline export const socket', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const file = path.join(tmpDir, 'page.ts');
+    fs.writeFileSync(file, 'export const socket = ({ on }) => {};\nexport class Page {}');
+    expect(fileHasSocket(file)).toBe(true);
+  });
+
+  it('returns false for file without socket export', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const file = path.join(tmpDir, 'page.ts');
+    fs.writeFileSync(file, 'export class Page {}');
+    expect(fileHasSocket(file)).toBe(false);
+  });
+
+  it('returns true for index.ts with sibling _socket.ts', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const indexFile = path.join(tmpDir, 'index.ts');
+    fs.writeFileSync(indexFile, 'export class Page {}');
+    fs.writeFileSync(path.join(tmpDir, '_socket.ts'), 'export function socket({ on, push }) {}');
+    expect(fileHasSocket(indexFile)).toBe(true);
+  });
+
+  it('returns true for index.ts with sibling _socket.js', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const indexFile = path.join(tmpDir, 'index.ts');
+    fs.writeFileSync(indexFile, 'export class Page {}');
+    fs.writeFileSync(path.join(tmpDir, '_socket.js'), 'export function socket({ on, push }) {}');
+    expect(fileHasSocket(indexFile)).toBe(true);
+  });
+
+  it('returns false for non-index file with sibling _socket.ts', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const pageFile = path.join(tmpDir, 'about.ts');
+    fs.writeFileSync(pageFile, 'export class About {}');
+    fs.writeFileSync(path.join(tmpDir, '_socket.ts'), 'export function socket({ on, push }) {}');
+    expect(fileHasSocket(pageFile)).toBe(false);
+  });
+
+  it('returns false for index.ts with no inline socket and no _socket.ts', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const indexFile = path.join(tmpDir, 'index.ts');
+    fs.writeFileSync(indexFile, 'export class Page {}');
+    expect(fileHasSocket(indexFile)).toBe(false);
+  });
+
+  it('returns false for non-existent file', () => {
+    expect(fileHasSocket('/nonexistent/file.ts')).toBe(false);
   });
 });
 

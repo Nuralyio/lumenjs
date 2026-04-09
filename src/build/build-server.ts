@@ -30,14 +30,21 @@ export async function buildServer(opts: BuildServerOptions): Promise<void> {
   // Include all pages in server build (enables SSR for .md endpoints)
   for (const entry of pageEntries) {
     serverEntries[`pages/${entry.name}`] = entry.filePath;
-    // Co-located _loader.ts for folder index pages
+    // Co-located _loader.ts / _socket.ts for folder index pages
     if (path.basename(entry.filePath).replace(/\.(ts|js)$/, '') === 'index') {
       const dir = path.dirname(entry.filePath);
+      const entryDir = path.dirname(entry.name);
       for (const ext of ['.ts', '.js']) {
         const loaderFile = path.join(dir, `_loader${ext}`);
         if (fs.existsSync(loaderFile)) {
-          const entryDir = path.dirname(entry.name);
           serverEntries[`pages/${entryDir}/_loader`] = loaderFile;
+          break;
+        }
+      }
+      for (const ext of ['.ts', '.js']) {
+        const socketFile = path.join(dir, `_socket${ext}`);
+        if (fs.existsSync(socketFile)) {
+          serverEntries[`pages/${entryDir}/_socket`] = socketFile;
           break;
         }
       }

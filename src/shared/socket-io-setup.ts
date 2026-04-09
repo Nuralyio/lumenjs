@@ -1,5 +1,7 @@
 import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
+import fs from 'fs';
+import path from 'path';
 
 export interface SocketRoute {
   path: string;
@@ -36,7 +38,21 @@ export async function setupSocketIO(options: {
     io.of(ns).on('connection', async (socket: any) => {
       try {
         const mod = await options.loadModule(route.filePath);
-        if (!mod.socket) return;
+        let socketFn = mod?.socket;
+
+        // Co-located _socket.ts fallback (folder route convention)
+        if (!socketFn && path.basename(route.filePath).replace(/\.(ts|js)$/, '') === 'index') {
+          const dir = path.dirname(route.filePath);
+          for (const ext of ['.ts', '.js']) {
+            const colocated = path.join(dir, `_socket${ext}`);
+            if (fs.existsSync(colocated)) {
+              const socketMod = await options.loadModule(colocated);
+              socketFn = socketMod?.socket;
+              break;
+            }
+          }
+        }
+        if (!socketFn) return;
 
         const push = (data: any) => socket.emit('nk:data', data);
         const on = (event: string, handler: (...args: any[]) => void) => {
@@ -53,7 +69,7 @@ export async function setupSocketIO(options: {
           ? JSON.parse(socket.handshake.query.__params as string) : {};
         const locale = socket.handshake.query.__locale as string | undefined;
 
-        const cleanup = mod.socket({ on, push, room, params, headers: socket.handshake.headers, locale, socket });
+        const cleanup = socketFn({ on, push, room, params, headers: socket.handshake.headers, locale, socket });
         socket.on('disconnect', () => { if (typeof cleanup === 'function') cleanup(); });
       } catch (err) {
         console.error(`[LumenJS] Socket handler error for ${route.path}:`, err);

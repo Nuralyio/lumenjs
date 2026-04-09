@@ -218,6 +218,13 @@ export function fileHasMeta(filePath: string): boolean {
  */
 export function fileHasSocket(filePath: string): boolean {
   try {
+    // Check for co-located _socket.ts (folder route convention: index.ts + _socket.ts)
+    if (path.basename(filePath).replace(/\.(ts|js)$/, '') === 'index') {
+      const dir = path.dirname(filePath);
+      if (fs.existsSync(path.join(dir, '_socket.ts')) || fs.existsSync(path.join(dir, '_socket.js'))) {
+        return true;
+      }
+    }
     const content = fs.readFileSync(filePath, 'utf-8');
     return /export\s+(function|const)\s+socket[\s(=]/.test(content);
   } catch { return false; }

@@ -125,6 +125,43 @@ describe('scanPages', () => {
     const pages = scanPages(dir);
     expect(pages[0].hasSubscribe).toBe(false);
   });
+
+  it('detects hasSocket for inline export', () => {
+    const dir = createTmpDir();
+    fs.writeFileSync(path.join(dir, 'index.ts'), 'export function socket({ on, push }) {}\nexport class Page {}');
+    const pages = scanPages(dir);
+    expect(pages[0].hasSocket).toBe(true);
+  });
+
+  it('detects hasSocket via co-located _socket.ts for folder route', () => {
+    const dir = createTmpDir();
+    fs.mkdirSync(path.join(dir, 'chat'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'chat', 'index.ts'), 'export class Chat {}');
+    fs.writeFileSync(path.join(dir, 'chat', '_socket.ts'), 'export function socket({ on, push }) {}');
+    const pages = scanPages(dir);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].routePath).toBe('/chat');
+    expect(pages[0].hasSocket).toBe(true);
+  });
+
+  it('does not detect hasSocket from _socket.ts for flat (non-index) pages', () => {
+    const dir = createTmpDir();
+    fs.writeFileSync(path.join(dir, 'about.ts'), 'export class About {}');
+    fs.writeFileSync(path.join(dir, '_socket.ts'), 'export function socket({ on, push }) {}');
+    const pages = scanPages(dir);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].routePath).toBe('/about');
+    expect(pages[0].hasSocket).toBe(false);
+  });
+
+  it('detects co-located _loader.ts for folder route', () => {
+    const dir = createTmpDir();
+    fs.mkdirSync(path.join(dir, 'dashboard'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'dashboard', 'index.ts'), 'export class Dashboard {}');
+    fs.writeFileSync(path.join(dir, 'dashboard', '_loader.ts'), 'export async function loader() { return {}; }');
+    const pages = scanPages(dir);
+    expect(pages[0].hasLoader).toBe(true);
+  });
 });
 
 describe('scanLayouts', () => {

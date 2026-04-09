@@ -18,14 +18,18 @@ function analyzePageFile(filePath: string): {
       return true;
     };
 
-    const hasColocatedLoader = path.basename(filePath).replace(/\.(ts|js)$/, '') === 'index' &&
-      (fs.existsSync(path.join(path.dirname(filePath), '_loader.ts')) ||
-       fs.existsSync(path.join(path.dirname(filePath), '_loader.js')));
+    const isIndex = path.basename(filePath).replace(/\.(ts|js)$/, '') === 'index';
+    const dir = path.dirname(filePath);
+
+    const hasColocatedLoader = isIndex &&
+      (fs.existsSync(path.join(dir, '_loader.ts')) || fs.existsSync(path.join(dir, '_loader.js')));
+    const hasColocatedSocket = isIndex &&
+      (fs.existsSync(path.join(dir, '_socket.ts')) || fs.existsSync(path.join(dir, '_socket.js')));
 
     return {
       hasLoader: hasExportBefore(/export\s+(async\s+)?function\s+loader\s*\(/) || hasColocatedLoader,
       hasSubscribe: hasExportBefore(/export\s+(async\s+)?function\s+subscribe\s*\(/),
-      hasSocket: /export\s+(function|const)\s+socket[\s(=]/.test(content),
+      hasSocket: /export\s+(function|const)\s+socket[\s(=]/.test(content) || hasColocatedSocket,
       hasAuth: hasExportBefore(/export\s+const\s+auth\s*=/),
       hasMeta: hasExportBefore(/export\s+(const\s+meta\s*=|(async\s+)?function\s+meta\s*\()/),
       hasStandalone: hasExportBefore(/export\s+const\s+standalone\s*=/),
