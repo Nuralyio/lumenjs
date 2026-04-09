@@ -259,6 +259,30 @@ describe('fileHasSubscribe', () => {
     expect(fileHasSubscribe(file)).toBe(false);
   });
 
+  it('returns true for index.ts with sibling _subscribe.ts', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const indexFile = path.join(tmpDir, 'index.ts');
+    fs.writeFileSync(indexFile, 'export class Page extends LitElement {}');
+    fs.writeFileSync(path.join(tmpDir, '_subscribe.ts'), 'export function subscribe({ push }) { return () => {}; }');
+    expect(fileHasSubscribe(indexFile)).toBe(true);
+  });
+
+  it('returns true for index.ts with sibling _subscribe.js', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const indexFile = path.join(tmpDir, 'index.ts');
+    fs.writeFileSync(indexFile, 'export class Page extends LitElement {}');
+    fs.writeFileSync(path.join(tmpDir, '_subscribe.js'), 'export function subscribe({ push }) {}');
+    expect(fileHasSubscribe(indexFile)).toBe(true);
+  });
+
+  it('returns false for non-index file with sibling _subscribe.ts', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-test-'));
+    const pageFile = path.join(tmpDir, 'feed.ts');
+    fs.writeFileSync(pageFile, 'export class Feed extends LitElement {}');
+    fs.writeFileSync(path.join(tmpDir, '_subscribe.ts'), 'export function subscribe({ push }) {}');
+    expect(fileHasSubscribe(pageFile)).toBe(false);
+  });
+
   it('returns false for non-existent file', () => {
     expect(fileHasSubscribe('/nonexistent/file.ts')).toBe(false);
   });

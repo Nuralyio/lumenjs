@@ -178,6 +178,13 @@ export function fileHasLoader(filePath: string): boolean {
  */
 export function fileHasSubscribe(filePath: string): boolean {
   try {
+    // Check for co-located _subscribe.ts (folder route convention: index.ts + _subscribe.ts)
+    if (path.basename(filePath).replace(/\.(ts|js)$/, '') === 'index') {
+      const dir = path.dirname(filePath);
+      if (fs.existsSync(path.join(dir, '_subscribe.ts')) || fs.existsSync(path.join(dir, '_subscribe.js'))) {
+        return true;
+      }
+    }
     const content = fs.readFileSync(filePath, 'utf-8');
     return hasTopLevelExport(content, 'subscribe');
   } catch { return false; }

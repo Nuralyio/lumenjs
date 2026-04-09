@@ -86,7 +86,21 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
           installDomShims();
           const mod = await server.ssrLoadModule(filePath);
 
-          if (!mod.subscribe || typeof mod.subscribe !== 'function') {
+          let subscribeFn: Function | null = mod.subscribe && typeof mod.subscribe === 'function' ? mod.subscribe : null;
+
+          // Fallback: co-located _subscribe.ts for folder index pages
+          if (!subscribeFn && path.basename(filePath).replace(/\.(ts|js)$/, '') === 'index') {
+            for (const ext of ['.ts', '.js']) {
+              const colocated = path.join(path.dirname(filePath), `_subscribe${ext}`);
+              if (fs.existsSync(colocated)) {
+                const subMod = await server.ssrLoadModule(colocated);
+                if (subMod.subscribe && typeof subMod.subscribe === 'function') subscribeFn = subMod.subscribe;
+                break;
+              }
+            }
+          }
+
+          if (!subscribeFn) {
             res.statusCode = 204;
             res.end();
             return;
@@ -104,7 +118,7 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
             res.write(`data: ${JSON.stringify(data)}\n\n`);
           };
 
-          const cleanup = mod.subscribe({ params, push, headers: req.headers, locale, user: (req as any).nkAuth?.user ?? null });
+          const cleanup = subscribeFn({ params, push, headers: req.headers, locale, user: (req as any).nkAuth?.user ?? null });
 
           res.on('close', () => {
             if (typeof cleanup === 'function') cleanup();

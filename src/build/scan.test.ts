@@ -162,6 +162,24 @@ describe('scanPages', () => {
     const pages = scanPages(dir);
     expect(pages[0].hasLoader).toBe(true);
   });
+
+  it('detects hasSubscribe via co-located _subscribe.ts for folder route', () => {
+    const dir = createTmpDir();
+    fs.mkdirSync(path.join(dir, 'feed'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'feed', 'index.ts'), 'export class Feed {}');
+    fs.writeFileSync(path.join(dir, 'feed', '_subscribe.ts'), 'export function subscribe({ push }) { return () => {}; }');
+    const pages = scanPages(dir);
+    expect(pages[0].routePath).toBe('/feed');
+    expect(pages[0].hasSubscribe).toBe(true);
+  });
+
+  it('does not detect hasSubscribe from _subscribe.ts for flat pages', () => {
+    const dir = createTmpDir();
+    fs.writeFileSync(path.join(dir, 'feed.ts'), 'export class Feed {}');
+    fs.writeFileSync(path.join(dir, '_subscribe.ts'), 'export function subscribe({ push }) {}');
+    const pages = scanPages(dir);
+    expect(pages[0].hasSubscribe).toBe(false);
+  });
 });
 
 describe('scanLayouts', () => {

@@ -25,10 +25,12 @@ function analyzePageFile(filePath: string): {
       (fs.existsSync(path.join(dir, '_loader.ts')) || fs.existsSync(path.join(dir, '_loader.js')));
     const hasColocatedSocket = isIndex &&
       (fs.existsSync(path.join(dir, '_socket.ts')) || fs.existsSync(path.join(dir, '_socket.js')));
+    const hasColocatedSubscribe = isIndex &&
+      (fs.existsSync(path.join(dir, '_subscribe.ts')) || fs.existsSync(path.join(dir, '_subscribe.js')));
 
     return {
       hasLoader: hasExportBefore(/export\s+(async\s+)?function\s+loader\s*\(/) || hasColocatedLoader,
-      hasSubscribe: hasExportBefore(/export\s+(async\s+)?function\s+subscribe\s*\(/),
+      hasSubscribe: hasExportBefore(/export\s+(async\s+)?function\s+subscribe\s*\(/) || hasColocatedSubscribe,
       hasSocket: /export\s+(function|const)\s+socket[\s(=]/.test(content) || hasColocatedSocket,
       hasAuth: hasExportBefore(/export\s+const\s+auth\s*=/),
       hasMeta: hasExportBefore(/export\s+(const\s+meta\s*=|(async\s+)?function\s+meta\s*\()/),

@@ -48,6 +48,13 @@ export async function buildServer(opts: BuildServerOptions): Promise<void> {
           break;
         }
       }
+      for (const ext of ['.ts', '.js']) {
+        const subscribeFile = path.join(dir, `_subscribe${ext}`);
+        if (fs.existsSync(subscribeFile)) {
+          serverEntries[`pages/${entryDir}/_subscribe`] = subscribeFile;
+          break;
+        }
+      }
     }
   }
 
