@@ -222,6 +222,12 @@ export function onReadReceipt(handler: (data: any) => void): () => void {
   return () => removeHandler('read-receipt:update', handler);
 }
 
+/** Listen for message acknowledgements (server returns DB id for optimistic messages) */
+export function onMessageAck(handler: (data: { conversationId: string; id: string | number; tempTime: string }) => void): () => void {
+  addHandler('message:ack', handler);
+  return () => removeHandler('message:ack', handler);
+}
+
 /** Listen for lazy-loaded conversation messages */
 export function onConversationMessages(handler: (data: { conversationId: string; messages: any[]; participants: any[] }) => void): () => void {
   addHandler('conversation:messages', handler);
