@@ -4,6 +4,7 @@ import path from 'path';
 import { readProjectConfig } from '../dev-server/config.js';
 import type { BuildManifest } from '../shared/types.js';
 import { installDomShims } from '../shared/dom-shims.js';
+import { loadEnvFile } from '../shared/utils.js';
 import { serveStaticFile, sendCompressed } from './serve-static.js';
 import { handleApiRoute } from './serve-api.js';
 import { handleLoaderRequest, handleLayoutLoaderRequest, handleSubscribeRequest, handleLayoutSubscribeRequest } from './serve-loaders.js';
@@ -38,6 +39,9 @@ export async function serveProject(options: ServeOptions): Promise<void> {
   const clientDir = path.join(outDir, 'client');
   const serverDir = path.join(outDir, 'server');
   const manifestPath = path.join(outDir, 'manifest.json');
+
+  // Load .env file (dotenv crashes in ESM context, so we parse manually)
+  loadEnvFile(projectDir);
 
   // Initialize structured logging
   initLogger();

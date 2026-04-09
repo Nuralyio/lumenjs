@@ -145,6 +145,16 @@ describe('lumenLoadersPlugin transform', () => {
     expect(result).toBeUndefined();
   });
 
+  it('matches when Vite normalizes Windows backslashes to forward slashes', () => {
+    // Simulate Windows: pagesDir has backslashes, but Vite normalizes id to forward slashes
+    const plugin = lumenLoadersPlugin('C:\\project\\pages');
+    const transform = plugin.transform as (code: string, id: string, options?: { ssr?: boolean }) => { code: string; map: null } | undefined;
+    const code = `export function loader({ params }) {\n  return { name: 'test' };\n}\nexport class Page extends LitElement {}`;
+    const result = transform(code, 'C:/project/pages/index.ts');
+    expect(result).toBeDefined();
+    expect(result!.code).toContain('__nk_has_loader');
+  });
+
   it('strips subscribe from client code', () => {
     const dir = createTmpDir();
     const plugin = lumenLoadersPlugin(dir);

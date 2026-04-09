@@ -21,9 +21,12 @@ export function autoDefinePlugin(pagesDir: string): Plugin {
     name: 'lumenjs-auto-define',
     enforce: 'pre',
     transform(code: string, id: string) {
-      if (!id.startsWith(pagesDir) || !id.endsWith('.ts')) return;
+      // Vite normalizes module IDs to forward slashes — match that for pagesDir
+      const normalizedPagesDir = pagesDir.replace(/\\/g, '/');
+      if (!id.startsWith(normalizedPagesDir) || !id.endsWith('.ts')) return;
 
-      const relative = path.relative(pagesDir, id).replace(/\\/g, '/');
+      // Compute relative from normalized paths (path.relative breaks with mixed separators)
+      const relative = id.slice(normalizedPagesDir.length).replace(/^\//, '');
       const basename = path.basename(relative, '.ts');
 
       // Determine if this is a layout or a page

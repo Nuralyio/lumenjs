@@ -67,6 +67,16 @@ describe('autoDefinePlugin transform', () => {
     expect(result).toBeUndefined();
   });
 
+  it('matches when Vite normalizes Windows backslashes to forward slashes', () => {
+    // Simulate Windows: pagesDir has backslashes, but Vite normalizes id to forward slashes
+    const winPlugin = autoDefinePlugin('C:\\project\\pages');
+    const winTransform = winPlugin.transform as (code: string, id: string) => { code: string; map: null } | undefined;
+    const code = `export class PageIndex extends LitElement {}`;
+    const result = winTransform(code, 'C:/project/pages/index.ts');
+    expect(result).toBeDefined();
+    expect(result!.code).toContain("customElements.define('page-index', PageIndex)");
+  });
+
   it('skips if already has customElements.define for same tag', () => {
     const code = `export class PageIndex extends LitElement {}\ncustomElements.define('page-index', PageIndex);`;
     const result = transform(code, path.join(pagesDir, 'index.ts'));

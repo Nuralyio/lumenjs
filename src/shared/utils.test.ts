@@ -9,6 +9,8 @@ import {
   filePathToTagName,
   isRedirectResponse,
   readBody,
+  unwrapResponse,
+  loadEnvFile,
   escapeHtml,
   fileHasLoader,
   fileHasSubscribe,
@@ -173,6 +175,19 @@ describe('readBody', () => {
     const emitter = new EventEmitter();
     setTimeout(() => emitter.emit('error', new Error('fail')), 0);
     await expect(readBody(emitter)).rejects.toThrow('fail');
+  });
+
+  it('parses JSON with unescaped backslashes (Windows paths)', async () => {
+    // {"path": "C:\Users\data"} — \U and \d are not valid JSON escapes
+    const req = createMockReq('{"path": "C:\\Users\\data"}');
+    const result = await readBody(req);
+    expect(result).toEqual({ path: 'C:\\Users\\data' });
+  });
+
+  it('parses JSON with backslash-heavy Windows path', async () => {
+    const req = createMockReq('{"dir": "C:\\Projects\\my-app\\src"}');
+    const result = await readBody(req);
+    expect(result).toEqual({ dir: 'C:\\Projects\\my-app\\src' });
   });
 });
 
@@ -379,5 +394,104 @@ describe('filePathToRoute', () => {
 
   it('handles .js extension', () => {
     expect(filePathToRoute('about.js')).toBe('/about');
+  });
+});
+
+describe('unwrapResponse', () => {
+  it('extracts JSON from a Response object', async () => {
+    const response = Response.json({ users: ['Alice', 'Bob'] });
+    const result = await unwrapResponse(response);
+    expect(result).toEqual({ users: ['Alice', 'Bob'] });
+  });
+
+  it('passes through plain objects unchanged', async () => {
+    const obj = { name: 'test' };
+    const result = await unwrapResponse(obj);
+    expect(result).toBe(obj);
+  });
+
+  it('passes through null/undefined', async () => {
+    expect(await unwrapResponse(null)).toBeNull();
+    expect(await unwrapResponse(undefined)).toBeUndefined();
+  });
+
+  it('passes through strings', async () => {
+    expect(await unwrapResponse('hello')).toBe('hello');
+  });
+
+  it('returns null for Response with non-JSON body', async () => {
+    const response = new Response('not json', { headers: { 'Content-Type': 'text/plain' } });
+    // Response.json() will fail since body is not JSON
+    // But our detection checks .json method existence, so it will try and catch
+    // Actually Response has .json() method always, it just throws on non-JSON
+    const result = await unwrapResponse(response);
+    expect(result).toBeNull();
+  });
+});
+
+describe('loadEnvFile', () => {
+  let tmpDir: string;
+  const savedEnv: Record<string, string | undefined> = {};
+
+  afterEach(() => {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+    // Restore env vars
+    for (const [key, val] of Object.entries(savedEnv)) {
+      if (val === undefined) delete process.env[key];
+      else process.env[key] = val;
+    }
+  });
+
+  function saveEnv(...keys: string[]) {
+    for (const key of keys) savedEnv[key] = process.env[key];
+  }
+
+  it('loads variables from .env file', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-env-'));
+    fs.writeFileSync(path.join(tmpDir, '.env'), 'TEST_LUMEN_A=hello\nTEST_LUMEN_B=world\n');
+    saveEnv('TEST_LUMEN_A', 'TEST_LUMEN_B');
+    delete process.env.TEST_LUMEN_A;
+    delete process.env.TEST_LUMEN_B;
+
+    loadEnvFile(tmpDir);
+    expect(process.env.TEST_LUMEN_A).toBe('hello');
+    expect(process.env.TEST_LUMEN_B).toBe('world');
+  });
+
+  it('does not override existing env vars', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-env-'));
+    fs.writeFileSync(path.join(tmpDir, '.env'), 'TEST_LUMEN_C=from_file\n');
+    saveEnv('TEST_LUMEN_C');
+    process.env.TEST_LUMEN_C = 'existing';
+
+    loadEnvFile(tmpDir);
+    expect(process.env.TEST_LUMEN_C).toBe('existing');
+  });
+
+  it('strips surrounding quotes', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-env-'));
+    fs.writeFileSync(path.join(tmpDir, '.env'), 'TEST_LUMEN_D="quoted value"\nTEST_LUMEN_E=\'single\'\n');
+    saveEnv('TEST_LUMEN_D', 'TEST_LUMEN_E');
+    delete process.env.TEST_LUMEN_D;
+    delete process.env.TEST_LUMEN_E;
+
+    loadEnvFile(tmpDir);
+    expect(process.env.TEST_LUMEN_D).toBe('quoted value');
+    expect(process.env.TEST_LUMEN_E).toBe('single');
+  });
+
+  it('skips comments and empty lines', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-env-'));
+    fs.writeFileSync(path.join(tmpDir, '.env'), '# comment\n\nTEST_LUMEN_F=ok\n');
+    saveEnv('TEST_LUMEN_F');
+    delete process.env.TEST_LUMEN_F;
+
+    loadEnvFile(tmpDir);
+    expect(process.env.TEST_LUMEN_F).toBe('ok');
+  });
+
+  it('does not crash if .env does not exist', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-env-'));
+    expect(() => loadEnvFile(tmpDir)).not.toThrow();
   });
 });

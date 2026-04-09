@@ -295,8 +295,10 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
     enforce: 'pre' as const,
     transform(code: string, id: string, options?: { ssr?: boolean }): { code: string; map: null } | undefined {
       if (options?.ssr) return;
+      // Vite normalizes module IDs to forward slashes — match that for pagesDir
+      const normalizedPagesDir = pagesDir.replace(/\\/g, '/');
       // Apply to page files and layout files within the pages directory
-      if (!id.startsWith(pagesDir) || !id.endsWith('.ts')) return;
+      if (!id.startsWith(normalizedPagesDir) || !id.endsWith('.ts')) return;
 
       const hasLoader = hasTopLevelServerFunction(code, 'loader');
       const hasSubscribe = hasTopLevelServerFunction(code, 'subscribe');

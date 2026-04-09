@@ -119,11 +119,64 @@ export function readBody(req: any, maxSize: number = DEFAULT_MAX_BODY): Promise<
       try {
         resolve(JSON.parse(data));
       } catch {
-        resolve(data);
+        // Retry: escape lone backslashes (common in Windows paths like C:\Users)
+        // that aren't valid JSON escape sequences (\", \\, \/, \b, \f, \n, \r, \t, \uXXXX)
+        try {
+          const fixed = data.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+          resolve(JSON.parse(fixed));
+        } catch {
+          resolve(data);
+        }
       }
     });
     req.on('error', reject);
   });
+}
+
+/**
+ * Unwrap a Response object (e.g. from Response.json()) into a plain value.
+ * JSON.stringify(Response) produces '{}', so we must extract the body first.
+ */
+export async function unwrapResponse(result: any): Promise<any> {
+  if (result && typeof result === 'object' && typeof result.json === 'function' && typeof result.status === 'number' && typeof result.headers === 'object' && typeof result.ok === 'boolean') {
+    try {
+      return await result.json();
+    } catch {
+      return null;
+    }
+  }
+  return result;
+}
+
+/**
+ * Load a .env file into process.env without dotenv (which crashes in Vite ESM SSR).
+ * Uses fs.readFileSync — safe in both CJS and ESM contexts.
+ * Skips variables already set in process.env (environment takes precedence).
+ */
+export function loadEnvFile(dir: string): void {
+  const envPath = path.join(dir, '.env');
+  let content: string;
+  try {
+    content = fs.readFileSync(envPath, 'utf-8');
+  } catch {
+    return; // .env doesn't exist — that's fine
+  }
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let value = trimmed.slice(eqIdx + 1).trim();
+    // Strip surrounding quotes
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    // Don't override existing env vars
+    if (process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
 }
 
 /**

@@ -1,7 +1,7 @@
 import { Plugin, ViteDevServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
-import { readBody } from '../../shared/utils.js';
+import { readBody, unwrapResponse, loadEnvFile } from '../../shared/utils.js';
 import { useStorage } from '../../storage/index.js';
 import type { StorageAdapter } from '../../storage/adapters/types.js';
 
@@ -27,6 +27,9 @@ import type { StorageAdapter } from '../../storage/adapters/types.js';
  * Throw to return an error: throw { status: 404, message: 'Not found' }
  */
 export function lumenApiRoutesPlugin(apiDir: string, projectDir?: string): Plugin {
+  // Load .env for API routes (dotenv crashes in Vite ESM SSR context)
+  loadEnvFile(projectDir || path.dirname(apiDir));
+
   return {
     name: 'lumenjs-api-routes',
     configureServer(server: ViteDevServer) {
@@ -94,7 +97,10 @@ export function lumenApiRoutesPlugin(apiDir: string, projectDir?: string): Plugi
             storage: useStorage() as StorageAdapter | null,
           };
 
-          const result = await handler(nkRequest);
+          let result = await handler(nkRequest);
+
+          // Unwrap Response objects (e.g. Response.json()) — JSON.stringify gives '{}'
+          result = await unwrapResponse(result);
 
           if (result && result.__nk_binary && Buffer.isBuffer(result.body)) {
             res.statusCode = result.status || 200;

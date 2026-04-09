@@ -2,7 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import type { BuildManifest } from '../shared/types.js';
-import { readBody } from '../shared/utils.js';
+import { readBody, unwrapResponse, loadEnvFile } from '../shared/utils.js';
 import { matchRoute } from '../shared/route-matching.js';
 import { useStorage } from '../storage/index.js';
 
@@ -57,7 +57,7 @@ export async function handleApiRoute(
   }
 
   try {
-    const result = await handler({
+    let result = await handler({
       method,
       url: pathname,
       query,
@@ -67,6 +67,9 @@ export async function handleApiRoute(
       storage: useStorage(),
       nkAuth: (req as any).nkAuth,
     });
+
+    // Unwrap Response objects (e.g. Response.json()) — JSON.stringify gives '{}'
+    result = await unwrapResponse(result);
 
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(result));
