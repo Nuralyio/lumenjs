@@ -5,6 +5,9 @@
 
 let _socket: any = null;
 let _handlers: Map<string, Set<Function>> = new Map();
+let _connectingPromise: Promise<any> | null = null;
+// Incremented on every disconnect() to cancel any in-flight connectChat() calls.
+let _sessionId = 0;
 
 function emit(event: string, data: any): void {
   if (!_socket) return;
@@ -26,27 +29,42 @@ function removeHandler(event: string, handler: Function): void {
  * Reuses an existing socket if one is already connected.
  */
 export async function connectChat(params?: Record<string, string>): Promise<any> {
-  if (_socket?.connected) return _socket;
-  const { io } = await import('socket.io-client');
-  _socket = io('/nk/messages', {
-    path: '/__nk_socketio/',
-    query: { ...params, __params: JSON.stringify(params || {}) },
-    reconnection: true,
-    reconnectionAttempts: Infinity,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 10000,
-  });
-
-  _socket.on('nk:data', (data: any) => {
-    if (data?.event) {
-      const handlers = _handlers.get(data.event);
-      if (handlers) {
-        for (const h of handlers) h(data.data);
+  // Return existing socket if active (connecting or connected).
+  // socket.active is false only after an explicit socket.io disconnect().
+  if (_socket && _socket.active !== false) return _socket;
+  // Prevent race: if another connectChat call is already in-flight, wait for it.
+  // (_connectingPromise is set synchronously before the first await, so concurrent
+  // calls within the same tick are guaranteed to see it.)
+  if (_connectingPromise) return _connectingPromise;
+  _connectingPromise = (async () => {
+    const sid = _sessionId; // snapshot: if disconnect() fires during await, sid will differ
+    const { io } = await import('socket.io-client');
+    // If disconnect() was called while we were waiting for the import, abort.
+    if (_sessionId !== sid) { _connectingPromise = null; return null; }
+    _socket = io('/nk/messages', {
+      path: '/__nk_socketio/',
+      query: { ...params, __params: JSON.stringify(params || {}) },
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+    });
+    // Capture _handlers by value so this socket's listener is bound to the
+    // current session's handler map. If disconnect() replaces _handlers with a
+    // new Map, this socket can no longer dispatch to handlers from a later session.
+    const sessionHandlers = _handlers;
+    _socket.on('nk:data', (data: any) => {
+      if (data?.event) {
+        const handlers = sessionHandlers.get(data.event);
+        if (handlers) {
+          for (const h of handlers) h(data.data);
+        }
       }
-    }
-  });
-
-  return _socket;
+    });
+    _connectingPromise = null;
+    return _socket;
+  })();
+  return _connectingPromise;
 }
 
 /** Get the underlying socket instance (for call-service or other integrations) */
@@ -59,9 +77,10 @@ export function setSocket(socket: any): void {
   // Attach the nk:data handler if not already attached
   if (_socket && !(_socket as any).__nk_comm_attached) {
     (_socket as any).__nk_comm_attached = true;
+    const sessionHandlers = _handlers;
     _socket.on('nk:data', (data: any) => {
       if (data?.event) {
-        const handlers = _handlers.get(data.event);
+        const handlers = sessionHandlers.get(data.event);
         if (handlers) {
           for (const h of handlers) h(data.data);
         }
@@ -329,11 +348,15 @@ export function onIceCandidate(handler: (data: { callId: string; fromUserId: str
 
 /** Disconnect from communication socket */
 export function disconnect(): void {
+  _sessionId++; // invalidate any in-flight connectChat() — they will self-abort
   if (_socket) {
     _socket.disconnect();
     _socket = null;
-    _handlers.clear();
+    // Replace (not just clear) so old socket's sessionHandlers closure points
+    // to the now-abandoned Map and cannot dispatch to new-session handlers.
+    _handlers = new Map();
   }
+  _connectingPromise = null;
 }
 
 /** Check if connected */

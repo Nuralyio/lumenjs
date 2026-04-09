@@ -350,7 +350,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                 res.end(finalHtml);
               }).catch(err => {
                 console.error('[LumenJS] SSR/HTML generation error:', err);
-                const html = generateIndexHtml({ title, editorMode, integrations, locale, i18nConfig: i18nConfig || undefined, translations, prefetch: prefetchStrategy, headContent, base });
+                const html = generateIndexHtml({ title, editorMode, integrations, locale, i18nConfig: i18nConfig || undefined, translations, prefetch: prefetchStrategy, headContent, base, authUser: (req as any).nkAuth?.user ?? undefined });
                 server.transformIndexHtml(req.url!, html).then(transformed => {
                   res.setHeader('Content-Type', 'text/html');
                   res.setHeader('Cache-Control', 'no-store');
