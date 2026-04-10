@@ -31,7 +31,8 @@ function analyzePageFile(filePath: string): {
     return {
       hasLoader: hasExportBefore(/export\s+(async\s+)?function\s+loader\s*\(/) || hasColocatedLoader,
       hasSubscribe: hasExportBefore(/export\s+(async\s+)?function\s+subscribe\s*\(/) || hasColocatedSubscribe,
-      hasSocket: /export\s+(function|const)\s+socket[\s(=]/.test(content) || hasColocatedSocket,
+      hasSocket: /export\s+(function|const)\s+socket[\s(=]/.test(content) ||
+                 /export\s*\{[^}]*\bsocket\b[^}]*\}/.test(content) || hasColocatedSocket,
       hasAuth: hasExportBefore(/export\s+const\s+auth\s*=/),
       hasMeta: hasExportBefore(/export\s+(const\s+meta\s*=|(async\s+)?function\s+meta\s*\()/),
       hasStandalone: hasExportBefore(/export\s+const\s+standalone\s*=/),

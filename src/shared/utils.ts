@@ -286,7 +286,8 @@ export function fileHasSocket(filePath: string): boolean {
       }
     }
     const content = fs.readFileSync(filePath, 'utf-8');
-    return /export\s+(function|const)\s+socket[\s(=]/.test(content);
+    return /export\s+(function|const)\s+socket[\s(=]/.test(content) ||
+           /export\s*\{[^}]*\bsocket\b[^}]*\}/.test(content);
   } catch { return false; }
 }
 
