@@ -33,4 +33,6 @@ export class FeaturedProducts extends LitElement {
   }
 }
 
-customElements.define('featured-products', FeaturedProducts);
+if (!customElements.get('featured-products')) {
+  customElements.define('featured-products', FeaturedProducts);
+}

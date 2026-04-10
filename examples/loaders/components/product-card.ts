@@ -28,4 +28,6 @@ export class ProductCard extends LitElement {
   }
 }
 
-customElements.define('product-card', ProductCard);
+if (!customElements.get('product-card')) {
+  customElements.define('product-card', ProductCard);
+}

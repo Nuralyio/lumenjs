@@ -1,4 +1,5 @@
 import { LitElement, html } from 'lit';
+import '../../components/product-card.js';
 
 // --- Page with co-located loader + child component ---
 // No loader here — data comes from _loader.ts in the same folder.
