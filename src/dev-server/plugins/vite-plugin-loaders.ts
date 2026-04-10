@@ -30,6 +30,8 @@ import { installDomShims } from '../../shared/dom-shims.js';
  * The router auto-fetches and spreads each key as an individual property on the element.
  */
 export function lumenLoadersPlugin(pagesDir: string): Plugin {
+  const projectRoot = path.resolve(pagesDir, '..');
+
   return {
     name: 'lumenjs-loaders',
     configureServer(server: ViteDevServer) {
@@ -153,6 +155,13 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
         if (pathname === '/__nk_loader/__layout/' || pathname === '/__nk_loader/__layout') {
           const dir = query.__dir || '';
           await handleLayoutLoader(server, pagesDir, dir, req, res);
+          return;
+        }
+
+        // Handle component loader requests: /__nk_loader/__component/?__file=<relative-path>
+        if (pathname === '/__nk_loader/__component/' || pathname === '/__nk_loader/__component') {
+          const file = query.__file || '';
+          await handleComponentLoader(server, projectRoot, file, req, res);
           return;
         }
 
@@ -295,16 +304,24 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
     enforce: 'pre' as const,
     transform(code: string, id: string, options?: { ssr?: boolean }): { code: string; map: null } | undefined {
       if (options?.ssr) return;
+      if (!id.endsWith('.ts')) return;
+
       // Vite normalizes module IDs to forward slashes — match that for pagesDir
       const normalizedPagesDir = pagesDir.replace(/\\/g, '/');
-      // Apply to page files and layout files within the pages directory
-      if (!id.startsWith(normalizedPagesDir) || !id.endsWith('.ts')) return;
+      const normalizedRoot = projectRoot.replace(/\\/g, '/');
+      const isPageFile = id.startsWith(normalizedPagesDir);
+      const isProjectFile = id.startsWith(normalizedRoot) && !id.includes('/node_modules/');
+
+      // Pages/layouts: always apply. Project files outside pages: only if they have a loader.
+      if (!isPageFile && !isProjectFile) return;
 
       const hasLoader = hasTopLevelServerFunction(code, 'loader');
       const hasSubscribe = hasTopLevelServerFunction(code, 'subscribe');
 
-
       if (!hasLoader && !hasSubscribe) return;
+
+      // Non-page files only get stripped if they have a loader (component loaders)
+      if (!isPageFile && !hasLoader) return;
 
       let result = code;
 
@@ -313,15 +330,24 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
         result = stripServerFunction(result, 'loader');
       }
 
-      // Strip subscribe function
-      if (hasSubscribe) {
+      // Strip subscribe function (only for page files)
+      if (hasSubscribe && isPageFile) {
         result = stripServerFunction(result, 'subscribe');
       }
 
       if (hasLoader) {
         result += '\nexport const __nk_has_loader = true;\n';
+        // For component files (outside pages), auto-wire the loader fetch into connectedCallback
+        if (!isPageFile) {
+          const relPath = id.slice(normalizedRoot.length + 1);
+          const className = extractClassName(code);
+          if (className) {
+            result += `\nimport { __nk_setupComponentLoader as __nk_setup } from '@lumenjs/component-loader';\n`;
+            result += `__nk_setup(${className}, ${JSON.stringify(relPath)});\n`;
+          }
+        }
       }
-      if (hasSubscribe) {
+      if (hasSubscribe && isPageFile) {
         result += '\nexport const __nk_has_subscribe = true;\n';
       }
 
@@ -446,6 +472,119 @@ async function handleLayoutLoader(
 }
 
 /**
+ * Handle component loader requests.
+ * GET /__nk_loader/__component/?__file=components/user-card.ts
+ */
+async function handleComponentLoader(
+  server: ViteDevServer,
+  projectRoot: string,
+  file: string,
+  req: any,
+  res: any
+): Promise<void> {
+  if (!file) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Missing __file parameter' }));
+    return;
+  }
+
+  // Validate the file path stays within project root
+  const filePath = path.resolve(projectRoot, file);
+  if (!filePath.startsWith(path.resolve(projectRoot) + path.sep)) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Invalid component path' }));
+    return;
+  }
+
+  if (!fs.existsSync(filePath)) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Component not found' }));
+    return;
+  }
+
+  try {
+    installDomShims();
+
+    const mod = await server.ssrLoadModule(filePath);
+
+    if (!mod.loader || typeof mod.loader !== 'function') {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ __nk_no_loader: true }));
+      return;
+    }
+
+    // Parse full query for the component loader
+    const reqUrl = req.url || '';
+    const qs = reqUrl.split('?')[1];
+    const query: Record<string, string> = {};
+    if (qs) {
+      for (const pair of qs.split('&')) {
+        const [key, val] = pair.split('=');
+        query[decodeURIComponent(key)] = decodeURIComponent(val || '');
+      }
+    }
+    const locale = query.__locale;
+    delete query.__locale;
+    delete query.__file;
+
+    // Try to resolve auth user
+    let user = (req as any).nkAuth?.user ?? null;
+    if (!user) {
+      try {
+        const authConfigPath = path.join(projectRoot, 'lumenjs.auth.ts');
+        if (fs.existsSync(authConfigPath)) {
+          const { loadAuthConfig } = await import('../../auth/config.js');
+          const authCfg = await loadAuthConfig(projectRoot, server.ssrLoadModule.bind(server));
+          if (authCfg) {
+            const authHeader = req.headers.authorization;
+            if (authHeader?.startsWith('Bearer ')) {
+              const { verifyAccessToken } = await import('../../auth/token.js');
+              const tokenUser = verifyAccessToken(authHeader.slice(7), authCfg.session.secret);
+              if (tokenUser) user = tokenUser;
+            }
+            if (!user && req.headers.cookie) {
+              const { parseSessionCookie, decryptSession } = await import('../../auth/session.js');
+              const cookieVal = parseSessionCookie(req.headers.cookie, authCfg.session.cookieName);
+              if (cookieVal) {
+                const session = await decryptSession(cookieVal, authCfg.session.secret);
+                if (session?.user) user = session.user;
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const result = await mod.loader({ params: {}, query, url: `/__component/${file}`, headers: req.headers, locale, user });
+
+    if (isRedirectResponse(result)) {
+      res.statusCode = result.status || 302;
+      res.setHeader('Location', result.location);
+      res.end();
+      return;
+    }
+
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(result ?? null));
+  } catch (err: any) {
+    if (isRedirectResponse(err)) {
+      res.statusCode = err.status || 302;
+      res.setHeader('Location', err.location);
+      res.end();
+      return;
+    }
+    console.error(`[LumenJS] Component loader error for ${file}:`, err);
+    const status = err?.status || 500;
+    const message = err?.message || 'Component loader failed';
+    res.statusCode = status;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: message }));
+  }
+}
+
+/**
  * Map a URL path to a page file.
  * /         → pages/index.ts
  * /about    → pages/about.ts
@@ -521,6 +660,15 @@ function findDynamicPage(baseDir: string, segments: string[]): string | null {
   }
 
   return null;
+}
+
+/**
+ * Extract the exported class name from a component file.
+ * Returns the first `export class Foo` name, or null if none found.
+ */
+function extractClassName(code: string): string | null {
+  const match = code.match(/export\s+class\s+(\w+)/);
+  return match ? match[1] : null;
 }
 
 /**

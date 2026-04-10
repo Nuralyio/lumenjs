@@ -128,7 +128,8 @@ export async function handlePageRoute(
             }
 
             // Build SSR data script
-            const ssrDataObj = layoutsData.length > 0
+            const hasStructured = layoutsData.length > 0;
+            const ssrDataObj = hasStructured
               ? { page: loaderData, layouts: layoutsData }
               : loaderData;
             const loaderDataScript = ssrDataObj !== undefined

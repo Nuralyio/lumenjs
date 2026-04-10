@@ -116,6 +116,27 @@ async function fetchLayoutLoaderDataRaw(dir: string): Promise<any> {
   return promise;
 }
 
+export async function fetchComponentLoaderData(file: string): Promise<any> {
+  const url = new URL(`/__nk_loader/__component/`, location.origin);
+  url.searchParams.set('__file', file);
+  const config = getI18nConfig();
+  if (config) {
+    url.searchParams.set('__locale', getLocale());
+  }
+  const key = url.toString();
+  const inflight = inflightRequests.get(key);
+  if (inflight) return inflight;
+  const promise = fetch(key)
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`Component loader returned ${res.status}`);
+      const data = await res.json();
+      return data?.__nk_no_loader ? undefined : data;
+    })
+    .finally(() => inflightRequests.delete(key));
+  inflightRequests.set(key, promise);
+  return promise;
+}
+
 export function connectSubscribe(pathname: string, params: Record<string, string>): EventSource {
   const url = new URL(`/__nk_subscribe${pathname}`, location.origin);
   if (Object.keys(params).length > 0) {

@@ -109,4 +109,44 @@ describe('generateIndexHtml', () => {
     });
     expect(html).toContain('tailwind.css');
   });
+
+  it('includes components data in SSR data blob', () => {
+    const html = generateIndexHtml({
+      title: 'Test',
+      editorMode: false,
+      ssrContent: '<div>ssr</div>',
+      loaderData: { page: true },
+      componentsData: [{ tagName: 'user-card', data: { name: 'Alice' } }],
+    });
+    expect(html).toContain('__nk_ssr_data__');
+    expect(html).toContain('"components"');
+    expect(html).toContain('"user-card"');
+  });
+
+  it('uses structured format when only components data (no layouts)', () => {
+    const html = generateIndexHtml({
+      title: 'Test',
+      editorMode: false,
+      ssrContent: '<div>ssr</div>',
+      loaderData: { page: true },
+      componentsData: [{ tagName: 'nav-bar', data: { items: [] } }],
+    });
+    expect(html).toContain('__nk_ssr_data__');
+    expect(html).toContain('"components"');
+    expect(html).toContain('"page"');
+  });
+
+  it('includes both layouts and components in SSR data', () => {
+    const html = generateIndexHtml({
+      title: 'Test',
+      editorMode: false,
+      ssrContent: '<div>ssr</div>',
+      loaderData: { x: 1 },
+      layoutsData: [{ loaderPath: '', data: { nav: true } }],
+      componentsData: [{ tagName: 'sidebar', data: { links: [] } }],
+    });
+    expect(html).toContain('"layouts"');
+    expect(html).toContain('"components"');
+    expect(html).toContain('"sidebar"');
+  });
 });

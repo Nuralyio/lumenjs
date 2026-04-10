@@ -22,6 +22,7 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     'webrtc': 'webrtc.js',
     'error-boundary': 'error-boundary.js',
     'island': 'island.js',
+    'component-loader': 'component-loader.js',
     'hydrate-support': '__virtual__',
   };
 

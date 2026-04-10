@@ -103,6 +103,21 @@ export async function hydrateInitialRoute(
     }
   }
 
+  // Set component loaderData BEFORE loading modules
+  if (ssrData?.components && Array.isArray(ssrData.components)) {
+    for (const comp of ssrData.components) {
+      if (comp.tagName && comp.data !== undefined) {
+        const els = outlet?.querySelectorAll(comp.tagName);
+        if (els) {
+          for (const el of els) {
+            (el as any).loaderData = comp.data;
+            spreadData(el, comp.data);
+          }
+        }
+      }
+    }
+  }
+
   // Set page loaderData BEFORE loading the page module
   const pageData = ssrData?.page !== undefined ? ssrData.page
     : (ssrData && !ssrData.layouts) ? ssrData

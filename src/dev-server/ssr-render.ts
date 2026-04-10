@@ -11,6 +11,11 @@ export interface LayoutSSRData {
   data: any;
 }
 
+export interface ComponentSSRData {
+  tagName: string;
+  data: any;
+}
+
 /**
  * Server-side render a LumenJS page using @lit-labs/ssr.
  * Wraps the page in its layout chain if layouts exist.
@@ -19,7 +24,7 @@ export interface LayoutSSRData {
  */
 export async function ssrRenderPage(
   server: ViteDevServer, pagesDir: string, pathname: string, headers?: Record<string, string | string[] | undefined>, locale?: string, user?: any
-): Promise<{ html: string; loaderData: any; layoutsData?: LayoutSSRData[]; redirect?: { location: string; status: number }; authUser?: any } | null> {
+): Promise<{ html: string; loaderData: any; layoutsData?: LayoutSSRData[]; componentsData?: ComponentSSRData[]; redirect?: { location: string; status: number }; authUser?: any } | null> {
   try {
     const filePath = resolvePageFile(pagesDir, pathname);
     if (!filePath) return null;
@@ -110,6 +115,34 @@ export async function ssrRenderPage(
       layoutsData.push({ loaderPath: layout.dir, data: layoutLoaderData });
     }
 
+    // Discover component loaders from the page module's import graph
+    const componentsData: ComponentSSRData[] = [];
+    const pageModNode = server.moduleGraph.getModuleById(pageModuleUrl) ?? server.moduleGraph.getModulesByFile(filePath)?.values().next().value;
+    if (pageModNode?.ssrImportedModules) {
+      for (const dep of pageModNode.ssrImportedModules) {
+        if (!dep.file || dep.file.includes('/node_modules/')) continue;
+        try {
+          const depMod = await server.ssrLoadModule(dep.url || dep.file);
+          if (depMod.loader && typeof depMod.loader === 'function') {
+            const depRelPath = path.relative(pagesDir, dep.file).replace(/\\/g, '/');
+            const depTagName = filePathToTagName(depRelPath);
+            const compData = await depMod.loader({ params: {}, query: {}, url: pathname, headers: headers || {}, locale, user: user ?? null });
+            if (compData && typeof compData === 'object' && !compData.__nk_redirect) {
+              componentsData.push({ tagName: depTagName, data: compData });
+              patchLoaderDataSpread(depTagName);
+              // Set data on prototype so all instances during this SSR render get it
+              const CompCtor = g.customElements?.get?.(depTagName);
+              if (CompCtor) {
+                CompCtor.prototype.loaderData = compData;
+              }
+            }
+          }
+        } catch {
+          // Non-critical: component loader failed, skip
+        }
+      }
+    }
+
     // Patch element classes to spread loaderData into individual properties
     for (const lm of layoutModules) {
       patchLoaderDataSpread(lm.tagName);
@@ -176,7 +209,7 @@ export async function ssrRenderPage(
       }
     }
 
-    return { html: htmlStr, loaderData, layoutsData: layoutsData.length > 0 ? layoutsData : undefined, authUser: user ?? undefined };
+    return { html: htmlStr, loaderData, layoutsData: layoutsData.length > 0 ? layoutsData : undefined, componentsData: componentsData.length > 0 ? componentsData : undefined, authUser: user ?? undefined };
   } catch (err) {
     console.error('[LumenJS] SSR render failed, falling back to CSR:', err);
     return null;

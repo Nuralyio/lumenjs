@@ -136,12 +136,12 @@ describe('lumenLoadersPlugin transform', () => {
     expect(result).toBeUndefined();
   });
 
-  it('skips files outside pagesDir', () => {
+  it('skips files outside project root', () => {
     const dir = createTmpDir();
     const plugin = lumenLoadersPlugin(dir);
     const transform = plugin.transform as (code: string, id: string, options?: { ssr?: boolean }) => { code: string; map: null } | undefined;
     const code = `export function loader() { return {}; }`;
-    const result = transform(code, '/other/dir/file.ts');
+    const result = transform(code, '/completely/other/dir/file.ts');
     expect(result).toBeUndefined();
   });
 
@@ -178,5 +178,88 @@ describe('lumenLoadersPlugin transform', () => {
     expect(result!.code).not.toContain('function subscribe');
     expect(result!.code).toContain('__nk_has_loader');
     expect(result!.code).toContain('__nk_has_subscribe');
+  });
+});
+
+describe('component loader transform', () => {
+  it('strips loader and injects auto-setup for component file outside pages/', () => {
+    const dir = createTmpDir();
+    const pagesDir = path.join(dir, 'pages');
+    fs.mkdirSync(pagesDir, { recursive: true });
+    fs.mkdirSync(path.join(dir, 'components'), { recursive: true });
+    const plugin = lumenLoadersPlugin(pagesDir);
+    const transform = plugin.transform as (code: string, id: string, options?: { ssr?: boolean }) => { code: string; map: null } | undefined;
+    const code = `export async function loader({ query }) {\n  return { users: [] };\n}\nexport class UserCard extends LitElement {}`;
+    const result = transform(code, path.join(dir, 'components', 'user-card.ts'));
+    expect(result).toBeDefined();
+    expect(result!.code).not.toContain('function loader');
+    expect(result!.code).toContain('__nk_has_loader');
+    expect(result!.code).toContain('__nk_setupComponentLoader');
+    expect(result!.code).toContain('__nk_setup(UserCard');
+    expect(result!.code).toContain('components/user-card.ts');
+  });
+
+  it('does not inject auto-setup for page files', () => {
+    const dir = createTmpDir();
+    const plugin = lumenLoadersPlugin(dir);
+    const transform = plugin.transform as (code: string, id: string, options?: { ssr?: boolean }) => { code: string; map: null } | undefined;
+    const code = `export function loader({ params }) {\n  return { name: 'test' };\n}\nexport class Page extends LitElement {}`;
+    const result = transform(code, path.join(dir, 'index.ts'));
+    expect(result).toBeDefined();
+    expect(result!.code).not.toContain('__nk_setupComponentLoader');
+    expect(result!.code).not.toContain('__nk_setup');
+  });
+
+  it('does not strip subscribe from component files', () => {
+    const dir = createTmpDir();
+    const pagesDir = path.join(dir, 'pages');
+    fs.mkdirSync(pagesDir, { recursive: true });
+    fs.mkdirSync(path.join(dir, 'components'), { recursive: true });
+    const plugin = lumenLoadersPlugin(pagesDir);
+    const transform = plugin.transform as (code: string, id: string, options?: { ssr?: boolean }) => { code: string; map: null } | undefined;
+    const code = `export function subscribe({ push }) {\n  return () => {};\n}\nexport class MyComp extends LitElement {}`;
+    const result = transform(code, path.join(dir, 'components', 'my-comp.ts'));
+    expect(result).toBeUndefined();
+  });
+
+  it('strips loader but not subscribe from component files that have both', () => {
+    const dir = createTmpDir();
+    const pagesDir = path.join(dir, 'pages');
+    fs.mkdirSync(pagesDir, { recursive: true });
+    fs.mkdirSync(path.join(dir, 'components'), { recursive: true });
+    const plugin = lumenLoadersPlugin(pagesDir);
+    const transform = plugin.transform as (code: string, id: string, options?: { ssr?: boolean }) => { code: string; map: null } | undefined;
+    const code = `export function loader() {\n  return { x: 1 };\n}\nexport function subscribe({ push }) {\n  return () => {};\n}\nexport class MyComp extends LitElement {}`;
+    const result = transform(code, path.join(dir, 'components', 'my-comp.ts'));
+    expect(result).toBeDefined();
+    expect(result!.code).not.toContain('function loader');
+    expect(result!.code).toContain('function subscribe');
+    expect(result!.code).toContain('__nk_has_loader');
+    expect(result!.code).not.toContain('__nk_has_subscribe');
+    expect(result!.code).toContain('__nk_setup(MyComp');
+  });
+
+  it('skips node_modules files even within project root', () => {
+    const dir = createTmpDir();
+    const pagesDir = path.join(dir, 'pages');
+    fs.mkdirSync(pagesDir, { recursive: true });
+    const plugin = lumenLoadersPlugin(pagesDir);
+    const transform = plugin.transform as (code: string, id: string, options?: { ssr?: boolean }) => { code: string; map: null } | undefined;
+    const code = `export function loader() { return {}; }\nexport class Lib extends LitElement {}`;
+    const result = transform(code, path.join(dir, 'node_modules', 'some-lib', 'index.ts'));
+    expect(result).toBeUndefined();
+  });
+
+  it('extracts correct class name for auto-setup', () => {
+    const dir = createTmpDir();
+    const pagesDir = path.join(dir, 'pages');
+    fs.mkdirSync(pagesDir, { recursive: true });
+    fs.mkdirSync(path.join(dir, 'components'), { recursive: true });
+    const plugin = lumenLoadersPlugin(pagesDir);
+    const transform = plugin.transform as (code: string, id: string, options?: { ssr?: boolean }) => { code: string; map: null } | undefined;
+    const code = `export function loader() {\n  return { items: [] };\n}\nexport class DashboardStats extends LitElement {}`;
+    const result = transform(code, path.join(dir, 'components', 'dashboard-stats.ts'));
+    expect(result).toBeDefined();
+    expect(result!.code).toContain('__nk_setup(DashboardStats');
   });
 });

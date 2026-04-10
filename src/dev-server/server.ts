@@ -332,6 +332,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                   ssrContent: ssrResult ? SSR_PLACEHOLDER : undefined,
                   loaderData: ssrResult?.loaderData,
                   layoutsData: ssrResult?.layoutsData,
+                  componentsData: ssrResult?.componentsData,
                   integrations,
                   locale,
                   i18nConfig: i18nConfig || undefined,

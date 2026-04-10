@@ -143,6 +143,78 @@ export async function handleLayoutSubscribeRequest(
   }
 }
 
+export async function handleComponentLoaderRequest(
+  manifest: BuildManifest,
+  serverDir: string,
+  queryString: string | undefined,
+  headers: http.IncomingHttpHeaders,
+  res: http.ServerResponse,
+  user?: any,
+): Promise<void> {
+  const query: Record<string, string> = {};
+  if (queryString) {
+    for (const pair of queryString.split('&')) {
+      const [key, val] = pair.split('=');
+      query[decodeURIComponent(key)] = decodeURIComponent(val || '');
+    }
+  }
+
+  const file = query.__file || '';
+  if (!file) {
+    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'Missing __file parameter' }));
+    return;
+  }
+
+  // Find the component in the manifest
+  const comp = (manifest.components || []).find(c => c.file === file);
+  if (!comp || !comp.module) {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ __nk_no_loader: true }));
+    return;
+  }
+
+  const modulePath = resolveModulePath(serverDir, comp.module);
+  if (!fs.existsSync(modulePath)) {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ __nk_no_loader: true }));
+    return;
+  }
+
+  try {
+    const mod = await import(modulePath);
+    if (!mod.loader || typeof mod.loader !== 'function') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ __nk_no_loader: true }));
+      return;
+    }
+
+    const locale = query.__locale;
+    delete query.__locale;
+    delete query.__file;
+
+    const result = await mod.loader({ params: {}, query, url: `/__component/${file}`, headers, locale, user: user ?? null });
+    if (isRedirectResponse(result)) {
+      res.writeHead(result.status || 302, { Location: result.location });
+      res.end();
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify(result ?? null));
+  } catch (err: any) {
+    if (isRedirectResponse(err)) {
+      res.writeHead(err.status || 302, { Location: err.location });
+      res.end();
+      return;
+    }
+    logger.error(`Component loader error`, { file, error: (err as any)?.message });
+    const status = err?.status || 500;
+    const message = status < 500 ? (err?.message || 'Component loader failed') : 'Internal server error';
+    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: message }));
+  }
+}
+
 export async function handleSubscribeRequest(
   manifest: BuildManifest,
   serverDir: string,

@@ -31,8 +31,9 @@ src/
 ├── runtime/               # Client-side (ships to browser)
 │   ├── app-shell.ts       # <nk-app> — root element, creates router
 │   ├── router.ts          # NkRouter — SPA navigation, layout diffing, loader fetching
-│   ├── router-data.ts     # Fetches loader/subscribe data from server endpoints
-│   ├── router-hydration.ts # SSR hydration logic
+│   ├── router-data.ts     # Fetches loader/subscribe/component-loader data from server endpoints
+│   ├── router-hydration.ts # SSR hydration logic (pages, layouts, components)
+│   ├── component-loader.ts # __nk_setupComponentLoader — auto-patches connectedCallback for component loaders
 │   ├── response.ts        # Response helpers (redirect, json)
 │   ├── i18n.ts            # Client i18n: t(), getLocale(), setLocale()
 │   ├── error-boundary.ts  # <nk-error-boundary> — catches render errors, shows fallback
@@ -47,7 +48,7 @@ src/
 │   ├── ai-chat-panel.ts   # AI assistant panel
 │   └── ...
 ├── shared/
-│   ├── types.ts           # BuildManifest, ManifestRoute, ManifestLayout
+│   ├── types.ts           # BuildManifest, ManifestRoute, ManifestLayout, ManifestComponent
 │   ├── utils.ts           # filePathToTagName, filePathToRoute, fileHasLoader, etc.
 │   ├── route-matching.ts  # URL pattern matching
 │   ├── middleware-runner.ts # Express-style middleware chain execution
@@ -104,13 +105,25 @@ src/
 - Layouts: `pages/dashboard/_layout.ts` → `<layout-dashboard>`
 - No `@customElement` decorator needed
 
-### Server loaders
+### Server loaders (pages)
 - `export async function loader({ params, query, url, headers, locale })` — runs server-side
 - Each key in the returned object is auto-spread as an individual property on the element
 - Declare each key as its own property (e.g., `static properties = { stats: { type: Array } }` if loader returns `{ stats: [...] }`)
 - Access directly as `this.stats` — no `loaderData` wrapper needed
 - Return `{ __nk_redirect: true, location: '/path', status: 302 }` for redirects
 - **Co-located loader**: for folder routes (`pages/foo/index.ts`), place a `_loader.ts` in the same directory — auto-discovered, no import or wrapper needed in the page file. Inline loader always wins if both exist. Only works for `index.ts` pages; flat pages keep the loader inline.
+
+### Component loaders
+- Any Lit component file (outside `pages/`) can export `loader()` — same syntax as page loaders
+- The Vite transform auto-strips the loader from the client bundle and injects `__nk_setupComponentLoader` to patch `connectedCallback`
+- No mixin or file path string needed — just `export async function loader() { ... }` before the class
+- **SSR**: component loaders are discovered from the page module's import graph in `ssr-render.ts`, run server-side, and data is set on the class prototype before Lit renders. Data is inlined in `__nk_ssr_data__` under the `components` key for hydration.
+- **CSR navigation**: `connectedCallback` fetches from `/__nk_loader/__component/?__file=<relative-path>`, spreads data as properties, and calls `requestUpdate()`
+- **Hydration**: `router-hydration.ts` reads `ssrData.components` and sets data on matching DOM elements before module load
+- Component loaders receive `{ params: {}, query, url, headers, locale, user }` — `params` is always empty (no URL segments)
+- Best for **parameterless global data** (nav, sidebar, footer). For instance-specific data, use the page loader and pass props.
+- `subscribe()` (SSE) is not supported for components — only pages and layouts
+- Files touched: `vite-plugin-loaders.ts` (strip + endpoint), `ssr-render.ts`, `index-html.ts`, `router-hydration.ts`, `router-data.ts`, `component-loader.ts`, `serve-loaders.ts`, `serve-ssr.ts`, `serve.ts`, `types.ts`, `vite-plugin-virtual-modules.ts`
 
 ### Socket (Socket.IO)
 - `export function socket({ on, push, room, params, headers, locale, socket })` — bidirectional Socket.IO handler

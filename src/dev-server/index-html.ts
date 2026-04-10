@@ -6,6 +6,7 @@ export interface IndexHtmlOptions {
   ssrContent?: string;
   loaderData?: any;
   layoutsData?: Array<{ loaderPath: string; data: any }>;
+  componentsData?: Array<{ tagName: string; data: any }>;
   integrations?: string[];
   locale?: string;
   i18nConfig?: { locales: string[]; defaultLocale: string; prefixDefault: boolean };
@@ -33,11 +34,12 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
     ? `<nk-app data-nk-ssr><div id="nk-router-outlet">${options.ssrContent}</div></nk-app>`
     : '<nk-app></nk-app>';
 
-  // Build SSR data: if layouts are present, use structured format { page, layouts }
+  // Build SSR data: if layouts or components are present, use structured format
   let loaderDataScript = '';
-  if (isSSR && (options.loaderData !== undefined || options.layoutsData)) {
-    const ssrData = options.layoutsData
-      ? { page: options.loaderData, layouts: options.layoutsData }
+  if (isSSR && (options.loaderData !== undefined || options.layoutsData || options.componentsData)) {
+    const hasStructured = options.layoutsData || options.componentsData;
+    const ssrData = hasStructured
+      ? { page: options.loaderData, layouts: options.layoutsData, components: options.componentsData }
       : options.loaderData;
     loaderDataScript = `<script type="application/json" id="__nk_ssr_data__">${JSON.stringify(ssrData).replace(/</g, '\\u003c')}</script>`;
   }

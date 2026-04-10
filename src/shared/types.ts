@@ -31,10 +31,17 @@ export interface ManifestMiddleware {
   module: string;
 }
 
+export interface ManifestComponent {
+  file: string;
+  module: string;
+  tagName: string;
+}
+
 export interface BuildManifest {
   routes: ManifestRoute[];
   apiRoutes: ManifestRoute[];
   layouts: ManifestLayout[];
+  components?: ManifestComponent[];
   middlewares?: ManifestMiddleware[];
   i18n?: I18nManifest;
   auth?: { configModule: string };

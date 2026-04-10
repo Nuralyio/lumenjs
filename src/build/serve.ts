@@ -7,7 +7,7 @@ import { installDomShims } from '../shared/dom-shims.js';
 import { loadEnvFile } from '../shared/utils.js';
 import { serveStaticFile, sendCompressed } from './serve-static.js';
 import { handleApiRoute } from './serve-api.js';
-import { handleLoaderRequest, handleLayoutLoaderRequest, handleSubscribeRequest, handleLayoutSubscribeRequest } from './serve-loaders.js';
+import { handleLoaderRequest, handleLayoutLoaderRequest, handleComponentLoaderRequest, handleSubscribeRequest, handleLayoutSubscribeRequest } from './serve-loaders.js';
 import { handlePageRoute } from './serve-ssr.js';
 import { renderErrorPage } from './error-page.js';
 import { handleI18nRequest } from './serve-i18n.js';
@@ -350,6 +350,12 @@ export async function serveProject(options: ServeOptions): Promise<void> {
       // 6. Layout loader endpoint
       if (pathname === '/__nk_loader/__layout/' || pathname === '/__nk_loader/__layout') {
         await handleLayoutLoaderRequest(manifest, serverDir, queryString, req.headers, res, (req as any).nkAuth?.user ?? undefined);
+        return;
+      }
+
+      // 6b. Component loader endpoint
+      if (pathname === '/__nk_loader/__component/' || pathname === '/__nk_loader/__component') {
+        await handleComponentLoaderRequest(manifest, serverDir, queryString, req.headers, res, (req as any).nkAuth?.user ?? undefined);
         return;
       }
 
