@@ -1,14 +1,11 @@
-import { LitElement, html } from 'lit';
+import { LitElement, html, css } from 'lit';
 
 // --- Nested layout loader ---
 // A _layout.ts in a subdirectory wraps all pages in that folder.
 // Its loader runs in addition to the parent layout loader.
-// Use it for section-specific shared data.
 
 export async function loader() {
-  return {
-    totalProducts: 6,
-  };
+  return { totalProducts: 6 };
 }
 
 export class LayoutProducts extends LitElement {
@@ -18,9 +15,14 @@ export class LayoutProducts extends LitElement {
 
   totalProducts = 0;
 
+  static styles = css`
+    :host { display: block; }
+    .header { color: #64748b; font-size: 0.8125rem; margin-bottom: 1.5rem; }
+  `;
+
   render() {
     return html`
-      <p>Product catalog (${this.totalProducts} items)</p>
+      <p class="header">${this.totalProducts} items in catalog</p>
       <slot></slot>
     `;
   }

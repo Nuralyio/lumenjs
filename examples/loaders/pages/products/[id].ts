@@ -1,4 +1,4 @@
-import { LitElement, html } from 'lit';
+import { LitElement, html, css } from 'lit';
 
 // --- Dynamic route params ---
 // File: pages/products/[id].ts → URL: /products/:id
@@ -29,12 +29,26 @@ export class PageProductDetail extends LitElement {
   price = 0;
   notFound = false;
 
+  static styles = css`
+    :host { display: block; }
+    .back { color: #7c3aed; text-decoration: none; font-size: 0.875rem; }
+    .back:hover { text-decoration: underline; }
+    h1 { font-size: 1.75rem; font-weight: 700; margin: 1rem 0 0.5rem; }
+    .price { font-size: 1.5rem; font-weight: 700; color: #7c3aed; }
+    .not-found { color: #64748b; margin-top: 1rem; }
+  `;
+
   render() {
-    if (this.notFound) return html`<p>Not found.</p>`;
+    if (this.notFound) {
+      return html`
+        <a class="back" href="/products">&larr; Back</a>
+        <p class="not-found">Product not found.</p>
+      `;
+    }
     return html`
-      <a href="/products">&larr; Back</a>
+      <a class="back" href="/products">&larr; Back</a>
       <h1>${this.name}</h1>
-      <p>$${this.price}</p>
+      <p class="price">$${this.price}</p>
     `;
   }
 }
