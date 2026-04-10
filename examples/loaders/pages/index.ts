@@ -1,6 +1,7 @@
 import { LitElement, html } from 'lit';
+import '../components/featured-products.js';
 
-// --- Inline loader ---
+// --- Inline page loader ---
 // Export loader() in the same file as the page component.
 // Each returned key becomes a property on the element.
 
@@ -24,6 +25,10 @@ export class PageIndex extends LitElement {
     return html`
       <h1>${this.message}</h1>
       <ul>${this.items.map(i => html`<li>${i}</li>`)}</ul>
+
+      <hr />
+      <!-- This component fetches its own data via its own loader -->
+      <featured-products></featured-products>
     `;
   }
 }
