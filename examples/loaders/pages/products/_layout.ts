@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit';
+import { theme } from '../../styles/shared.js';
 
 // --- Nested layout loader ---
 // A _layout.ts in a subdirectory wraps all pages in that folder.
@@ -15,10 +16,10 @@ export class LayoutProducts extends LitElement {
 
   totalProducts = 0;
 
-  static styles = css`
+  static styles = [theme, css`
     :host { display: block; }
-    .header { color: #64748b; font-size: 0.8125rem; margin-bottom: 1.5rem; }
-  `;
+    .header { color: var(--text-muted); font-size: 0.8125rem; margin-bottom: 1.5rem; }
+  `];
 
   render() {
     return html`

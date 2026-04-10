@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit';
+import { theme, heading, card } from '../styles/shared.js';
 
 // --- Subscribe (SSE) ---
 // Server pushes data to the client via Server-Sent Events.
@@ -10,10 +11,7 @@ let tick = 0;
 export function subscribe({ push }: { push: (data: any) => void }) {
   const id = setInterval(() => {
     tick++;
-    push({
-      time: new Date().toISOString(),
-      tick,
-    });
+    push({ time: new Date().toISOString(), tick });
   }, 1000);
   return () => clearInterval(id);
 }
@@ -27,25 +25,15 @@ export class PageLive extends LitElement {
   time = '';
   tick = 0;
 
-  static styles = css`
+  static styles = [theme, heading, card, css`
     :host { display: block; }
-    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 1.25rem; }
-    .card {
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      padding: 1.5rem;
-      display: inline-flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      min-width: 280px;
-    }
+    .card { display: inline-flex; flex-direction: column; gap: 0.75rem; min-width: 280px; padding: 1.5rem; }
     .row { display: flex; justify-content: space-between; font-size: 0.9375rem; }
-    .label { color: #64748b; }
+    .label { color: var(--text-muted); }
     .value { font-weight: 600; font-variant-numeric: tabular-nums; }
     .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; margin-right: 0.5rem; vertical-align: middle; }
-    .waiting { color: #94a3b8; }
-  `;
+    .waiting { color: var(--text-subtle); }
+  `];
 
   render() {
     if (!this.time) return html`<h1>Live (SSE)</h1><p class="waiting">Connecting...</p>`;

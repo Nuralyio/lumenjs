@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit';
+import { theme, heading, card } from '../styles/shared.js';
 import '../components/featured-products.js';
 
 // --- Inline page loader ---
@@ -28,25 +29,18 @@ export class PageIndex extends LitElement {
   message = '';
   items: { label: string; desc: string }[] = [];
 
-  static styles = css`
+  static styles = [theme, heading, card, css`
     :host { display: block; }
-    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem; }
-    .subtitle { color: #64748b; margin-bottom: 2rem; font-size: 0.9375rem; }
+    .subtitle { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.9375rem; }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
       gap: 0.75rem;
       margin-bottom: 2.5rem;
     }
-    .card {
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      padding: 1.25rem;
-    }
     .card strong { display: block; font-size: 0.875rem; margin-bottom: 0.25rem; }
-    .card span { font-size: 0.8125rem; color: #64748b; }
-  `;
+    .card span { font-size: 0.8125rem; color: var(--text-muted); }
+  `];
 
   render() {
     return html`
@@ -60,8 +54,6 @@ export class PageIndex extends LitElement {
           </div>
         `)}
       </div>
-
-      <!-- This component fetches its own data via its own loader -->
       <featured-products></featured-products>
     `;
   }

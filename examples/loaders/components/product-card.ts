@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit';
+import { theme, card } from '../styles/shared.js';
 
 // --- Child component ---
 // Regular Lit component — no loader.
@@ -15,25 +16,17 @@ export class ProductCard extends LitElement {
   price = 0;
   productId = 0;
 
-  static styles = css`
+  static styles = [theme, card, css`
     :host { display: block; }
-    .card {
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      padding: 1.25rem;
-      transition: box-shadow 0.15s;
-    }
-    .card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
     .name a {
       font-weight: 600;
       font-size: 0.9375rem;
-      color: #0f172a;
+      color: var(--text);
       text-decoration: none;
     }
-    .name a:hover { color: #7c3aed; }
-    .price { color: #7c3aed; font-weight: 700; margin-top: 0.375rem; }
-  `;
+    .name a:hover { color: var(--accent); }
+    .price { color: var(--accent); font-weight: 700; margin-top: 0.375rem; }
+  `];
 
   render() {
     return html`

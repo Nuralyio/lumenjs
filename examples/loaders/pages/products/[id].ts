@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit';
+import { theme, heading, backLink } from '../../styles/shared.js';
 
 // --- Dynamic route params ---
 // File: pages/products/[id].ts → URL: /products/:id
@@ -29,14 +30,12 @@ export class PageProductDetail extends LitElement {
   price = 0;
   notFound = false;
 
-  static styles = css`
+  static styles = [theme, heading, backLink, css`
     :host { display: block; }
-    .back { color: #7c3aed; text-decoration: none; font-size: 0.875rem; }
-    .back:hover { text-decoration: underline; }
-    h1 { font-size: 1.75rem; font-weight: 700; margin: 1rem 0 0.5rem; }
-    .price { font-size: 1.5rem; font-weight: 700; color: #7c3aed; }
-    .not-found { color: #64748b; margin-top: 1rem; }
-  `;
+    h1 { margin-top: 1rem; }
+    .price { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+    .not-found { color: var(--text-muted); margin-top: 1rem; }
+  `];
 
   render() {
     if (this.notFound) {

@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit';
+import { theme, heading } from '../../styles/shared.js';
 import '../../components/product-card.js';
 
 // --- Page with co-located loader + child component ---
@@ -12,15 +13,14 @@ export class PageProducts extends LitElement {
 
   products: { id: number; name: string; price: number }[] = [];
 
-  static styles = css`
+  static styles = [theme, heading, css`
     :host { display: block; }
-    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 1.25rem; }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
       gap: 0.75rem;
     }
-  `;
+  `];
 
   render() {
     return html`
