@@ -1,0 +1,14 @@
+{
+  "name": "lumenjs-example-loaders",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "lumenjs dev",
+    "build": "lumenjs build",
+    "serve": "lumenjs serve"
+  },
+  "dependencies": {
+    "@nuraly/lumenjs": "latest",
+    "lit": "^3.1.0"
+  }
+}
