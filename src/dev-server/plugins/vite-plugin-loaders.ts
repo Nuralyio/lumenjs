@@ -342,7 +342,7 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
           const relPath = id.slice(normalizedRoot.length + 1);
           const className = extractClassName(code);
           if (className) {
-            result += `\nimport { __nk_setupComponentLoader as __nk_setup } from '@lumenjs/component-loader';\n`;
+            result += `\nimport { __nk_setupComponentLoader as __nk_setup } from '/@lumenjs/component-loader';\n`;
             result += `__nk_setup(${className}, ${JSON.stringify(relPath)});\n`;
           }
         }
