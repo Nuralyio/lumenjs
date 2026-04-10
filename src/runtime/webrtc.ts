@@ -8,9 +8,26 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
+let _cachedIceServers: RTCIceServer[] | null = null;
+
+async function fetchIceServersFromApi(): Promise<RTCIceServer[] | null> {
+  if (_cachedIceServers) return _cachedIceServers;
+  try {
+    const res = await fetch('/api/ice-servers');
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.iceServers?.length) {
+      _cachedIceServers = data.iceServers;
+      return data.iceServers;
+    }
+  } catch {}
+  return null;
+}
+
 function getIceServers(custom?: RTCIceServer[]): RTCIceServer[] {
   return custom
     || (typeof window !== 'undefined' && (window as any).__NK_ICE_SERVERS)
+    || _cachedIceServers
     || DEFAULT_ICE_SERVERS;
 }
 
@@ -22,6 +39,11 @@ export interface WebRTCCallbacks {
   onConnectionStateChange: (state: RTCPeerConnectionState) => void;
   onIceCandidate: (candidate: RTCIceCandidate) => void;
   onError: (error: Error) => void;
+}
+
+/** Pre-fetch ICE servers from /api/ice-servers. Call early (e.g. on page load). */
+export async function preloadIceServers(): Promise<void> {
+  await fetchIceServersFromApi();
 }
 
 export class WebRTCManager {
