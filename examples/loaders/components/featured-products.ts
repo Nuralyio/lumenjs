@@ -5,6 +5,9 @@ import { LitElement, html } from 'lit';
 // LumenJS auto-wires it: the loader runs server-side,
 // and data is fetched + spread as properties on connectedCallback.
 // No prop-passing from the parent needed — the component is self-contained.
+//
+// Components outside pages/ must register themselves with customElements.define
+// since auto-define only applies to files inside pages/.
 
 export async function loader() {
   return {
@@ -29,3 +32,5 @@ export class FeaturedProducts extends LitElement {
     `;
   }
 }
+
+customElements.define('featured-products', FeaturedProducts);

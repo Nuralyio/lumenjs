@@ -3,6 +3,10 @@ import { LitElement, html } from 'lit';
 // --- Child component ---
 // Regular Lit component — no loader.
 // Receives data from the parent page via properties.
+//
+// Files in _components/ get auto-defined with a generated name
+// (e.g. page-_components-product-card), so we register manually
+// to use a clean tag name.
 
 export class ProductCard extends LitElement {
   static properties = {
@@ -23,3 +27,5 @@ export class ProductCard extends LitElement {
     `;
   }
 }
+
+customElements.define('product-card', ProductCard);
