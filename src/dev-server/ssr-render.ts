@@ -124,8 +124,34 @@ export async function ssrRenderPage(
         try {
           const depMod = await server.ssrLoadModule(dep.url || dep.file);
           if (depMod.loader && typeof depMod.loader === 'function') {
-            const depRelPath = path.relative(pagesDir, dep.file).replace(/\\/g, '/');
-            const depTagName = filePathToTagName(depRelPath);
+            // For components outside pages/, filePathToTagName generates invalid names (e.g. page-..-components-foo).
+            // Instead, find the actual registered tag name from the component's exported class.
+            let depTagName: string | null = null;
+            const depClasses = Object.values(depMod).filter((v: any) => typeof v === 'function' && v.prototype instanceof (g as any).HTMLElement);
+            const registry = g.customElements as any;
+            for (const cls of depClasses) {
+              // SSR shim uses __reverseDefinitions (constructor → name)
+              if (registry?.__reverseDefinitions) {
+                const name = registry.__reverseDefinitions.get(cls);
+                if (name) { depTagName = name; break; }
+              }
+              // Fallback: iterate __definitions (name → constructor)
+              if (!depTagName && registry?.__definitions) {
+                for (const [tag, ctor] of registry.__definitions) {
+                  if (ctor === cls) { depTagName = tag; break; }
+                }
+              }
+              if (depTagName) break;
+            }
+            // Fallback: generate from path relative to project root (not pages)
+            if (!depTagName) {
+              const projectRoot = path.resolve(pagesDir, '..');
+              const depRelPath = path.relative(
+                dep.file.startsWith(pagesDir) ? pagesDir : projectRoot,
+                dep.file
+              ).replace(/\\/g, '/');
+              depTagName = filePathToTagName(depRelPath);
+            }
             const compData = await depMod.loader({ params: {}, query: {}, url: pathname, headers: headers || {}, locale, user: user ?? null });
             if (compData && typeof compData === 'object' && !compData.__nk_redirect) {
               componentsData.push({ tagName: depTagName, data: compData });
