@@ -120,7 +120,43 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
             res.write(`data: ${JSON.stringify(data)}\n\n`);
           };
 
-          const cleanup = subscribeFn({ params, push, headers: req.headers, locale, user: (req as any).nkAuth?.user ?? null });
+          // If auth middleware hasn't populated nkAuth, try to parse from cookie or bearer token
+          let user = (req as any).nkAuth?.user ?? null;
+          if (!user) {
+            try {
+              const authConfigPath = path.join(pagesDir, '..', 'lumenjs.auth.ts');
+              if (fs.existsSync(authConfigPath)) {
+                const { loadAuthConfig } = await import('../../auth/config.js');
+                const authCfg = await loadAuthConfig(path.join(pagesDir, '..'), server.ssrLoadModule.bind(server));
+                if (authCfg) {
+                  // Try bearer token first
+                  const authHeader = req.headers.authorization;
+                  if (authHeader?.startsWith('Bearer ')) {
+                    const { verifyAccessToken } = await import('../../auth/token.js');
+                    const tokenUser = verifyAccessToken(authHeader.slice(7), authCfg.session.secret);
+                    if (tokenUser) {
+                      user = tokenUser;
+                      (req as any).nkAuth = { user: tokenUser, session: { accessToken: authHeader.slice(7), expiresAt: 0, user: tokenUser } };
+                    }
+                  }
+                  // Fall back to cookie
+                  if (!user && req.headers.cookie) {
+                    const { parseSessionCookie, decryptSession } = await import('../../auth/session.js');
+                    const cookieVal = parseSessionCookie(req.headers.cookie, authCfg.session.cookieName);
+                    if (cookieVal) {
+                      const session = await decryptSession(cookieVal, authCfg.session.secret);
+                      if (session?.user) {
+                        user = session.user;
+                        (req as any).nkAuth = { user: session.user, session };
+                      }
+                    }
+                  }
+                }
+              }
+            } catch {}
+          }
+
+          const cleanup = subscribeFn({ params, push, headers: req.headers, locale, user });
 
           res.on('close', () => {
             if (typeof cleanup === 'function') cleanup();
@@ -799,7 +835,43 @@ async function handleLayoutSubscribe(
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
 
-    const cleanup = mod.subscribe({ params: {}, push, headers: req.headers, locale, user: (req as any).nkAuth?.user ?? null });
+    // If auth middleware hasn't populated nkAuth, try to parse from cookie or bearer token
+    let user = (req as any).nkAuth?.user ?? null;
+    if (!user) {
+      try {
+        const authConfigPath = path.join(pagesDir, '..', 'lumenjs.auth.ts');
+        if (fs.existsSync(authConfigPath)) {
+          const { loadAuthConfig } = await import('../../auth/config.js');
+          const authCfg = await loadAuthConfig(path.join(pagesDir, '..'), server.ssrLoadModule.bind(server));
+          if (authCfg) {
+            // Try bearer token first
+            const authHeader = req.headers.authorization;
+            if (authHeader?.startsWith('Bearer ')) {
+              const { verifyAccessToken } = await import('../../auth/token.js');
+              const tokenUser = verifyAccessToken(authHeader.slice(7), authCfg.session.secret);
+              if (tokenUser) {
+                user = tokenUser;
+                (req as any).nkAuth = { user: tokenUser, session: { accessToken: authHeader.slice(7), expiresAt: 0, user: tokenUser } };
+              }
+            }
+            // Fall back to cookie
+            if (!user && req.headers.cookie) {
+              const { parseSessionCookie, decryptSession } = await import('../../auth/session.js');
+              const cookieVal = parseSessionCookie(req.headers.cookie, authCfg.session.cookieName);
+              if (cookieVal) {
+                const session = await decryptSession(cookieVal, authCfg.session.secret);
+                if (session?.user) {
+                  user = session.user;
+                  (req as any).nkAuth = { user: session.user, session };
+                }
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const cleanup = mod.subscribe({ params: {}, push, headers: req.headers, locale, user });
 
     res.on('close', () => {
       if (typeof cleanup === 'function') cleanup();
