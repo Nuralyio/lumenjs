@@ -365,9 +365,9 @@ export class NkRouter {
   /** Spread loader data as individual properties on an element. */
   private spreadData(el: Element, data: any): void {
     if (data && typeof data === 'object') {
-      const BLOCKED = new Set(['__proto__', 'constructor', 'prototype',
-        'innerHTML', 'outerHTML', 'textContent',
-        'render', 'connectedCallback', 'disconnectedCallback']);
+      const BLOCKED = new Set(['__proto__', 'constructor', 'prototype', 'loaderData',
+        'render', 'connectedCallback', 'disconnectedCallback', 'attributeChangedCallback',
+        'adoptedCallback', 'innerHTML', 'outerHTML', 'textContent']);
       for (const [key, value] of Object.entries(data)) {
         if (!BLOCKED.has(key)) {
           (el as any)[key] = value;
