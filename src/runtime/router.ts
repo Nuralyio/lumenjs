@@ -310,7 +310,9 @@ export class NkRouter {
       for (let i = 0; i < divergeIndex; i++) {
         const layoutEl: Element | null = parentEl?.querySelector(`:scope > ${this.currentLayoutTags[i]}`) ?? null;
         if (!layoutEl) {
-          return this.renderRoute(route, loaderData, [], []);
+          // Layout element lost — force full rebuild with layouts
+          this.currentLayoutTags = [];
+          return this.renderRoute(route, loaderData, layouts, layoutDataList);
         }
         if (layoutDataList && layoutDataList[i] !== undefined) {
           (layoutEl as any).loaderData = layoutDataList[i];
