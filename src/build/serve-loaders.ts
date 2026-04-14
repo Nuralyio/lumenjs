@@ -64,8 +64,16 @@ export async function handleLayoutLoaderRequest(
       res.end();
       return;
     }
+    let json: string;
+    try {
+      json = JSON.stringify(result ?? null);
+    } catch {
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Loader returned non-serializable data' }));
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify(result ?? null));
+    res.end(json);
   } catch (err: any) {
     if (isRedirectResponse(err)) {
       res.writeHead(err.status || 302, { Location: err.location });
@@ -212,8 +220,16 @@ export async function handleComponentLoaderRequest(
       res.end();
       return;
     }
+    let json: string;
+    try {
+      json = JSON.stringify(result ?? null);
+    } catch {
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Loader returned non-serializable data' }));
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify(result ?? null));
+    res.end(json);
   } catch (err: any) {
     if (isRedirectResponse(err)) {
       res.writeHead(err.status || 302, { Location: err.location });
@@ -394,8 +410,16 @@ export async function handleLoaderRequest(
       res.end();
       return;
     }
+    let json: string;
+    try {
+      json = JSON.stringify(result ?? null);
+    } catch {
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Loader returned non-serializable data' }));
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify(result ?? null));
+    res.end(json);
   } catch (err: any) {
     if (isRedirectResponse(err)) {
       res.writeHead(err.status || 302, { Location: err.location });
