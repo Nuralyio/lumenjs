@@ -43,11 +43,11 @@ export async function prefetchLoaderData(pathname: string, params: Record<string
   return data;
 }
 
-export async function prefetchLayoutLoaderData(dir: string): Promise<any> {
-  const cacheKey = `layout:${dir}`;
+export async function prefetchLayoutLoaderData(dir: string, params: Record<string, string> = {}): Promise<any> {
+  const cacheKey = `layout:${dir}:${JSON.stringify(params)}`;
   const cached = getCachedLoaderData(cacheKey);
   if (cached !== undefined) return cached;
-  const data = await fetchLayoutLoaderDataRaw(dir);
+  const data = await fetchLayoutLoaderDataRaw(dir, params);
   setCachedLoaderData(cacheKey, data);
   return data;
 }
@@ -85,19 +85,22 @@ async function fetchLoaderDataRaw(pathname: string, params: Record<string, strin
   return promise;
 }
 
-export async function fetchLayoutLoaderData(dir: string): Promise<any> {
-  const cacheKey = `layout:${dir}`;
+export async function fetchLayoutLoaderData(dir: string, params: Record<string, string> = {}): Promise<any> {
+  const cacheKey = `layout:${dir}:${JSON.stringify(params)}`;
   const cached = getCachedLoaderData(cacheKey);
   if (cached !== undefined) {
     prefetchCache.delete(cacheKey);
     return cached;
   }
-  return fetchLayoutLoaderDataRaw(dir);
+  return fetchLayoutLoaderDataRaw(dir, params);
 }
 
-async function fetchLayoutLoaderDataRaw(dir: string): Promise<any> {
+async function fetchLayoutLoaderDataRaw(dir: string, params: Record<string, string> = {}): Promise<any> {
   const url = new URL(`/__nk_loader/__layout/`, location.origin);
   url.searchParams.set('__dir', dir);
+  if (Object.keys(params).length > 0) {
+    url.searchParams.set('__params', JSON.stringify(params));
+  }
   const config = getI18nConfig();
   if (config) {
     url.searchParams.set('__locale', getLocale());
@@ -149,9 +152,12 @@ export function connectSubscribe(pathname: string, params: Record<string, string
   return new EventSource(url.toString());
 }
 
-export function connectLayoutSubscribe(dir: string): EventSource {
+export function connectLayoutSubscribe(dir: string, params: Record<string, string> = {}): EventSource {
   const url = new URL('/__nk_subscribe/__layout/', location.origin);
   url.searchParams.set('__dir', dir);
+  if (Object.keys(params).length > 0) {
+    url.searchParams.set('__params', JSON.stringify(params));
+  }
   const config = getI18nConfig();
   if (config) {
     url.searchParams.set('__locale', getLocale());

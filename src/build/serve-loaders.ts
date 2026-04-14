@@ -58,7 +58,14 @@ export async function handleLayoutLoaderRequest(
     const locale = query.__locale;
     delete query.__locale;
 
-    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers, locale, user: user ?? null });
+    // Parse params from query if provided by the client router
+    let params: Record<string, string> = {};
+    if (query.__params) {
+      try { params = JSON.parse(query.__params); } catch { /* ignore */ }
+      delete query.__params;
+    }
+
+    const result = await mod.loader({ params, query: {}, url: `/__layout/${dir}`, headers, locale, user: user ?? null });
     if (isRedirectResponse(result)) {
       res.writeHead(result.status || 302, { Location: result.location });
       res.end();
@@ -150,7 +157,14 @@ export async function handleLayoutSubscribeRequest(
       }
     };
 
-    const cleanup = mod.subscribe({ params: {}, push, headers, locale, user: user ?? null });
+    // Parse params from query if provided by the client router
+    let params: Record<string, string> = {};
+    if (query.__params) {
+      try { params = JSON.parse(query.__params); } catch { /* ignore */ }
+      delete query.__params;
+    }
+
+    const cleanup = mod.subscribe({ params, push, headers, locale, user: user ?? null });
     res.on('close', () => {
       clearInterval(keepaliveId);
       if (typeof cleanup === 'function') cleanup();

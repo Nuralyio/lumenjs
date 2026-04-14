@@ -492,7 +492,14 @@ async function handleLayoutLoader(
       } catch {}
     }
 
-    const result = await mod.loader({ params: {}, query: {}, url: `/__layout/${dir}`, headers: req.headers, locale, user });
+    // Parse params from query if provided by the client router
+    let params: Record<string, string> = {};
+    if (query.__params) {
+      try { params = JSON.parse(query.__params); } catch { /* ignore */ }
+      delete query.__params;
+    }
+
+    const result = await mod.loader({ params, query: {}, url: `/__layout/${dir}`, headers: req.headers, locale, user });
 
     if (isRedirectResponse(result)) {
       res.statusCode = result.status || 302;
@@ -896,7 +903,14 @@ async function handleLayoutSubscribe(
       } catch {}
     }
 
-    const cleanup = mod.subscribe({ params: {}, push, headers: req.headers, locale, user });
+    // Parse params from query if provided by the client router
+    let params: Record<string, string> = {};
+    if (query.__params) {
+      try { params = JSON.parse(query.__params); } catch { /* ignore */ }
+      delete query.__params;
+    }
+
+    const cleanup = mod.subscribe({ params, push, headers: req.headers, locale, user });
 
     res.on('close', () => {
       clearInterval(keepaliveId);

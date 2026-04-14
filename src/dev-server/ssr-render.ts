@@ -104,7 +104,7 @@ export async function ssrRenderPage(
       let layoutLoaderData: any = undefined;
 
       if (layoutMod.loader && typeof layoutMod.loader === 'function') {
-        layoutLoaderData = await layoutMod.loader({ params: {}, query: {}, url: pathname, headers: headers || {}, locale, user: user ?? null });
+        layoutLoaderData = await layoutMod.loader({ params, query: {}, url: pathname, headers: headers || {}, locale, user: user ?? null });
         if (layoutLoaderData && typeof layoutLoaderData === 'object' && layoutLoaderData.__nk_redirect) {
           return { html: '', loaderData: null, redirect: { location: layoutLoaderData.location, status: layoutLoaderData.status || 302 } };
         }

@@ -187,7 +187,7 @@ export class NkRouter {
         : Promise.resolve(undefined),
       ...layouts.map(layout =>
         layout.hasLoader
-          ? fetchLayoutLoaderData(layout.loaderPath || '').catch(err => { console.error('[NkRouter] Layout loader fetch failed:', err); return undefined; })
+          ? fetchLayoutLoaderData(layout.loaderPath || '', match.params).catch(err => { console.error('[NkRouter] Layout loader fetch failed:', err); return undefined; })
           : Promise.resolve(undefined)
       ),
     ];
@@ -256,7 +256,7 @@ export class NkRouter {
     // Layout subscriptions
     for (const layout of layouts) {
       if (layout.hasSubscribe) {
-        const es = connectLayoutSubscribe(layout.loaderPath || '');
+        const es = connectLayoutSubscribe(layout.loaderPath || '', match.params);
         es.onmessage = (e) => {
           const layoutEl = this.outlet?.querySelector(layout.tagName);
           if (layoutEl) this.spreadData(layoutEl, JSON.parse(e.data));
@@ -477,7 +477,7 @@ export class NkRouter {
       ...layouts.map(l => l.load && !customElements.get(l.tagName) ? l.load() : undefined),
       // Prefetch loader data (cached)
       match.route.hasLoader ? prefetchLoaderData(pathname, match.params).catch(() => {}) : undefined,
-      ...layouts.map(l => l.hasLoader ? prefetchLayoutLoaderData(l.loaderPath || '').catch(() => {}) : undefined),
+      ...layouts.map(l => l.hasLoader ? prefetchLayoutLoaderData(l.loaderPath || '', match.params).catch(() => {}) : undefined),
     ]);
   }
 

@@ -70,7 +70,7 @@ export async function handlePageRoute(
             if (fs.existsSync(layoutModulePath)) {
               const layoutMod = await import(layoutModulePath);
               if (layout.hasLoader && layoutMod.loader && typeof layoutMod.loader === 'function') {
-                layoutLoaderData = await layoutMod.loader({ params: {}, query: {}, url: pathname, headers: req.headers, user: (req as any).nkAuth?.user ?? null });
+                layoutLoaderData = await layoutMod.loader({ params: matched.params, query: {}, url: pathname, headers: req.headers, user: (req as any).nkAuth?.user ?? null });
                 if (isRedirectResponse(layoutLoaderData)) {
                   res.writeHead(layoutLoaderData.status || 302, { Location: layoutLoaderData.location });
                   res.end();
