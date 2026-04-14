@@ -37,6 +37,7 @@ export class NkRouter {
   private subscriptions: EventSource[] = [];
   private _sockets = new Map<string, any>();
   private siteTitle: string;
+  private hydrating = false;
   public params: Record<string, string> = {};
 
   constructor(routes: Route[], outlet: HTMLElement, hydrate = false) {
@@ -83,6 +84,7 @@ export class NkRouter {
     };
 
     if (hydrate) {
+      this.hydrating = true;
       hydrateInitialRoute(
         this.routes,
         this.outlet,
@@ -92,10 +94,12 @@ export class NkRouter {
           this.currentLayoutTags = layoutTags;
           this.params = params;
         }
-      );
-      // Wire up SSE subscriptions after hydration
-      const path = this.stripLocale(location.pathname);
-      this.setupSubscriptions(path);
+      ).then(() => {
+        this.hydrating = false;
+        // Wire up SSE subscriptions after hydration completes
+        const path = this.stripLocale(location.pathname);
+        this.setupSubscriptions(path);
+      });
     } else {
       // Initialize auth from inlined data before navigating (CSR path)
       const authScript = document.getElementById('__nk_auth__');
@@ -134,6 +138,7 @@ export class NkRouter {
   }
 
   async navigate(fullPath: string, pushState = true) {
+    if (this.hydrating) return;
     this.cleanupSubscriptions();
 
     const pathname = fullPath.split('?')[0];
