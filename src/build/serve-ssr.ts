@@ -68,11 +68,11 @@ export async function handlePageRoute(
 
           let layoutLoaderData: any = undefined;
 
-          if (layout.hasLoader && layout.module) {
+          if (layout.module) {
             const layoutModulePath = path.join(serverDir, layout.module);
             if (fs.existsSync(layoutModulePath)) {
               const layoutMod = await import(layoutModulePath);
-              if (layoutMod.loader && typeof layoutMod.loader === 'function') {
+              if (layout.hasLoader && layoutMod.loader && typeof layoutMod.loader === 'function') {
                 layoutLoaderData = await layoutMod.loader({ params: {}, query: {}, url: pathname, headers: req.headers, user: (req as any).nkAuth?.user ?? null });
                 if (isRedirectResponse(layoutLoaderData)) {
                   res.writeHead(layoutLoaderData.status || 302, { Location: layoutLoaderData.location });

@@ -59,10 +59,8 @@ export async function buildServer(opts: BuildServerOptions): Promise<void> {
   }
 
   for (const entry of layoutEntries) {
-    if (entry.hasLoader || entry.hasSubscribe) {
-      const entryName = entry.dir ? `layouts/${entry.dir}/_layout` : 'layouts/_layout';
-      serverEntries[entryName] = entry.filePath;
-    }
+    const entryName = entry.dir ? `layouts/${entry.dir}/_layout` : 'layouts/_layout';
+    serverEntries[entryName] = entry.filePath;
   }
 
   for (const entry of apiEntries) {
@@ -88,9 +86,9 @@ export async function buildServer(opts: BuildServerOptions): Promise<void> {
   // server modules share one Lit instance (avoids _$EM mismatches).
   const ssrEntryPath = path.join(projectDir, '__nk_ssr_entry.js');
   const hasPageLoaders = pageEntries.some(e => e.hasLoader);
-  const hasLayoutLoaders = layoutEntries.some(e => e.hasLoader);
+  const hasLayouts = layoutEntries.length > 0;
   const hasPrerenderPages = pageEntries.some(e => e.prerender);
-  if (hasPageLoaders || hasLayoutLoaders || hasPrerenderPages) {
+  if (hasPageLoaders || hasLayouts || hasPrerenderPages) {
     fs.writeFileSync(ssrEntryPath, [
       "import '@lit-labs/ssr/lib/install-global-dom-shim.js';",
       "export { render } from '@lit-labs/ssr';",

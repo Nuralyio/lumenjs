@@ -118,7 +118,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
     })),
     layouts: layoutEntries.map(e => ({
       dir: e.dir,
-      module: (e.hasLoader || e.hasSubscribe) ? (e.dir ? `layouts/${e.dir}/_layout.js` : 'layouts/_layout.js') : '',
+      module: e.dir ? `layouts/${e.dir}/_layout.js` : 'layouts/_layout.js',
       hasLoader: e.hasLoader,
       hasSubscribe: e.hasSubscribe,
     })),
