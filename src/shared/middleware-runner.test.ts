@@ -63,6 +63,23 @@ describe('runMiddlewareChain', () => {
     runMiddlewareChain([mw], {}, {}, done);
     expect(done).not.toHaveBeenCalled();
   });
+
+  it('catches async middleware rejections and passes error to done', async () => {
+    const done = vi.fn();
+    const error = new Error('async throw');
+    const mw: ConnectMiddleware = (async () => { throw error; }) as any;
+    runMiddlewareChain([mw], {}, {}, done);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(done).toHaveBeenCalledWith(error);
+  });
+
+  it('handles async middleware that resolves normally', async () => {
+    const done = vi.fn();
+    const mw: ConnectMiddleware = (async (_req, _res, next) => { next(); }) as any;
+    runMiddlewareChain([mw], {}, {}, done);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(done).toHaveBeenCalledOnce();
+  });
 });
 
 describe('extractMiddleware', () => {

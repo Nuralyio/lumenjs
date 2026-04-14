@@ -16,7 +16,10 @@ export function runMiddlewareChain(
     if (index >= middlewares.length) return done();
     const mw = middlewares[index++];
     try {
-      mw(req, res, next);
+      const result = mw(req, res, next);
+      if (result && typeof (result as any).catch === 'function') {
+        (result as any).catch((e: any) => done(e));
+      }
     } catch (e) {
       done(e);
     }
