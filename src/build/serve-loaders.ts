@@ -125,6 +125,13 @@ export async function handleLayoutSubscribeRequest(
       'Connection': 'keep-alive',
     });
 
+    // Send keepalive comment to prevent reverse proxy timeout
+    const keepaliveId = setInterval(() => {
+      if (!res.destroyed && !res.writableEnded) {
+        res.write(': keepalive\n\n');
+      }
+    }, 30_000);
+
     const locale = query.__locale;
     const push = (data: any) => {
       if (res.destroyed || res.writableEnded) return;
@@ -137,6 +144,7 @@ export async function handleLayoutSubscribeRequest(
 
     const cleanup = mod.subscribe({ params: {}, push, headers, locale, user: user ?? null });
     res.on('close', () => {
+      clearInterval(keepaliveId);
       if (typeof cleanup === 'function') cleanup();
     });
   } catch (err: any) {
@@ -285,6 +293,13 @@ export async function handleSubscribeRequest(
       'Connection': 'keep-alive',
     });
 
+    // Send keepalive comment to prevent reverse proxy timeout
+    const keepaliveId = setInterval(() => {
+      if (!res.destroyed && !res.writableEnded) {
+        res.write(': keepalive\n\n');
+      }
+    }, 30_000);
+
     const locale = query.__locale;
     const push = (data: any) => {
       if (res.destroyed || res.writableEnded) return;
@@ -297,6 +312,7 @@ export async function handleSubscribeRequest(
 
     const cleanup = subscribeFn({ params: matched.params, push, headers, locale, user: user ?? null });
     res.on('close', () => {
+      clearInterval(keepaliveId);
       if (typeof cleanup === 'function') cleanup();
     });
   } catch (err: any) {

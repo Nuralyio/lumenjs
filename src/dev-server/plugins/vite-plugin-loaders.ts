@@ -115,6 +115,13 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
             'Connection': 'keep-alive',
           });
 
+          // Send keepalive comment to prevent reverse proxy timeout
+          const keepaliveId = setInterval(() => {
+            if (!res.destroyed && !res.writableEnded) {
+              res.write(': keepalive\n\n');
+            }
+          }, 30_000);
+
           const locale = query.__locale;
           const push = (data: any) => {
             if (res.destroyed || res.writableEnded) return;
@@ -164,6 +171,7 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
           const cleanup = subscribeFn({ params, push, headers: req.headers, locale, user });
 
           res.on('close', () => {
+            clearInterval(keepaliveId);
             if (typeof cleanup === 'function') cleanup();
           });
         } catch (err: any) {
@@ -835,6 +843,13 @@ async function handleLayoutSubscribe(
       'Connection': 'keep-alive',
     });
 
+    // Send keepalive comment to prevent reverse proxy timeout
+    const keepaliveId = setInterval(() => {
+      if (!res.destroyed && !res.writableEnded) {
+        res.write(': keepalive\n\n');
+      }
+    }, 30_000);
+
     const locale = query.__locale;
     const push = (data: any) => {
       if (res.destroyed || res.writableEnded) return;
@@ -884,6 +899,7 @@ async function handleLayoutSubscribe(
     const cleanup = mod.subscribe({ params: {}, push, headers: req.headers, locale, user });
 
     res.on('close', () => {
+      clearInterval(keepaliveId);
       if (typeof cleanup === 'function') cleanup();
     });
   } catch (err: any) {
