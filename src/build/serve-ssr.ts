@@ -88,9 +88,36 @@ export async function handlePageRoute(
           layoutModules.push({ tagName: layoutTagName, loaderData: layoutLoaderData });
         }
 
+        // Run component loaders
+        const componentsData: Array<{ tagName: string; data: any }> = [];
+        if (manifest.components) {
+          for (const comp of manifest.components) {
+            const compModPath = path.join(serverDir, comp.module);
+            if (fs.existsSync(compModPath)) {
+              try {
+                const compMod = await import(compModPath);
+                if (compMod.loader && typeof compMod.loader === 'function') {
+                  const compData = await compMod.loader({ params: {}, query: {}, url: pathname, headers: req.headers, locale: undefined, user: (req as any).nkAuth?.user ?? null });
+                  if (compData && typeof compData === 'object' && !compData.__nk_redirect) {
+                    componentsData.push({ tagName: comp.tagName, data: compData });
+                  }
+                }
+              } catch { /* non-critical: component loader failed */ }
+            }
+          }
+        }
+
         // Patch element classes to spread loaderData into individual properties
         for (const lm of layoutModules) {
           patchLoaderDataSpread(lm.tagName);
+        }
+        for (const cd of componentsData) {
+          patchLoaderDataSpread(cd.tagName);
+          // Set data on prototype so SSR render picks it up
+          const CompCtor = (globalThis as any).customElements?.get?.(cd.tagName);
+          if (CompCtor) {
+            CompCtor.prototype.loaderData = cd.data;
+          }
         }
         if (tagName) patchLoaderDataSpread(tagName);
 
@@ -128,9 +155,9 @@ export async function handlePageRoute(
             }
 
             // Build SSR data script
-            const hasStructured = layoutsData.length > 0;
+            const hasStructured = layoutsData.length > 0 || componentsData.length > 0;
             const ssrDataObj = hasStructured
-              ? { page: loaderData, layouts: layoutsData }
+              ? { page: loaderData, layouts: layoutsData.length > 0 ? layoutsData : undefined, components: componentsData.length > 0 ? componentsData : undefined }
               : loaderData;
             const loaderDataScript = ssrDataObj !== undefined
               ? `<script type="application/json" id="__nk_ssr_data__">${JSON.stringify(ssrDataObj).replace(/</g, '\\u003c')}</script>`
@@ -156,9 +183,10 @@ export async function handlePageRoute(
         }
 
         // Fallback: inject loader data without SSR HTML
-        if (loaderData !== undefined || layoutsData.length > 0) {
-          const ssrDataObj = layoutsData.length > 0
-            ? { page: loaderData, layouts: layoutsData }
+        if (loaderData !== undefined || layoutsData.length > 0 || componentsData.length > 0) {
+          const hasStructuredFb = layoutsData.length > 0 || componentsData.length > 0;
+          const ssrDataObj = hasStructuredFb
+            ? { page: loaderData, layouts: layoutsData.length > 0 ? layoutsData : undefined, components: componentsData.length > 0 ? componentsData : undefined }
             : loaderData;
           const loaderDataScript = `<script type="application/json" id="__nk_ssr_data__">${JSON.stringify(ssrDataObj).replace(/</g, '\\u003c')}</script>`;
           const authUserFb = (req as any).nkAuth?.user ?? null;
