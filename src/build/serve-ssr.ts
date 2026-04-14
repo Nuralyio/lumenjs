@@ -19,13 +19,10 @@ export async function handlePageRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): Promise<void> {
-  // Find matching route (any route, not just those with loaders)
-  const allMatched = matchRoute(manifest.routes, pathname);
+  // Single route match — used for both page module and layout chain
+  const matched = matchRoute(manifest.routes, pathname);
 
-  // Try SSR for routes with loaders
-  const matched = matchRoute(manifest.routes.filter(r => r.hasLoader), pathname);
-
-  if (matched && matched.route.module) {
+  if (matched && matched.route.hasLoader && matched.route.module) {
     // Rollup sanitizes brackets in filenames: [...path] → _...path_
     let modulePath = path.join(serverDir, matched.route.module);
     if (!fs.existsSync(modulePath)) {
@@ -58,7 +55,7 @@ export async function handlePageRoute(
         const tagName = matched.route.tagName;
 
         // Run layout loaders
-        const layoutDirs = (allMatched || matched).route.layouts || [];
+        const layoutDirs = matched.route.layouts || [];
         const layoutsData: Array<{ loaderPath: string; data: any }> = [];
         const layoutModules: Array<{ tagName: string; loaderData: any }> = [];
 
