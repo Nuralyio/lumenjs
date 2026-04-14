@@ -168,11 +168,15 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
             } catch {}
           }
 
-          const cleanup = subscribeFn({ params, push, headers: req.headers, locale, user });
+          const result = subscribeFn({ params, push, headers: req.headers, locale, user });
 
           res.on('close', () => {
             clearInterval(keepaliveId);
-            if (typeof cleanup === 'function') cleanup();
+          });
+          Promise.resolve(result).then(cleanup => {
+            res.on('close', () => {
+              if (typeof cleanup === 'function') cleanup();
+            });
           });
         } catch (err: any) {
           console.error(`[LumenJS] Subscribe error for ${pagePath}:`, err);
@@ -910,11 +914,15 @@ async function handleLayoutSubscribe(
       delete query.__params;
     }
 
-    const cleanup = mod.subscribe({ params, push, headers: req.headers, locale, user });
+    const result = mod.subscribe({ params, push, headers: req.headers, locale, user });
 
     res.on('close', () => {
       clearInterval(keepaliveId);
-      if (typeof cleanup === 'function') cleanup();
+    });
+    Promise.resolve(result).then(cleanup => {
+      res.on('close', () => {
+        if (typeof cleanup === 'function') cleanup();
+      });
     });
   } catch (err: any) {
     console.error(`[LumenJS] Layout subscribe error for dir=${dir}:`, err);

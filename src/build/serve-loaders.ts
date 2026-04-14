@@ -164,10 +164,14 @@ export async function handleLayoutSubscribeRequest(
       delete query.__params;
     }
 
-    const cleanup = mod.subscribe({ params, push, headers, locale, user: user ?? null });
+    const result = mod.subscribe({ params, push, headers, locale, user: user ?? null });
     res.on('close', () => {
       clearInterval(keepaliveId);
-      if (typeof cleanup === 'function') cleanup();
+    });
+    Promise.resolve(result).then(cleanup => {
+      res.on('close', () => {
+        if (typeof cleanup === 'function') cleanup();
+      });
     });
   } catch (err: any) {
     logger.error(`Layout subscribe error`, { dir, error: (err as any)?.message });
@@ -340,10 +344,14 @@ export async function handleSubscribeRequest(
       }
     };
 
-    const cleanup = subscribeFn({ params: matched.params, push, headers, locale, user: user ?? null });
+    const result = subscribeFn({ params: matched.params, push, headers, locale, user: user ?? null });
     res.on('close', () => {
       clearInterval(keepaliveId);
-      if (typeof cleanup === 'function') cleanup();
+    });
+    Promise.resolve(result).then(cleanup => {
+      res.on('close', () => {
+        if (typeof cleanup === 'function') cleanup();
+      });
     });
   } catch (err: any) {
     logger.error(`Subscribe error`, { pagePath, error: (err as any)?.message });
