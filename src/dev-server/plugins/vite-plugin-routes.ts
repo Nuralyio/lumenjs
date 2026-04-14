@@ -154,13 +154,16 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
       }
     },
     configureServer(server) {
-      // Full-reload when route structure changes (file added/removed)
-      let lastRoutes = JSON.stringify(scanPages().map(r => r.path));
-      let lastLayouts = JSON.stringify(scanLayouts().map(l => l.dir));
+      // Full-reload when route structure or flags change
+      const snapshotRoutes = () => JSON.stringify(scanPages().map(r => ({ path: r.path, hasLoader: fileHasLoader(r.componentPath), hasSubscribe: fileHasSubscribe(r.componentPath), hasSocket: fileHasSocket(r.componentPath), hasAuth: fileHasAuth(r.componentPath), hasMeta: fileHasMeta(r.componentPath) })));
+      const snapshotLayouts = () => JSON.stringify(scanLayouts().map(l => ({ dir: l.dir, hasLoader: fileHasLoader(l.filePath), hasSubscribe: fileHasSubscribe(l.filePath) })));
+
+      let lastRoutes = snapshotRoutes();
+      let lastLayouts = snapshotLayouts();
 
       const checkReload = () => {
-        const newRoutes = JSON.stringify(scanPages().map(r => r.path));
-        const newLayouts = JSON.stringify(scanLayouts().map(l => l.dir));
+        const newRoutes = snapshotRoutes();
+        const newLayouts = snapshotLayouts();
         if (newRoutes !== lastRoutes || newLayouts !== lastLayouts) {
           lastRoutes = newRoutes;
           lastLayouts = newLayouts;
@@ -180,6 +183,13 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
       server.watcher.on('unlink', (file) => {
         if (!file.startsWith(pagesDir)) return;
         checkReload();
+      });
+
+      server.watcher.on('change', (file) => {
+        if (!file.startsWith(pagesDir)) return;
+        if (/\.(ts|js)$/.test(path.basename(file))) {
+          checkReload();
+        }
       });
     }
   };
