@@ -181,7 +181,10 @@ export function getMiddlewareDirsForPathname(pathname: string, entries: Middlewa
     if (entry.dir === '') return true; // Root middleware applies to all routes
     const dirSegments = entry.dir.split('/').filter(Boolean);
     if (dirSegments.length > urlSegments.length) return false;
-    return dirSegments.every((seg, i) => seg === urlSegments[i]);
+    return dirSegments.every((seg, i) => {
+      if (seg.startsWith('[') && seg.endsWith(']')) return true;
+      return seg === urlSegments[i];
+    });
   }).sort((a, b) => a.dir.split('/').length - b.dir.split('/').length);
 }
 
