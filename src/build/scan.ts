@@ -210,7 +210,7 @@ function walkApiDir(baseDir: string, relativePath: string, entries: ApiEntry[], 
 
   for (const entry of dirEntries) {
     const entryRelative = path.join(relativePath, entry.name);
-    if (entry.isDirectory()) {
+    if (entry.isDirectory() && !entry.name.startsWith('_')) {
       walkApiDir(baseDir, entryRelative, entries, apiDir);
     } else if (entry.isFile() && /\.(ts|js)$/.test(entry.name) && !entry.name.startsWith('_')) {
       const filePath = path.join(apiDir, entryRelative);
