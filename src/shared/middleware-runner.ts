@@ -34,5 +34,12 @@ export function runMiddlewareChain(
 export function extractMiddleware(mod: any): ConnectMiddleware[] {
   const arr = mod?.default ?? mod;
   if (!Array.isArray(arr)) return [];
-  return arr.filter((fn: any) => typeof fn === 'function');
+  return arr.filter((fn: any) => {
+    if (typeof fn !== 'function') return false;
+    if (fn.length === 4) {
+      console.warn('[LumenJS] Skipping error middleware (4 args) — not supported. Use standard (req, res, next) middleware.');
+      return false;
+    }
+    return true;
+  });
 }
