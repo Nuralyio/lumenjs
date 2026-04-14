@@ -117,7 +117,12 @@ export function lumenLoadersPlugin(pagesDir: string): Plugin {
 
           const locale = query.__locale;
           const push = (data: any) => {
-            res.write(`data: ${JSON.stringify(data)}\n\n`);
+            if (res.destroyed || res.writableEnded) return;
+            try {
+              res.write(`data: ${JSON.stringify(data)}\n\n`);
+            } catch (err) {
+              console.error('[LumenJS] SSE push serialization error:', err);
+            }
           };
 
           // If auth middleware hasn't populated nkAuth, try to parse from cookie or bearer token
@@ -832,7 +837,12 @@ async function handleLayoutSubscribe(
 
     const locale = query.__locale;
     const push = (data: any) => {
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (res.destroyed || res.writableEnded) return;
+      try {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch (err) {
+        console.error('[LumenJS] SSE push serialization error:', err);
+      }
     };
 
     // If auth middleware hasn't populated nkAuth, try to parse from cookie or bearer token

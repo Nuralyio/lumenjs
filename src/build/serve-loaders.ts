@@ -127,7 +127,12 @@ export async function handleLayoutSubscribeRequest(
 
     const locale = query.__locale;
     const push = (data: any) => {
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (res.destroyed || res.writableEnded) return;
+      try {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch (err) {
+        console.error('[LumenJS] SSE push serialization error:', err);
+      }
     };
 
     const cleanup = mod.subscribe({ params: {}, push, headers, locale, user: user ?? null });
@@ -282,7 +287,12 @@ export async function handleSubscribeRequest(
 
     const locale = query.__locale;
     const push = (data: any) => {
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (res.destroyed || res.writableEnded) return;
+      try {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch (err) {
+        console.error('[LumenJS] SSE push serialization error:', err);
+      }
     };
 
     const cleanup = subscribeFn({ params: matched.params, push, headers, locale, user: user ?? null });
