@@ -222,8 +222,18 @@ export async function serveProject(options: ServeOptions): Promise<void> {
       }
 
       // 0. Run user middleware chain (runs before auth routes so middleware can gate signup etc.)
-      if (middlewareModules.size > 0 && !pathname.includes('.') && (!pathname.startsWith('/__nk_') || pathname.startsWith('/__nk_auth/'))) {
-        const matching = getMiddlewareDirsForPathname(pathname, middlewareEntries);
+      // Map /__nk_loader/ and /__nk_subscribe/ paths back to page paths for middleware matching,
+      // so user middleware gates (e.g. admin-only) also protect loader/subscribe data endpoints.
+      let middlewarePath = pathname;
+      if (pathname.startsWith('/__nk_loader/')) {
+        middlewarePath = '/' + pathname.slice('/__nk_loader/'.length);
+      } else if (pathname.startsWith('/__nk_subscribe/')) {
+        middlewarePath = '/' + pathname.slice('/__nk_subscribe/'.length);
+      }
+      if (middlewareModules.size > 0 && !pathname.includes('.') &&
+          (!pathname.startsWith('/__nk_') || pathname.startsWith('/__nk_auth/') ||
+           pathname.startsWith('/__nk_loader/') || pathname.startsWith('/__nk_subscribe/'))) {
+        const matching = getMiddlewareDirsForPathname(middlewarePath, middlewareEntries);
         const allMw: ConnectMiddleware[] = [];
         for (const entry of matching) {
           const mws = middlewareModules.get(entry.dir);

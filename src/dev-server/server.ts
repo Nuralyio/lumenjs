@@ -188,6 +188,69 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     plugins: [
       ...userPlugins,
       ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
+      {
+        // User middleware must register as a pre-hook BEFORE the loaders plugin so that
+        // /__nk_loader/ and /__nk_subscribe/ requests go through user middleware first.
+        // This prevents bypassing access gates by requesting loader data directly.
+        name: 'lumenjs-user-middleware',
+        config(config: any) {
+          const entries = scanMiddleware(pagesDir);
+          if (entries.length === 0) return;
+          const npmDeps = new Set<string>();
+          for (const entry of entries) {
+            try {
+              const content = fs.readFileSync(entry.filePath, 'utf-8');
+              const importMatches = content.matchAll(/(?:import|require)\s*(?:\(?\s*['"]([^./][^'"]*)['"]\s*\)?|.*from\s*['"]([^./][^'"]*)['"]\s*)/g);
+              for (const m of importMatches) {
+                const pkg = m[1] || m[2];
+                if (pkg) {
+                  const pkgName = pkg.startsWith('@') ? pkg.split('/').slice(0, 2).join('/') : pkg.split('/')[0];
+                  npmDeps.add(pkgName);
+                }
+              }
+            } catch {}
+          }
+          if (npmDeps.size > 0) {
+            const existing = (config.ssr as any)?.external || [];
+            return { ssr: { external: [...existing, ...npmDeps] } };
+          }
+        },
+        configureServer(server: ViteDevServer) {
+          server.middlewares.use(async (req: any, res: any, next: any) => {
+            const pathname = (req.url || '/').split('?')[0];
+            if (pathname.startsWith('/@') || pathname.startsWith('/node_modules') || pathname.includes('.')) {
+              return next();
+            }
+
+            // Map /__nk_loader/ and /__nk_subscribe/ paths back to page paths for middleware matching
+            let middlewarePath = pathname;
+            if (pathname.startsWith('/__nk_loader/')) {
+              middlewarePath = '/' + pathname.slice('/__nk_loader/'.length);
+            } else if (pathname.startsWith('/__nk_subscribe/')) {
+              middlewarePath = '/' + pathname.slice('/__nk_subscribe/'.length);
+            }
+
+            const middlewareEntries = scanMiddleware(pagesDir);
+            if (middlewareEntries.length === 0) return next();
+
+            const matchingDirs = getMiddlewareDirsForPathname(middlewarePath, middlewareEntries);
+            if (matchingDirs.length === 0) return next();
+
+            const allMw: ConnectMiddleware[] = [];
+            for (const entry of matchingDirs) {
+              try {
+                const mod = await server.ssrLoadModule(entry.filePath);
+                allMw.push(...extractMiddleware(mod));
+              } catch (err) {
+                console.error(`[LumenJS] Failed to load _middleware.ts (${entry.dir || 'root'}):`, err);
+              }
+            }
+
+            if (allMw.length === 0) return next();
+            runMiddlewareChain(allMw, req, res, next);
+          });
+        }
+      },
       ...shared.plugins,
       ...(integrations.includes('communication') ? [communicationPlugin(projectDir)] : []),
       lumenStoragePlugin(projectDir),
@@ -232,60 +295,6 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
             }
           }
         },
-      },
-      {
-        name: 'lumenjs-user-middleware',
-        config(config) {
-          const entries = scanMiddleware(pagesDir);
-          if (entries.length === 0) return;
-          const npmDeps = new Set<string>();
-          for (const entry of entries) {
-            try {
-              const content = fs.readFileSync(entry.filePath, 'utf-8');
-              const importMatches = content.matchAll(/(?:import|require)\s*(?:\(?\s*['"]([^./][^'"]*)['"]\s*\)?|.*from\s*['"]([^./][^'"]*)['"]\s*)/g);
-              for (const m of importMatches) {
-                const pkg = m[1] || m[2];
-                if (pkg) {
-                  const pkgName = pkg.startsWith('@') ? pkg.split('/').slice(0, 2).join('/') : pkg.split('/')[0];
-                  npmDeps.add(pkgName);
-                }
-              }
-            } catch {}
-          }
-          if (npmDeps.size > 0) {
-            const existing = (config.ssr as any)?.external || [];
-            return { ssr: { external: [...existing, ...npmDeps] } };
-          }
-        },
-        configureServer(server) {
-          return () => {
-            server.middlewares.use(async (req: any, res: any, next: any) => {
-              const pathname = (req.url || '/').split('?')[0];
-              if (pathname.startsWith('/@') || pathname.startsWith('/node_modules') || pathname.includes('.')) {
-                return next();
-              }
-
-              const middlewareEntries = scanMiddleware(pagesDir);
-              if (middlewareEntries.length === 0) return next();
-
-              const matchingDirs = getMiddlewareDirsForPathname(pathname, middlewareEntries);
-              if (matchingDirs.length === 0) return next();
-
-              const allMw: ConnectMiddleware[] = [];
-              for (const entry of matchingDirs) {
-                try {
-                  const mod = await server.ssrLoadModule(entry.filePath);
-                  allMw.push(...extractMiddleware(mod));
-                } catch (err) {
-                  console.error(`[LumenJS] Failed to load _middleware.ts (${entry.dir || 'root'}):`, err);
-                }
-              }
-
-              if (allMw.length === 0) return next();
-              runMiddlewareChain(allMw, req, res, next);
-            });
-          };
-        }
       },
       {
         name: 'lumenjs-index-html',
