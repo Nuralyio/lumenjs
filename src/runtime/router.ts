@@ -34,7 +34,8 @@ export class NkRouter {
   private outlet: HTMLElement | null = null;
   private currentTag: string | null = null;
   private currentLayoutTags: string[] = [];
-  private subscriptions: EventSource[] = [];
+  private _pageSubscriptions: EventSource[] = [];
+  private _layoutSubscriptions = new Map<string, EventSource>();
   private _sockets = new Map<string, any>();
   private siteTitle: string;
   private hydrating = false;
@@ -127,23 +128,31 @@ export class NkRouter {
     return { pattern: new RegExp(`^${pattern}$`), paramNames };
   }
 
-  private cleanupSubscriptions(): void {
-    for (const es of this.subscriptions) {
-      es.close();
-    }
-    this.subscriptions = [];
-    // Disconnect any active socket.io connections
+  private cleanupPageSubscriptions(): void {
+    for (const es of this._pageSubscriptions) es.close();
+    this._pageSubscriptions = [];
     for (const [, sock] of this._sockets) sock.disconnect();
     this._sockets.clear();
   }
 
+  private cleanupLayoutSubscriptions(tags: string[]): void {
+    for (const tag of tags) {
+      const es = this._layoutSubscriptions.get(tag);
+      if (es) {
+        es.close();
+        this._layoutSubscriptions.delete(tag);
+      }
+    }
+  }
+
   async navigate(fullPath: string, pushState = true) {
     if (this.hydrating) return;
-    this.cleanupSubscriptions();
+    this.cleanupPageSubscriptions();
 
     const pathname = fullPath.split('?')[0];
     const match = this.matchRoute(pathname);
     if (!match) {
+      this.cleanupLayoutSubscriptions([...this._layoutSubscriptions.keys()]);
       if (this.outlet) this.outlet.innerHTML = render404(pathname);
       this.currentLayoutTags = [];
       this.currentTag = null;
@@ -174,6 +183,18 @@ export class NkRouter {
 
     const layouts = match.route.layouts || [];
 
+    // Compute layout divergence for subscription reconciliation
+    const newLayoutTags = layouts.map(l => l.tagName);
+    let divergeIndex = 0;
+    while (
+      divergeIndex < this.currentLayoutTags.length &&
+      divergeIndex < newLayoutTags.length &&
+      this.currentLayoutTags[divergeIndex] === newLayoutTags[divergeIndex]
+    ) {
+      divergeIndex++;
+    }
+    const oldLayoutTags = this.currentLayoutTags.slice();
+
     // Load all component JS chunks in parallel
     await Promise.all([
       match.route.load && !customElements.get(match.route.tagName) ? match.route.load() : undefined,
@@ -199,16 +220,24 @@ export class NkRouter {
     // Update document.title and announce route change for screen readers
     this.updatePageMeta(match.route, loaderData);
 
-    // Set up SSE subscriptions
-    this.setupSubscriptions(pathname);
+    // Tear down layout subscriptions only for replaced layouts, keep reused ones
+    this.cleanupLayoutSubscriptions(oldLayoutTags.slice(divergeIndex));
+    this.setupLayoutSubscriptions(layouts, divergeIndex, match.params);
+
+    // Set up page-level subscriptions
+    this.setupPageSubscriptions(pathname, match);
   }
 
+  /** Set up all subscriptions from scratch (used during hydration). */
   private setupSubscriptions(pathname: string): void {
     const match = this.matchRoute(pathname);
     if (!match) return;
-
     const layouts = match.route.layouts || [];
+    this.setupPageSubscriptions(pathname, match);
+    this.setupLayoutSubscriptions(layouts, 0, match.params);
+  }
 
+  private setupPageSubscriptions(pathname: string, match: { route: Route; params: Record<string, string> }): void {
     // Page subscription
     if (match.route.hasSubscribe) {
       const es = connectSubscribe(pathname, match.params);
@@ -216,7 +245,7 @@ export class NkRouter {
         const pageEl = this.findPageElement(match.route.tagName);
         if (pageEl) this.spreadData(pageEl, JSON.parse(e.data));
       };
-      this.subscriptions.push(es);
+      this._pageSubscriptions.push(es);
     }
 
     // Page socket (bidirectional via Socket.IO)
@@ -252,16 +281,19 @@ export class NkRouter {
         });
       }).catch(err => console.error('[NkRouter] Socket connection failed:', err));
     }
+  }
 
-    // Layout subscriptions
-    for (const layout of layouts) {
-      if (layout.hasSubscribe) {
-        const es = connectLayoutSubscribe(layout.loaderPath || '', match.params);
+  /** Set up layout SSE subscriptions starting from fromIndex (reused layouts are skipped). */
+  private setupLayoutSubscriptions(layouts: LayoutInfo[], fromIndex: number, params: Record<string, string>): void {
+    for (let i = fromIndex; i < layouts.length; i++) {
+      const layout = layouts[i];
+      if (layout.hasSubscribe && !this._layoutSubscriptions.has(layout.tagName)) {
+        const es = connectLayoutSubscribe(layout.loaderPath || '', params);
         es.onmessage = (e) => {
           const layoutEl = this.outlet?.querySelector(layout.tagName);
           if (layoutEl) this.spreadData(layoutEl, JSON.parse(e.data));
         };
-        this.subscriptions.push(es);
+        this._layoutSubscriptions.set(layout.tagName, es);
       }
     }
   }
