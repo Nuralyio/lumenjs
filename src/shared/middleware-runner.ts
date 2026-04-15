@@ -33,6 +33,7 @@ export function runMiddlewareChain(
  */
 export function extractMiddleware(mod: any): ConnectMiddleware[] {
   const arr = mod?.default ?? mod;
+  if (typeof arr === 'function') return [arr];
   if (!Array.isArray(arr)) return [];
   return arr.filter((fn: any) => {
     if (typeof fn !== 'function') return false;

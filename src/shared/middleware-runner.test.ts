@@ -95,7 +95,17 @@ describe('extractMiddleware', () => {
     expect(extractMiddleware([fn1])).toEqual([fn1]);
   });
 
-  it('returns empty array when default is not an array', () => {
+  it('wraps a single default-exported function in an array', () => {
+    const fn: ConnectMiddleware = (_req, _res, next) => next();
+    expect(extractMiddleware({ default: fn })).toEqual([fn]);
+  });
+
+  it('wraps a single bare-exported function in an array', () => {
+    const fn: ConnectMiddleware = (_req, _res, next) => next();
+    expect(extractMiddleware(fn)).toEqual([fn]);
+  });
+
+  it('returns empty array when default is not an array or function', () => {
     expect(extractMiddleware({ default: 'not-an-array' })).toEqual([]);
   });
 
