@@ -89,8 +89,14 @@ export async function serveProject(options: ServeOptions): Promise<void> {
 
   const pagesDir = path.join(projectDir, 'pages');
 
-  // Load bundled middleware at startup
+  // Load bundled middleware at startup.
+  // A middleware load failure must NOT be silently skipped — a broken
+  // `_middleware.ts` may be a security gate (auth check, IP allow-list,
+  // admin-only). Silently disabling it would let traffic reach the protected
+  // route subtree unprotected. Fail fast, matching the behavior for missing
+  // manifest.json / index.html above.
   const middlewareModules: Map<string, ConnectMiddleware[]> = new Map();
+  const middlewareLoadFailures: Array<{ dir: string; error: string }> = [];
   if (manifest.middlewares) {
     for (const entry of manifest.middlewares) {
       const modPath = path.join(serverDir, entry.module);
@@ -99,10 +105,26 @@ export async function serveProject(options: ServeOptions): Promise<void> {
           const mod = await import(modPath);
           middlewareModules.set(entry.dir, extractMiddleware(mod));
         } catch (err) {
-          logger.error(`Failed to load middleware (${entry.dir || 'root'})`, { error: (err as any)?.message });
+          const message = (err as any)?.message || String(err);
+          middlewareLoadFailures.push({ dir: entry.dir || 'root', error: message });
+          logger.error(`Failed to load middleware (${entry.dir || 'root'})`, { error: message });
         }
+      } else {
+        // A middleware declared in the manifest but missing from the server
+        // bundle is equally suspicious — treat as a load failure.
+        middlewareLoadFailures.push({ dir: entry.dir || 'root', error: `bundled module not found: ${entry.module}` });
+        logger.error(`Missing middleware bundle (${entry.dir || 'root'})`, { module: entry.module });
       }
     }
+  }
+  if (middlewareLoadFailures.length > 0) {
+    logger.fatal(
+      `Refusing to start: ${middlewareLoadFailures.length} middleware module(s) failed to load. ` +
+      `A broken _middleware.ts may be a security gate — silently skipping it could expose protected routes. ` +
+      `Fix the import errors and rebuild.`,
+      { failures: middlewareLoadFailures }
+    );
+    process.exit(1);
   }
 
   const middlewareEntries: MiddlewareEntry[] = manifest.middlewares
