@@ -277,6 +277,16 @@ export async function serveProject(options: ServeOptions): Promise<void> {
       } else if (pathname.startsWith('/__nk_subscribe/')) {
         middlewarePath = '/' + pathname.slice('/__nk_subscribe/'.length);
       }
+      // Resolve locale once, early — before user middleware runs — so middleware
+      // can read `req.locale` / `req.localeStrippedPath` and make i18n-aware
+      // routing decisions (e.g. redirect unauthenticated users to `/fr/login`).
+      // Without this, middleware would have to re-implement locale matching.
+      if (manifest.i18n) {
+        const localeResult = resolveLocale(middlewarePath, manifest.i18n, req.headers as any);
+        (req as any).locale = localeResult.locale;
+        (req as any).localeStrippedPath = localeResult.pathname;
+        middlewarePath = localeResult.pathname;
+      }
       if (middlewareModules.size > 0 && !pathname.includes('.') &&
           (!pathname.startsWith('/__nk_') || pathname.startsWith('/__nk_auth/') ||
            pathname.startsWith('/__nk_loader/') || pathname.startsWith('/__nk_subscribe/'))) {
@@ -422,13 +432,23 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         return;
       }
 
-      // 8. Resolve locale and strip prefix for page routing
+      // 8. Resolve locale and strip prefix for page routing.
+      // Reuse the locale already resolved before the user middleware chain so
+      // we don't double-negotiate and so middleware-attached values stay
+      // consistent with what the SSR step sees.
       let resolvedPathname = pathname;
       let locale: string | undefined;
       if (manifest.i18n) {
-        const result = resolveLocale(pathname, manifest.i18n, req.headers as any);
-        resolvedPathname = result.pathname;
-        locale = result.locale;
+        const existingLocale = (req as any).locale as string | undefined;
+        const existingStripped = (req as any).localeStrippedPath as string | undefined;
+        if (existingLocale && existingStripped) {
+          locale = existingLocale;
+          resolvedPathname = existingStripped;
+        } else {
+          const result = resolveLocale(pathname, manifest.i18n, req.headers as any);
+          resolvedPathname = result.pathname;
+          locale = result.locale;
+        }
       }
 
       // 9. Check for pre-rendered HTML file

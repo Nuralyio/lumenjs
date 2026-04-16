@@ -254,6 +254,18 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
               middlewarePath = '/' + pathname.slice('/__nk_subscribe/'.length);
             }
 
+            // Resolve locale once, early — before user middleware runs — so
+            // middleware can read `req.locale` / `req.localeStrippedPath` and
+            // make i18n-aware routing decisions (e.g. redirect unauthenticated
+            // users to `/fr/login`). The index-html plugin reuses these values
+            // so we don't re-negotiate downstream.
+            if (i18nConfig) {
+              const localeResult = resolveLocale(middlewarePath, i18nConfig, req.headers as Record<string, string | string[] | undefined>);
+              req.locale = localeResult.locale;
+              req.localeStrippedPath = localeResult.pathname;
+              middlewarePath = localeResult.pathname;
+            }
+
             const middlewareEntries = scanMiddleware(pagesDir);
             if (middlewareEntries.length === 0) return next();
 
@@ -345,13 +357,23 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                 !req.url.includes('.') && req.method === 'GET') {
               let pathname = req.url.split('?')[0];
 
-              // Resolve locale from URL/cookie/header
+              // Resolve locale from URL/cookie/header.
+              // Reuse the locale already resolved by `lumenjs-user-middleware`
+              // so we don't double-negotiate and stay consistent with what user
+              // middleware saw on `req.locale` / `req.localeStrippedPath`.
               let locale: string | undefined;
               let translations: Record<string, string> | undefined;
               if (i18nConfig) {
-                const localeResult = resolveLocale(pathname, i18nConfig, req.headers as Record<string, string | string[] | undefined>);
-                locale = localeResult.locale;
-                pathname = localeResult.pathname;
+                const existingLocale = (req as any).locale as string | undefined;
+                const existingStripped = (req as any).localeStrippedPath as string | undefined;
+                if (existingLocale && existingStripped) {
+                  locale = existingLocale;
+                  pathname = existingStripped;
+                } else {
+                  const localeResult = resolveLocale(pathname, i18nConfig, req.headers as Record<string, string | string[] | undefined>);
+                  locale = localeResult.locale;
+                  pathname = localeResult.pathname;
+                }
                 translations = loadTranslationsFromDisk(projectDir, locale);
               }
 
