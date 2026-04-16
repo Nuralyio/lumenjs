@@ -13,6 +13,7 @@ import { renderErrorPage } from './error-page.js';
 import { handleI18nRequest } from './serve-i18n.js';
 import { resolveLocale } from '../dev-server/middleware/locale.js';
 import { runMiddlewareChain, extractMiddleware, ConnectMiddleware } from '../shared/middleware-runner.js';
+import { loadUserServerMiddleware } from '../shared/user-server-middleware.js';
 import { getMiddlewareDirsForPathname, MiddlewareEntry } from './scan.js';
 import { createAuthMiddleware } from '../auth/middleware.js';
 import { handleAuthRoutes } from '../auth/routes.js';
@@ -131,6 +132,14 @@ export async function serveProject(options: ServeOptions): Promise<void> {
     ? manifest.middlewares.map(e => ({ dir: e.dir, filePath: '' }))
     : [];
 
+  // Global user middleware from lumenjs.server.js — applied to every request,
+  // including /api/*, /__nk_auth/*, and paths outside the pages/ tree. Runs
+  // after security headers / rate limit, before auth and path-scoped _middleware.ts.
+  const userServerMiddleware = await loadUserServerMiddleware(projectDir);
+  if (userServerMiddleware.length > 0) {
+    logger.info(`Loaded ${userServerMiddleware.length} global middleware from lumenjs.server.js`);
+  }
+
   // Load auth config if present
   let authConfig: any = null;
   let authMiddleware: any = null;
@@ -234,6 +243,22 @@ export async function serveProject(options: ServeOptions): Promise<void> {
         await runMiddleware(rateLimiter, req, res);
       }
       if (res.writableEnded) return;
+
+      // Global user middleware (lumenjs.server.js) — runs for ALL request categories,
+      // including /api/*, /__nk_auth/*, static paths. Spliced here so it can observe
+      // or short-circuit any request, but still sits after rate-limit / security headers.
+      if (userServerMiddleware.length > 0) {
+        const err: any = await new Promise(resolve =>
+          runMiddlewareChain(userServerMiddleware, req, res, resolve)
+        );
+        if (err) {
+          logger.error('User server middleware error', { error: err?.message, stack: err?.stack });
+          res.statusCode = 500;
+          res.end('Internal Server Error');
+          return;
+        }
+        if (res.writableEnded) return;
+      }
 
       // --- Original request handling ---
 

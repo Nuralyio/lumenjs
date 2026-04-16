@@ -26,6 +26,7 @@ import { resolveLocale } from './middleware/locale.js';
 import { setProjectDir } from '../db/context.js';
 import { scanMiddleware, getMiddlewareDirsForPathname } from '../build/scan.js';
 import { runMiddlewareChain, extractMiddleware, ConnectMiddleware } from '../shared/middleware-runner.js';
+import { loadUserServerMiddleware } from '../shared/user-server-middleware.js';
 
 // Re-export for backwards compatibility
 export { readProjectConfig, readProjectTitle, getLumenJSNodeModules, getLumenJSDirs } from './config.js';
@@ -145,6 +146,8 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
   // Load user-defined Vite plugins from lumenjs.plugins.js (if present).
   // This allows apps to add custom Vite plugins (e.g. proxy middleware)
   // that run at the raw Connect level, before LumenJS's own middleware.
+  // Dev-only: Vite plugins don't run in `lumenjs serve`. For global Connect
+  // middleware that works in both dev and prod, use `lumenjs.server.js` instead.
   let userPlugins: Plugin[] = [];
   const pluginsPath = path.join(projectDir, 'lumenjs.plugins.js');
   if (fs.existsSync(pluginsPath)) {
@@ -160,6 +163,20 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       console.warn(`[LumenJS] Failed to load lumenjs.plugins.js:`, (err as any)?.message);
     }
   }
+
+  // Load global user middleware from lumenjs.server.js — shared dev/prod convention.
+  // Exposed as a Vite plugin that registers its Connect middleware before LumenJS's
+  // own path-scoped _middleware.ts and auth routes, matching the prod order in
+  // build/serve.ts where it runs after rate-limit, before auth.
+  const userServerMiddleware = await loadUserServerMiddleware(projectDir);
+  const userServerMiddlewarePlugin: Plugin | null = userServerMiddleware.length > 0 ? {
+    name: 'lumenjs-user-server-middleware',
+    configureServer(server) {
+      for (const mw of userServerMiddleware) {
+        server.middlewares.use(mw as any);
+      }
+    },
+  } : null;
 
   // Build auth plugins up front so we can slot `pre` before `lumenjs-user-middleware`
   // and `post` (the /__nk_auth/* route handler) after it. This matches the prod
@@ -193,6 +210,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     appType: 'custom',
     plugins: [
       ...userPlugins,
+      ...(userServerMiddlewarePlugin ? [userServerMiddlewarePlugin] : []),
       ...(authPlugins ? [authPlugins.pre] : []),
       {
         // User middleware must register as a pre-hook BEFORE the loaders plugin so that
