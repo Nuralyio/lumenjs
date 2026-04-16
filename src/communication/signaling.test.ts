@@ -137,6 +137,10 @@ describe('signaling', () => {
     it('relays offer to target user', () => {
       const ctx = createMockSignalingCtx('caller');
       ctx.store.mapUserSocket('callee', 'callee-s1');
+      ctx.store.addCall({
+        id: 'c1', conversationId: 'conv', type: 'audio', state: 'connected',
+        callerId: 'caller', calleeIds: ['callee'], participants: [],
+      });
       handleSignalOffer(ctx, { callId: 'c1', fromUserId: 'caller', toUserId: 'callee', type: 'offer', sdp: 'sdp-data' });
       expect(ctx.emitToSocket).toHaveBeenCalledWith('callee-s1', expect.objectContaining({ event: 'signal:offer' }));
     });
@@ -144,6 +148,10 @@ describe('signaling', () => {
     it('relays answer to target user', () => {
       const ctx = createMockSignalingCtx('callee');
       ctx.store.mapUserSocket('caller', 'caller-s1');
+      ctx.store.addCall({
+        id: 'c1', conversationId: 'conv', type: 'audio', state: 'connected',
+        callerId: 'caller', calleeIds: ['callee'], participants: [],
+      });
       handleSignalAnswer(ctx, { callId: 'c1', fromUserId: 'callee', toUserId: 'caller', type: 'answer', sdp: 'sdp-ans' });
       expect(ctx.emitToSocket).toHaveBeenCalledWith('caller-s1', expect.objectContaining({ event: 'signal:answer' }));
     });
@@ -151,6 +159,10 @@ describe('signaling', () => {
     it('relays ICE candidate', () => {
       const ctx = createMockSignalingCtx('caller');
       ctx.store.mapUserSocket('callee', 'callee-s1');
+      ctx.store.addCall({
+        id: 'c1', conversationId: 'conv', type: 'audio', state: 'connected',
+        callerId: 'caller', calleeIds: ['callee'], participants: [],
+      });
       handleSignalIceCandidate(ctx, { callId: 'c1', fromUserId: 'caller', toUserId: 'callee', candidate: 'cand', sdpMLineIndex: 0, sdpMid: 'audio' });
       expect(ctx.emitToSocket).toHaveBeenCalledWith('callee-s1', expect.objectContaining({ event: 'signal:ice-candidate' }));
     });

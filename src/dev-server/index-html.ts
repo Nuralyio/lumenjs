@@ -82,6 +82,7 @@ export function generateIndexHtml(options: IndexHtmlOptions): string {
   <title>${escapeHtml(options.title)}</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   ${options.integrations?.includes('tailwind') ? '<script type="module">import "/styles/tailwind.css";</script>' : ''}
+  ${options.integrations?.includes('nuralyui') ? '<link rel="stylesheet" href="/@nuraly/lumenui/styles.css" />' : ''}
   ${options.headContent || ''}
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
