@@ -268,7 +268,7 @@ describe('createStorage', () => {
 
   it('uses default uploadDir and publicPath for local', () => {
     const adapter = createStorage({ provider: 'local' }) as LocalStorageAdapter;
-    expect(adapter.uploadDir).toBe('./uploads');
+    expect(adapter.uploadDir).toBe(path.resolve('./uploads'));
     expect(adapter.publicPath).toBe('/uploads');
   });
 

@@ -31,6 +31,28 @@ export function dirToLayoutTagName(dir: string): string {
 }
 
 /**
+ * Find a Lit component class in a module and return its tag name.
+ * Looks for classes with `elementProperties` (Map) or `properties` (object).
+ * Returns `static is` if defined, otherwise converts PascalCase to kebab-case.
+ * Returns null if no component found or name has no dash.
+ */
+export function findTagName(mod: Record<string, any>): string | null {
+  for (const value of Object.values(mod)) {
+    if (typeof value !== 'function') continue;
+    const hasElementProperties = value.elementProperties instanceof Map;
+    const hasProperties = value.properties != null && typeof value.properties === 'object' && !Array.isArray(value.properties);
+    if (!hasElementProperties && !hasProperties) continue;
+    if (typeof value.is === 'string') return value.is;
+    const name = value.name;
+    if (!name) return null;
+    const kebab = name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+    if (!kebab.includes('-')) return null;
+    return kebab;
+  }
+  return null;
+}
+
+/**
  * Convert a relative file path within pages/ to a page tag name.
  *   'index.ts'           → 'page-index'
  *   'docs/api-routes.ts' → 'page-docs-api-routes'

@@ -30,48 +30,63 @@ export interface LlmsTxtInput {
  */
 export function generateLlmsTxt(input: LlmsTxtInput): string {
   const lines: string[] = [];
-  const base = input.baseUrl ? input.baseUrl.replace(/\/$/, '') : '';
 
   lines.push(`# ${input.title}`);
   lines.push('');
-  lines.push(`> ${input.description || `${input.title}. Built with LumenJS.`}`);
+  lines.push(`> ${input.description || 'Built with LumenJS'}`);
   lines.push('');
 
-  // Group pages by top-level path segment
-  const groups = new Map<string, LlmsPage[]>();
-  for (const page of input.pages) {
-    const segments = page.path.split('/').filter(Boolean);
-    const section = segments.length > 0 ? segments[0] : 'pages';
-    if (!groups.has(section)) groups.set(section, []);
-    groups.get(section)!.push(page);
-  }
-
-  // Pages — grouped by section with links
-  for (const [section, pages] of groups) {
-    const sectionTitle = section.charAt(0).toUpperCase() + section.slice(1);
-    lines.push(`## ${sectionTitle}`);
+  // Pages section
+  if (input.pages.length > 0) {
+    lines.push('## Pages');
     lines.push('');
-    for (const page of pages) {
+    for (const page of input.pages) {
       const isDynamic = page.path.includes(':');
-      const label = page.path === '/' ? 'Home' : page.path;
-      const features: string[] = [];
-      if (isDynamic) features.push('dynamic');
-      if (page.hasLoader) features.push('server data');
-      if (page.hasSubscribe) features.push('live data');
-      const desc = features.length > 0 ? `: ${features.join(', ')}` : '';
-      // Link to .md version for LLM-readable content (skip dynamic routes)
-      const href = !isDynamic ? `${base}${page.path}.md` : `${base}${page.path}`;
-      lines.push(`- [${label}](${href})${desc}`);
+      lines.push(`### ${page.path}`);
+
+      if (isDynamic) {
+        const hasEntries = page.dynamicEntries && page.dynamicEntries.length > 0;
+        if (hasEntries) {
+          const count = page.dynamicEntries!.length;
+          lines.push(`Dynamic route — ${count} ${count === 1 ? 'entry' : 'entries'}:`);
+          lines.push('');
+          for (const entry of page.dynamicEntries!) {
+            lines.push(`#### ${entry.path}`);
+            if (entry.loaderData) {
+              const data = flattenData(entry.loaderData);
+              if (data) lines.push(data);
+            }
+            lines.push('');
+          }
+        } else {
+          lines.push('- Dynamic route');
+          lines.push('');
+        }
+      } else {
+        const features: string[] = [];
+        if (page.hasLoader) features.push('with loader data');
+        if (page.hasSubscribe) features.push('with live data');
+        const annotation = features.length > 0
+          ? `- Server-rendered page ${features.join(' and ')}`
+          : '- Server-rendered page';
+        lines.push(annotation);
+        if (page.loaderData) {
+          const data = flattenData(page.loaderData);
+          if (data) lines.push(data);
+        }
+        lines.push('');
+      }
     }
-    lines.push('');
   }
 
   // API Routes section
   if (input.apiRoutes.length > 0) {
-    lines.push('## API');
+    lines.push('## API Routes');
     lines.push('');
     for (const route of input.apiRoutes) {
-      lines.push(`- [${route.methods.join(', ')} /api/${route.path}](${base}/api/${route.path})`);
+      for (const method of route.methods) {
+        lines.push(`- ${method} /api/${route.path}`);
+      }
     }
     lines.push('');
   }

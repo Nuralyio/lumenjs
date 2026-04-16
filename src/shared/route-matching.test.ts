@@ -81,14 +81,9 @@ describe('matchRoute', () => {
     expect(result).toBeNull();
   });
 
-  it('root route matches any single-segment path (current behavior)', () => {
-    // Note: the root route `/` currently matches any path because the
-    // pathname check `pathname === '/' || pathname === ''` is separate from
-    // the segment-matching loop which has length 0 segments for '/'.
+  it('root route does not match other paths', () => {
     const routes = [route('/')];
     const result = matchRoute(routes, '/about');
-    // Root route has 0 segments after filtering, so the for loop doesn't run
-    // and match stays true. This is a known quirk.
-    expect(result).not.toBeNull();
+    expect(result).toBeNull();
   });
 });
