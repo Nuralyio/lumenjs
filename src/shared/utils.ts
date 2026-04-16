@@ -120,6 +120,10 @@ export function patchLoaderDataSpread(tagName: string): void {
 
 /**
  * Read and parse the body of an HTTP request.
+ *
+ * Parsing is selected by the request's Content-Type header:
+ *   - `application/x-www-form-urlencoded` → key/value object via URLSearchParams
+ *   - anything else → JSON.parse, falling back to the raw string
  */
 const DEFAULT_MAX_BODY = 1024 * 1024; // 1 MB
 
@@ -138,6 +142,10 @@ export function readBody(req: any, maxSize: number = DEFAULT_MAX_BODY): Promise<
     });
     req.on('end', () => {
       if (!data) return resolve(undefined);
+      const contentType = (req.headers?.['content-type'] || '').toString().toLowerCase();
+      if (contentType.includes('application/x-www-form-urlencoded')) {
+        return resolve(Object.fromEntries(new URLSearchParams(data)));
+      }
       try {
         resolve(JSON.parse(data));
       } catch {

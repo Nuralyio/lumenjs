@@ -142,9 +142,10 @@ describe('isRedirectResponse', () => {
 });
 
 describe('readBody', () => {
-  function createMockReq(data: string) {
+  function createMockReq(data: string, headers: Record<string, string> = {}) {
     const { EventEmitter } = require('events');
-    const emitter = new EventEmitter();
+    const emitter: any = new EventEmitter();
+    emitter.headers = headers;
     setTimeout(() => {
       if (data) emitter.emit('data', Buffer.from(data));
       emitter.emit('end');
@@ -188,6 +189,30 @@ describe('readBody', () => {
     const req = createMockReq('{"dir": "C:\\Projects\\my-app\\src"}');
     const result = await readBody(req);
     expect(result).toEqual({ dir: 'C:\\Projects\\my-app\\src' });
+  });
+
+  it('parses application/x-www-form-urlencoded body into an object', async () => {
+    const req = createMockReq('name=John&age=30', {
+      'content-type': 'application/x-www-form-urlencoded',
+    });
+    const result = await readBody(req);
+    expect(result).toEqual({ name: 'John', age: '30' });
+  });
+
+  it('decodes url-encoded values in form bodies', async () => {
+    const req = createMockReq('greeting=hello%20world&sign=%26', {
+      'content-type': 'application/x-www-form-urlencoded',
+    });
+    const result = await readBody(req);
+    expect(result).toEqual({ greeting: 'hello world', sign: '&' });
+  });
+
+  it('respects content-type with charset parameter', async () => {
+    const req = createMockReq('name=John', {
+      'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+    });
+    const result = await readBody(req);
+    expect(result).toEqual({ name: 'John' });
   });
 });
 
