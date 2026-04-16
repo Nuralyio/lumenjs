@@ -61,7 +61,13 @@ export function lumenApiRoutesPlugin(apiDir: string, projectDir?: string): Plugi
         try {
           // Use Vite's ssrLoadModule for HMR support
           const mod = await server.ssrLoadModule(filePath);
-          const handler = mod[req.method];
+          // RFC 9110 §9.3.2: HEAD responses must be identical to GET. If no
+          // explicit HEAD export is defined, fall back to GET and strip the
+          // body when replying.
+          let handler = mod[req.method];
+          if (!handler && req.method === 'HEAD') {
+            handler = mod['GET'];
+          }
 
           if (!handler || typeof handler !== 'function') {
             res.statusCode = 405;
@@ -102,14 +108,16 @@ export function lumenApiRoutesPlugin(apiDir: string, projectDir?: string): Plugi
           // Unwrap Response objects (e.g. Response.json()) — JSON.stringify gives '{}'
           result = await unwrapResponse(result);
 
+          // HEAD responses must omit the body but keep headers identical to GET.
+          const isHead = req.method === 'HEAD';
           if (result && result.__nk_binary && Buffer.isBuffer(result.body)) {
             res.statusCode = result.status || 200;
             for (const [k, v] of Object.entries(result.headers || {})) res.setHeader(k, v as string);
-            res.end(result.body);
+            res.end(isHead ? undefined : result.body);
           } else {
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify(result));
+            res.end(isHead ? undefined : JSON.stringify(result));
           }
         } catch (err: any) {
           const status = err?.status || 500;

@@ -33,7 +33,12 @@ export async function handleApiRoute(
   }
 
   const mod = await import(modulePath);
-  const handler = mod[method];
+  // RFC 9110 §9.3.2: HEAD responses must be identical to GET. If no explicit
+  // HEAD export is defined, fall back to GET and strip the body when replying.
+  let handler = mod[method];
+  if (!handler && method === 'HEAD') {
+    handler = mod['GET'];
+  }
 
   if (!handler || typeof handler !== 'function') {
     res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -72,7 +77,8 @@ export async function handleApiRoute(
     result = await unwrapResponse(result);
 
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify(result));
+    // HEAD responses must omit the body but keep headers identical to GET.
+    res.end(method === 'HEAD' ? undefined : JSON.stringify(result));
   } catch (err: any) {
     const status = err?.status || 500;
     // Only expose error messages for client errors (4xx); hide internals for 5xx
