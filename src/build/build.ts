@@ -145,6 +145,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
       path: e.routePath,
       hasLoader: e.hasLoader,
       hasSubscribe: e.hasSubscribe,
+      ...(e.hasAuth ? { hasAuth: true } : {}),
     }));
     const llmsApiRoutes: LlmsApiRoute[] = apiEntries.map(e => ({
       path: e.routePath,

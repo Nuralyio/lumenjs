@@ -55,6 +55,62 @@ describe('generateLlmsTxt', () => {
     expect(result).toContain('with live data');
   });
 
+  it('flags auth-protected static pages with "auth required"', () => {
+    const input: LlmsTxtInput = {
+      title: 'App',
+      pages: [
+        { path: '/settings', hasLoader: true, hasSubscribe: false, hasAuth: true },
+        { path: '/about', hasLoader: false, hasSubscribe: false },
+      ],
+      apiRoutes: [],
+      integrations: [],
+    };
+    const result = generateLlmsTxt(input);
+    // /settings is auth-protected
+    expect(result).toMatch(/### \/settings\n- Server-rendered page[^\n]*auth required/);
+    // /about is public — no auth marker
+    expect(result).toMatch(/### \/about\n- Server-rendered page\n/);
+  });
+
+  it('flags auth-protected dynamic routes with "(auth required)"', () => {
+    const input: LlmsTxtInput = {
+      title: 'App',
+      pages: [
+        {
+          path: '/account/:id',
+          hasLoader: true,
+          hasSubscribe: false,
+          hasAuth: true,
+          dynamicEntries: [
+            { path: '/account/1', loaderData: { name: 'Alice' } },
+          ],
+        },
+        { path: '/posts/:slug', hasLoader: true, hasSubscribe: false },
+      ],
+      apiRoutes: [],
+      integrations: [],
+    };
+    const result = generateLlmsTxt(input);
+    expect(result).toContain('Dynamic route (auth required) — 1 entry:');
+    // Public dynamic route stays untouched
+    expect(result).toContain('### /posts/:slug');
+    expect(result).toContain('- Dynamic route');
+    expect(result).not.toMatch(/### \/posts\/:slug[\s\S]*?auth required/);
+  });
+
+  it('flags auth-protected dynamic routes without resolved entries', () => {
+    const input: LlmsTxtInput = {
+      title: 'App',
+      pages: [
+        { path: '/admin/:id', hasLoader: true, hasSubscribe: false, hasAuth: true },
+      ],
+      apiRoutes: [],
+      integrations: [],
+    };
+    const result = generateLlmsTxt(input);
+    expect(result).toContain('- Dynamic route (auth required)');
+  });
+
   it('renders dynamic route entries', () => {
     const input: LlmsTxtInput = {
       title: 'Blog',

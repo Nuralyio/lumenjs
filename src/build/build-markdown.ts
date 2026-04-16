@@ -45,6 +45,10 @@ export async function generateMarkdownPages(opts: MarkdownOptions): Promise<void
     // Skip dynamic routes (e.g., /blog/:slug)
     if (page.routePath.includes(':')) continue;
 
+    // Skip auth-protected pages — SSR-rendering without user context would
+    // leak the unauthenticated/redirect view as a public /path.md file.
+    if (page.hasAuth) continue;
+
     const moduleName = `pages/${page.name.replace(/\[(\w+)\]/g, '_$1_')}.js`;
     let modulePath = path.join(serverDir, moduleName);
     if (!fs.existsSync(modulePath)) {

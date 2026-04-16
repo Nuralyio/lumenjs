@@ -44,6 +44,7 @@ export function lumenLlmsPlugin(projectDir: string): Plugin {
               path: page.routePath,
               hasLoader: page.hasLoader,
               hasSubscribe: page.hasSubscribe,
+              ...(page.hasAuth ? { hasAuth: true } : {}),
             };
 
             if (page.hasLoader) {

@@ -2,6 +2,7 @@ export interface LlmsPage {
   path: string;
   hasLoader: boolean;
   hasSubscribe: boolean;
+  hasAuth?: boolean;
   loaderData?: any;
   dynamicEntries?: { path: string; loaderData: any }[];
 }
@@ -48,7 +49,8 @@ export function generateLlmsTxt(input: LlmsTxtInput): string {
         const hasEntries = page.dynamicEntries && page.dynamicEntries.length > 0;
         if (hasEntries) {
           const count = page.dynamicEntries!.length;
-          lines.push(`Dynamic route — ${count} ${count === 1 ? 'entry' : 'entries'}:`);
+          const suffix = page.hasAuth ? ' (auth required)' : '';
+          lines.push(`Dynamic route${suffix} — ${count} ${count === 1 ? 'entry' : 'entries'}:`);
           lines.push('');
           for (const entry of page.dynamicEntries!) {
             lines.push(`#### ${entry.path}`);
@@ -59,13 +61,15 @@ export function generateLlmsTxt(input: LlmsTxtInput): string {
             lines.push('');
           }
         } else {
-          lines.push('- Dynamic route');
+          const suffix = page.hasAuth ? ' (auth required)' : '';
+          lines.push(`- Dynamic route${suffix}`);
           lines.push('');
         }
       } else {
         const features: string[] = [];
         if (page.hasLoader) features.push('with loader data');
         if (page.hasSubscribe) features.push('with live data');
+        if (page.hasAuth) features.push('auth required');
         const annotation = features.length > 0
           ? `- Server-rendered page ${features.join(' and ')}`
           : '- Server-rendered page';
