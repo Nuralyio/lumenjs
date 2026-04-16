@@ -1,4 +1,4 @@
-export type ConnectMiddleware = (req: any, res: any, next: (err?: any) => void) => void;
+export type ConnectMiddleware = (req: any, res: any, next: (err?: any) => void) => void | Promise<any>;
 
 /**
  * Chain Connect-style (req, res, next) middleware functions sequentially.
