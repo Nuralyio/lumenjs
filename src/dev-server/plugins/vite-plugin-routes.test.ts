@@ -53,7 +53,7 @@ describe('lumenRoutesPlugin', () => {
     expect(code).toContain('path: "/blog/:slug"');
   });
 
-  it('sorts static before dynamic before catch-all', () => {
+  it('sorts by per-segment specificity (matches server-side matcher)', () => {
     const dir = createTmpDir();
     fs.mkdirSync(path.join(dir, 'docs'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'about.ts'), 'export class A extends LitElement {}');
@@ -67,8 +67,35 @@ describe('lumenRoutesPlugin', () => {
     const aboutIdx = code.indexOf('/about');
     const introIdx = code.indexOf('/docs/intro');
     const catchAllIdx = code.indexOf('/docs/:...path');
-    expect(aboutIdx).toBeLessThan(introIdx);
-    expect(introIdx).toBeLessThan(catchAllIdx);
+    // /docs/intro (score 4) is more specific than /about (score 2) and
+    // /docs/:...path (score 2). Static still beats catch-all at equal score
+    // via the alphabetical tie-break.
+    expect(introIdx).toBeLessThan(aboutIdx);
+    expect(aboutIdx).toBeLessThan(catchAllIdx);
+  });
+
+  it('sorts overlapping mixed routes the same way as the server matcher', () => {
+    // Regression: see issue #1226. Previously the plugin used a coarse
+    // 3-bucket sort (static → dynamic → catch-all) which placed /:x/y/:z
+    // before /a/:b/c alphabetically, while the server matcher (per-segment
+    // specificity) places /a/:b/c first. For the URL /a/y/c both routes
+    // match, so the client and server would hydrate different pages.
+    const dir = createTmpDir();
+    fs.mkdirSync(path.join(dir, 'a', '[b]'), { recursive: true });
+    fs.mkdirSync(path.join(dir, '[x]', 'y'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'a', '[b]', 'c.ts'), 'export class A extends LitElement {}');
+    fs.writeFileSync(path.join(dir, '[x]', 'y', '[z].ts'), 'export class B extends LitElement {}');
+
+    const plugin = lumenRoutesPlugin(dir);
+    const load = plugin.load as (id: string) => string | undefined;
+    const code = load('\0virtual:lumenjs-routes')!;
+
+    const abcIdx = code.indexOf('/a/:b/c');
+    const xyzIdx = code.indexOf('/:x/y/:z');
+    expect(abcIdx).toBeGreaterThanOrEqual(0);
+    expect(xyzIdx).toBeGreaterThanOrEqual(0);
+    // /a/:b/c → score 2+1+2=5, /:x/y/:z → score 1+2+1=4. /a/:b/c must come first.
+    expect(abcIdx).toBeLessThan(xyzIdx);
   });
 
   it('discovers layouts and includes in route entries', () => {

@@ -2,6 +2,7 @@ import { Plugin } from 'vite';
 import fs from 'fs';
 import path from 'path';
 import { dirToLayoutTagName, fileHasLoader, fileHasSubscribe, fileHasSocket, fileHasAuth, fileHasMeta, fileHasStandalone, filePathToRoute, filePathToTagName } from '../../shared/utils.js';
+import { routeSpecificity } from '../../shared/route-matching.js';
 
 export interface RouteEntry {
   path: string;
@@ -56,14 +57,15 @@ export function lumenRoutesPlugin(pagesDir: string): Plugin {
 
     const routes: RouteEntry[] = [];
     walkDir(pagesDir, '', routes);
-    // Sort: static → dynamic → catch-all
+    // Sort by per-segment specificity (higher score first) to match the
+    // server-side matcher in shared/route-matching.ts. Without this, routes in
+    // the same coarse bucket (e.g. both dynamic) could be checked in a
+    // different order on client vs server, causing SSR/CSR hydration mismatch
+    // when two routes have overlapping match patterns (e.g. /a/:b/c vs
+    // /:x/y/:z matching /a/y/c). Tie-break alphabetically for determinism.
     routes.sort((a, b) => {
-      const aCatchAll = a.path.includes(':...');
-      const bCatchAll = b.path.includes(':...');
-      if (aCatchAll !== bCatchAll) return aCatchAll ? 1 : -1;
-      const aDynamic = a.path.includes(':');
-      const bDynamic = b.path.includes(':');
-      if (aDynamic !== bDynamic) return aDynamic ? 1 : -1;
+      const diff = routeSpecificity(b.path) - routeSpecificity(a.path);
+      if (diff !== 0) return diff;
       return a.path.localeCompare(b.path);
     });
     return routes;

@@ -5,10 +5,16 @@ export interface MatchResult {
   params: Record<string, string>;
 }
 
-function routeSpecificity(route: ManifestRoute): number {
-  // Higher score = more specific = checked first.
-  // Each static segment adds 2, each dynamic segment adds 1, catch-all adds 0.
-  return route.path.replace(/^\//, '').split('/').filter(Boolean).reduce((score, seg) => {
+/**
+ * Per-segment route specificity score. Higher = more specific = checked first.
+ * Each static segment adds 2, each dynamic segment adds 1, catch-all adds 0.
+ *
+ * Exported so build-time route generation (vite-plugin-routes) and client-side
+ * router can use the exact same ordering as the server-side matcher, preventing
+ * SSR/CSR hydration mismatches when routes have overlapping match patterns.
+ */
+export function routeSpecificity(path: string): number {
+  return path.replace(/^\//, '').split('/').filter(Boolean).reduce((score, seg) => {
     if (seg.startsWith(':...')) return score + 0;
     if (seg.startsWith(':')) return score + 1;
     return score + 2;
@@ -17,7 +23,7 @@ function routeSpecificity(route: ManifestRoute): number {
 
 export function matchRoute(routes: ManifestRoute[], pathname: string): MatchResult | null {
   const urlSegments = pathname.replace(/^\//, '').split('/').filter(Boolean);
-  const sorted = [...routes].sort((a, b) => routeSpecificity(b) - routeSpecificity(a));
+  const sorted = [...routes].sort((a, b) => routeSpecificity(b.path) - routeSpecificity(a.path));
 
   for (const route of sorted) {
     const routeSegments = route.path.replace(/^\//, '').split('/').filter(Boolean);
