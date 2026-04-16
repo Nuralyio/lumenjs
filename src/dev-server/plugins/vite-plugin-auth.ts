@@ -58,15 +58,31 @@ function matchRouteParams(pattern: string, pathname: string): Record<string, str
 }
 
 /**
- * Vite dev plugin for authentication.
- * Registers auth session middleware, auth route handlers, and guard enforcement.
+ * Vite dev plugins for authentication.
+ *
+ * Split into two plugins to match production middleware ordering (see
+ * `libs/lumenjs/src/build/serve.ts:218-253`):
+ *
+ *   1. Auth session middleware (attach req.nkAuth) — BEFORE user middleware
+ *   2. User middleware chain                        — runs in between (registered by server.ts)
+ *   3. Auth route handler (/__nk_auth/*)            — AFTER user middleware, so
+ *      gates like invite-only signup can intercept /__nk_auth/signup
+ *
+ * Vite registers `configureServer` middleware as pre-hooks in plugin order, so
+ * emitting two separate plugins lets `lumenjs-user-middleware` slot between
+ * them. Both plugins share config/db state via the closure below.
+ *
+ * Returns `{ pre, post }`:
+ *   - `pre`  — session middleware + page guard enforcement + `transform`
+ *              (strips `export const auth` from client bundles)
+ *   - `post` — /__nk_auth/* route handler
  */
-export function authPlugin(projectDir: string): Plugin {
+export function authPlugin(projectDir: string): { pre: Plugin; post: Plugin } {
   let authConfig: ResolvedAuthConfig | null = null;
   let db: any = null;
   let permissionService: PermissionService | null = null;
 
-  return {
+  const pre: Plugin = {
     name: 'lumenjs-auth',
     configureServer(server) {
       // 1. Auth session middleware — parse cookie, attach req.nkAuth
@@ -130,22 +146,9 @@ export function authPlugin(projectDir: string): Plugin {
         middleware(req, res, next);
       });
 
-      // 2. Auth route handlers — login, callback, logout, me
-      server.middlewares.use(async (req, res, next) => {
-        if (!authConfig) return next();
-        const url = req.url || '';
-        if (!url.startsWith('/__nk_auth/')) return next();
-
-        try {
-          const handled = await handleAuthRoutes(authConfig, req, res, db);
-          if (!handled) next();
-        } catch (err) {
-          console.error('[LumenJS Auth] Route handler error:', err);
-          next();
-        }
-      });
-
-      // 3. Guard enforcement — check page auth export, redirect/403
+      // 2. Guard enforcement — check page auth export, redirect/403.
+      // Does NOT touch /__nk_auth/* (short-circuits via the /__nk_ prefix check
+      // below), so ordering relative to user middleware is irrelevant here.
       server.middlewares.use(async (req, res, next) => {
         if (!authConfig) return next();
         const url = req.url || '';
@@ -222,4 +225,29 @@ export function authPlugin(projectDir: string): Plugin {
       return { code: transformed, map: null };
     },
   };
+
+  const post: Plugin = {
+    name: 'lumenjs-auth-routes',
+    configureServer(server) {
+      // 3. Auth route handlers — login, callback, logout, me, signup, etc.
+      // Registered AFTER `lumenjs-user-middleware` so user middleware can gate
+      // /__nk_auth/signup (invite codes, email allow-lists) before the handler
+      // sends the response. Matches the prod ordering in build/serve.ts:249-253.
+      server.middlewares.use(async (req, res, next) => {
+        if (!authConfig) return next();
+        const url = req.url || '';
+        if (!url.startsWith('/__nk_auth/')) return next();
+
+        try {
+          const handled = await handleAuthRoutes(authConfig, req, res, db);
+          if (!handled) next();
+        } catch (err) {
+          console.error('[LumenJS Auth] Route handler error:', err);
+          next();
+        }
+      });
+    },
+  };
+
+  return { pre, post };
 }

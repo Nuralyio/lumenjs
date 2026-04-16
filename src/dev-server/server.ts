@@ -161,6 +161,12 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     }
   }
 
+  // Build auth plugins up front so we can slot `pre` before `lumenjs-user-middleware`
+  // and `post` (the /__nk_auth/* route handler) after it. This matches the prod
+  // middleware order in `build/serve.ts:218-253` so gates like invite-only signup
+  // run in dev just like they do in prod.
+  const authPlugins = integrations.includes('auth') ? authPlugin(projectDir) : null;
+
   const server = await createViteServer({
     root: projectDir,
     base,
@@ -187,7 +193,7 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
     appType: 'custom',
     plugins: [
       ...userPlugins,
-      ...(integrations.includes('auth') ? [authPlugin(projectDir)] : []),
+      ...(authPlugins ? [authPlugins.pre] : []),
       {
         // User middleware must register as a pre-hook BEFORE the loaders plugin so that
         // /__nk_loader/ and /__nk_subscribe/ requests go through user middleware first.
@@ -251,6 +257,9 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
           });
         }
       },
+      // Auth /__nk_auth/* route handler — registered AFTER user middleware so
+      // gates like invite-only signup can intercept before the handler responds.
+      ...(authPlugins ? [authPlugins.post] : []),
       ...shared.plugins,
       ...(integrations.includes('communication') ? [communicationPlugin(projectDir)] : []),
       lumenStoragePlugin(projectDir),
