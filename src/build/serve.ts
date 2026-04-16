@@ -219,7 +219,7 @@ export async function serveProject(options: ServeOptions): Promise<void> {
   const server = http.createServer(async (req, res) => {
     const startTime = Date.now();
     const url = req.url || '/';
-    const [pathname, queryString] = url.split('?');
+    let [pathname, queryString] = url.split('?');
     const method = req.method || 'GET';
 
     try {
@@ -300,6 +300,9 @@ export async function serveProject(options: ServeOptions): Promise<void> {
           const err: any = await new Promise(resolve => runMiddlewareChain(allMw, req, res, resolve));
           if (err) { res.statusCode = 500; res.end('Internal Server Error'); return; }
           if (res.writableEnded) return;
+          // Re-derive pathname/queryString in case middleware rewrote req.url (Connect-style URL rewriting).
+          // Without this, downstream routing would use the stale pre-middleware pathname.
+          [pathname, queryString] = (req.url || '/').split('?');
         }
       }
 
