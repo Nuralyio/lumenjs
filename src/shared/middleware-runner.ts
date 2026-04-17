@@ -10,17 +10,25 @@ export function runMiddlewareChain(
   done: (err?: any) => void
 ): void {
   let index = 0;
+  let called = false;
 
   function next(err?: any): void {
-    if (err) return done(err);
-    if (index >= middlewares.length) return done();
+    if (called) return;
+    if (err) { called = true; return done(err); }
+    if (index >= middlewares.length) { called = true; return done(); }
     const mw = middlewares[index++];
     try {
       const result = mw(req, res, next);
       if (result && typeof (result as any).catch === 'function') {
-        (result as any).catch((e: any) => done(e));
+        (result as any).catch((e: any) => {
+          if (called) return;
+          called = true;
+          done(e);
+        });
       }
     } catch (e) {
+      if (called) return;
+      called = true;
       done(e);
     }
   }
