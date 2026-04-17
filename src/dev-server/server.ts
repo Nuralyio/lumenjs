@@ -26,7 +26,6 @@ import { resolveLocale } from './middleware/locale.js';
 import { setProjectDir } from '../db/context.js';
 import { scanMiddleware, getMiddlewareDirsForPathname } from '../build/scan.js';
 import { runMiddlewareChain, extractMiddleware, ConnectMiddleware } from '../shared/middleware-runner.js';
-import { loadUserServerMiddleware } from '../shared/user-server-middleware.js';
 
 // Re-export for backwards compatibility
 export { readProjectConfig, readProjectTitle, getLumenJSNodeModules, getLumenJSDirs } from './config.js';
@@ -165,16 +164,26 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
   }
 
   // Load global user middleware from lumenjs.server.js — shared dev/prod convention.
-  // Exposed as a Vite plugin that registers its Connect middleware before LumenJS's
-  // own path-scoped _middleware.ts and auth routes, matching the prod order in
-  // build/serve.ts where it runs after rate-limit, before auth.
-  const userServerMiddleware = await loadUserServerMiddleware(projectDir);
-  const userServerMiddlewarePlugin: Plugin | null = userServerMiddleware.length > 0 ? {
+  // In dev, we use ssrLoadModule on every request (like _middleware.ts) so edits to the
+  // file are picked up immediately via HMR without a full server restart.
+  const serverJsCandidates = ['lumenjs.server.js', 'lumenjs.server.mjs'];
+  const serverJsPath = serverJsCandidates
+    .map(name => path.join(projectDir, name))
+    .find(fp => fs.existsSync(fp));
+  const userServerMiddlewarePlugin: Plugin | null = serverJsPath ? {
     name: 'lumenjs-user-server-middleware',
     configureServer(server) {
-      for (const mw of userServerMiddleware) {
-        server.middlewares.use(mw as any);
-      }
+      server.middlewares.use(async (req: any, res: any, next: any) => {
+        try {
+          const mod = await server.ssrLoadModule(serverJsPath);
+          const middlewares = extractMiddleware(mod);
+          if (middlewares.length === 0) return next();
+          runMiddlewareChain(middlewares, req, res, next);
+        } catch (err) {
+          console.warn(`[LumenJS] Failed to load lumenjs.server.js:`, (err as any)?.message);
+          next();
+        }
+      });
     },
   } : null;
 
