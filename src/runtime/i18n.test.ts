@@ -1,9 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
   t,
   getLocale,
   getI18nConfig,
   initI18n,
+  setLocale,
+  loadTranslations,
   stripLocalePrefix,
   buildLocalePath,
   detectLocaleFromPath,
@@ -116,6 +118,155 @@ describe('i18n runtime', () => {
       const result = detectLocaleFromPath('/about');
       expect(result.locale).toBe('en');
       expect(result.pathname).toBe('/about');
+    });
+  });
+
+  describe('setLocale()', () => {
+    let cookieSetter: ReturnType<typeof vi.fn>;
+    let hrefSetter: ReturnType<typeof vi.fn>;
+    let originalDocument: typeof globalThis.document;
+    let originalLocation: typeof globalThis.location;
+
+    beforeEach(() => {
+      cookieSetter = vi.fn();
+      hrefSetter = vi.fn();
+
+      originalDocument = globalThis.document;
+      originalLocation = globalThis.location;
+
+      // @ts-ignore – minimal mock for cookie
+      globalThis.document = { set cookie(v: string) { cookieSetter(v); } };
+
+      // @ts-ignore – minimal mock for location
+      globalThis.location = { pathname: '/fr/about', set href(v: string) { hrefSetter(v); } };
+    });
+
+    afterEach(() => {
+      globalThis.document = originalDocument;
+      globalThis.location = originalLocation;
+    });
+
+    it('sets cookie and navigates for a valid non-default locale', () => {
+      initI18n(testConfig, 'en', {});
+      // location.pathname = /fr/about → stripped to /about → buildLocalePath('fr', '/about') = /fr/about
+      setLocale('fr');
+
+      expect(cookieSetter).toHaveBeenCalledWith(
+        'nk-locale=fr;path=/;max-age=31536000;SameSite=Lax',
+      );
+      expect(hrefSetter).toHaveBeenCalledWith('/fr/about');
+    });
+
+    it('navigates to bare path for default locale when prefixDefault is false', () => {
+      initI18n(testConfig, 'fr', {});
+      // @ts-ignore
+      globalThis.location = { pathname: '/fr/about', set href(v: string) { hrefSetter(v); } };
+
+      setLocale('en');
+
+      expect(cookieSetter).toHaveBeenCalledWith(
+        'nk-locale=en;path=/;max-age=31536000;SameSite=Lax',
+      );
+      // stripLocalePrefix('/fr/about') → /about, buildLocalePath('en', '/about') → /about (no prefix)
+      expect(hrefSetter).toHaveBeenCalledWith('/about');
+    });
+
+    it('prefixes default locale when prefixDefault is true', () => {
+      initI18n({ ...testConfig, prefixDefault: true }, 'fr', {});
+      // @ts-ignore
+      globalThis.location = { pathname: '/fr/about', set href(v: string) { hrefSetter(v); } };
+
+      setLocale('en');
+
+      expect(hrefSetter).toHaveBeenCalledWith('/en/about');
+    });
+
+    it('does nothing for an unknown locale', () => {
+      initI18n(testConfig, 'en', {});
+      setLocale('es');
+
+      expect(cookieSetter).not.toHaveBeenCalled();
+      expect(hrefSetter).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when config is null', () => {
+      initI18n(null as any, 'en', {});
+      // Restore config to null via the globalThis state hack
+      (globalThis as any).__nk_i18n.config = null;
+
+      setLocale('fr');
+
+      expect(cookieSetter).not.toHaveBeenCalled();
+      expect(hrefSetter).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('loadTranslations()', () => {
+    let originalFetch: typeof globalThis.fetch;
+
+    beforeEach(() => {
+      originalFetch = globalThis.fetch;
+    });
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it('fetches translations and updates state on success', async () => {
+      const translations = { hello: 'Bonjour', goodbye: 'Au revoir' };
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(translations),
+      });
+
+      initI18n(testConfig, 'en', { hello: 'Hello' });
+      await loadTranslations('fr');
+
+      expect(fetch).toHaveBeenCalledWith('/__nk_i18n/fr.json');
+      expect(getLocale()).toBe('fr');
+      expect(t('hello')).toBe('Bonjour');
+      expect(t('goodbye')).toBe('Au revoir');
+    });
+
+    it('logs error and leaves state unchanged on non-200 response', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 });
+
+      initI18n(testConfig, 'en', { hello: 'Hello' });
+      await loadTranslations('fr');
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[i18n] Failed to load translations for locale "fr"',
+      );
+      // State should be unchanged
+      expect(getLocale()).toBe('en');
+      expect(t('hello')).toBe('Hello');
+      errorSpy.mockRestore();
+    });
+
+    it('propagates error on network failure', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('fetch failed'));
+
+      initI18n(testConfig, 'en', { hello: 'Hello' });
+      await expect(loadTranslations('fr')).rejects.toThrow('fetch failed');
+
+      // State should be unchanged
+      expect(getLocale()).toBe('en');
+      expect(t('hello')).toBe('Hello');
+    });
+
+    it('propagates error on malformed JSON', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.reject(new SyntaxError('Unexpected token')),
+      });
+
+      initI18n(testConfig, 'en', { hello: 'Hello' });
+      await expect(loadTranslations('fr')).rejects.toThrow('Unexpected token');
+
+      // State should be unchanged — locale was not yet updated because
+      // the assignment to state.translations threw before state.locale was set
+      expect(getLocale()).toBe('en');
     });
   });
 });
