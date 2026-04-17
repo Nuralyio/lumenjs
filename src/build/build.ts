@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import { pathToFileURL } from 'url';
 import { getSharedViteConfig } from '../dev-server/server.js';
 import { readProjectConfig } from '../dev-server/config.js';
 import type { BuildManifest } from '../shared/types.js';
@@ -9,7 +10,7 @@ import { buildClient } from './build-client.js';
 import { buildServer } from './build-server.js';
 import { prerenderPages } from './build-prerender.js';
 import { generateMarkdownPages } from './build-markdown.js';
-import { generateLlmsTxt } from '../llms/generate.js';
+import { generateLlmsTxt, resolveDynamicEntries } from '../llms/generate.js';
 import type { LlmsPage, LlmsApiRoute } from '../llms/generate.js';
 
 export interface BuildOptions {
@@ -141,12 +142,77 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   // --- Generate llms.txt ---
   const publicLlms = path.join(publicDir, 'llms.txt');
   if (!fs.existsSync(publicLlms)) {
-    const llmsPages: LlmsPage[] = pageEntries.map(e => ({
+    const llmsPages: LlmsPage[] = [];
+    const pagesForResolver = pageEntries.map(e => ({
       path: e.routePath,
+      filePath: e.filePath,
       hasLoader: e.hasLoader,
-      hasSubscribe: e.hasSubscribe,
-      ...(e.hasAuth ? { hasAuth: true } : {}),
     }));
+
+    for (const e of pageEntries) {
+      const llmsPage: LlmsPage = {
+        path: e.routePath,
+        hasLoader: e.hasLoader,
+        hasSubscribe: e.hasSubscribe,
+        ...(e.hasAuth ? { hasAuth: true } : {}),
+      };
+
+      if (e.hasLoader && !e.hasAuth) {
+        const moduleName = `pages/${e.name.replace(/\[(\w+)\]/g, '_$1_')}.js`;
+        let modulePath = path.join(serverDir, moduleName);
+        if (!fs.existsSync(modulePath)) {
+          modulePath = path.join(serverDir, moduleName.replace(/\[/g, '_').replace(/\]/g, '_'));
+        }
+
+        if (fs.existsSync(modulePath)) {
+          const isDynamic = e.routePath.includes(':');
+
+          if (isDynamic) {
+            const paramMatch = e.routePath.match(/:([^/]+)/);
+            const paramName = paramMatch ? paramMatch[1] : '';
+            if (paramName) {
+              try {
+                const loadModule = (filePath: string) => {
+                  const entryForFile = pageEntries.find(p => p.filePath === filePath);
+                  if (!entryForFile) return import(pathToFileURL(filePath).href);
+                  const modName = `pages/${entryForFile.name.replace(/\[(\w+)\]/g, '_$1_')}.js`;
+                  let modPath = path.join(serverDir, modName);
+                  if (!fs.existsSync(modPath)) {
+                    modPath = path.join(serverDir, modName.replace(/\[/g, '_').replace(/\]/g, '_'));
+                  }
+                  return import(pathToFileURL(modPath).href);
+                };
+                const entries = await resolveDynamicEntries(
+                  { path: e.routePath, paramName },
+                  loadModule,
+                  pagesForResolver,
+                );
+                if (entries) {
+                  llmsPage.dynamicEntries = entries;
+                }
+              } catch {
+                // Skip dynamic resolution errors
+              }
+            }
+          } else {
+            try {
+              const mod = await import(pathToFileURL(modulePath).href);
+              if (mod?.loader && typeof mod.loader === 'function') {
+                const data = await mod.loader({ params: {}, query: {}, url: e.routePath, headers: {} });
+                if (data && !data.__nk_redirect) {
+                  llmsPage.loaderData = data;
+                }
+              }
+            } catch {
+              // Skip loader errors
+            }
+          }
+        }
+      }
+
+      llmsPages.push(llmsPage);
+    }
+
     const llmsApiRoutes: LlmsApiRoute[] = apiEntries.map(e => ({
       path: e.routePath,
       methods: fileGetApiMethods(e.filePath),
