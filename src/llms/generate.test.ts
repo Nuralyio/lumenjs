@@ -393,7 +393,7 @@ describe('generateLlmsTxt', () => {
 describe('resolveDynamicEntries', () => {
   it('returns null when no parent index page exists', async () => {
     const result = await resolveDynamicEntries(
-      { path: '/blog/:slug', paramName: 'slug' },
+      { path: '/blog/:slug', paramNames: ['slug'] },
       async () => ({}),
       [{ path: '/blog/:slug', filePath: '/pages/blog/[slug].ts', hasLoader: true }],
     );
@@ -402,7 +402,7 @@ describe('resolveDynamicEntries', () => {
 
   it('returns null when parent loader has no array data', async () => {
     const result = await resolveDynamicEntries(
-      { path: '/blog/:slug', paramName: 'slug' },
+      { path: '/blog/:slug', paramNames: ['slug'] },
       async (filePath) => {
         if (filePath === '/pages/blog/index.ts') {
           return { loader: () => ({ count: 5 }) };
@@ -424,7 +424,7 @@ describe('resolveDynamicEntries', () => {
     ];
 
     const result = await resolveDynamicEntries(
-      { path: '/blog/:slug', paramName: 'slug' },
+      { path: '/blog/:slug', paramNames: ['slug'] },
       async (filePath) => {
         if (filePath === '/pages/blog/index.ts') {
           return { loader: () => ({ posts }) };
@@ -455,7 +455,7 @@ describe('resolveDynamicEntries', () => {
 
   it('skips items when dynamic loader throws', async () => {
     const result = await resolveDynamicEntries(
-      { path: '/blog/:slug', paramName: 'slug' },
+      { path: '/blog/:slug', paramNames: ['slug'] },
       async (filePath) => {
         if (filePath === '/pages/blog/index.ts') {
           return { loader: () => ({ posts: [{ slug: 'good' }, { slug: 'bad' }] }) };
@@ -482,7 +482,7 @@ describe('resolveDynamicEntries', () => {
 
   it('returns null when parent loader throws', async () => {
     const result = await resolveDynamicEntries(
-      { path: '/blog/:slug', paramName: 'slug' },
+      { path: '/blog/:slug', paramNames: ['slug'] },
       async (filePath) => {
         if (filePath === '/pages/blog/index.ts') {
           return { loader: () => { throw new Error('DB error'); } };
@@ -501,7 +501,7 @@ describe('resolveDynamicEntries', () => {
     const items = [{ id: 42, name: 'Item A' }];
 
     const result = await resolveDynamicEntries(
-      { path: '/items/:id', paramName: 'id' },
+      { path: '/items/:id', paramNames: ['id'] },
       async (filePath) => {
         if (filePath === '/pages/items/index.ts') {
           return { loader: () => ({ items }) };
@@ -525,7 +525,7 @@ describe('resolveDynamicEntries', () => {
 
   it('finds root index as parent for top-level dynamic route', async () => {
     const result = await resolveDynamicEntries(
-      { path: '/:slug', paramName: 'slug' },
+      { path: '/:slug', paramNames: ['slug'] },
       async (filePath) => {
         if (filePath === '/pages/index.ts') {
           return { loader: () => ({ pages: [{ slug: 'about' }, { slug: 'contact' }] }) };
@@ -546,5 +546,70 @@ describe('resolveDynamicEntries', () => {
     expect(result).toHaveLength(2);
     expect(result![0].path).toBe('/about');
     expect(result![1].path).toBe('/contact');
+  });
+
+  it('resolves multi-param routes with all params', async () => {
+    const posts = [
+      { year: '2024', slug: 'hello', title: 'Hello 2024' },
+      { year: '2025', slug: 'world', title: 'World 2025' },
+    ];
+
+    const result = await resolveDynamicEntries(
+      { path: '/blog/:year/:slug', paramNames: ['year', 'slug'] },
+      async (filePath) => {
+        if (filePath === '/pages/blog/index.ts') {
+          return { loader: () => ({ posts }) };
+        }
+        if (filePath === '/pages/blog/[year]/[slug].ts') {
+          return {
+            loader: ({ params }: any) => {
+              const post = posts.find(p => p.year === params.year && p.slug === params.slug);
+              return post ? { title: post.title } : null;
+            },
+          };
+        }
+        return null;
+      },
+      [
+        { path: '/blog', filePath: '/pages/blog/index.ts', hasLoader: true },
+        { path: '/blog/:year/:slug', filePath: '/pages/blog/[year]/[slug].ts', hasLoader: true },
+      ],
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toHaveLength(2);
+    expect(result![0].path).toBe('/blog/2024/hello');
+    expect(result![0].loaderData).toEqual({ title: 'Hello 2024' });
+    expect(result![1].path).toBe('/blog/2025/world');
+    expect(result![1].loaderData).toEqual({ title: 'World 2025' });
+  });
+
+  it('skips items with incomplete params in multi-param routes', async () => {
+    const posts = [
+      { year: '2024', slug: 'hello' },
+      { year: '2025' }, // missing slug
+    ];
+
+    const result = await resolveDynamicEntries(
+      { path: '/blog/:year/:slug', paramNames: ['year', 'slug'] },
+      async (filePath) => {
+        if (filePath === '/pages/blog/index.ts') {
+          return { loader: () => ({ posts }) };
+        }
+        if (filePath === '/pages/blog/[year]/[slug].ts') {
+          return {
+            loader: ({ params }: any) => ({ year: params.year, slug: params.slug }),
+          };
+        }
+        return null;
+      },
+      [
+        { path: '/blog', filePath: '/pages/blog/index.ts', hasLoader: true },
+        { path: '/blog/:year/:slug', filePath: '/pages/blog/[year]/[slug].ts', hasLoader: true },
+      ],
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result![0].path).toBe('/blog/2024/hello');
   });
 });

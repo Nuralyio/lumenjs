@@ -51,13 +51,14 @@ export function lumenLlmsPlugin(projectDir: string): Plugin {
               const isDynamic = page.routePath.includes(':');
 
               if (isDynamic) {
-                // Extract param name from route like /blog/:slug
-                const paramMatch = page.routePath.match(/:([^/]+)/);
-                const paramName = paramMatch ? paramMatch[1] : '';
+                // Extract all param names, skip catch-all routes (:...rest)
+                const paramNames = [...page.routePath.matchAll(/:([^/]+)/g)]
+                  .map(m => m[1])
+                  .filter(name => !name.startsWith('...'));
 
-                if (paramName) {
+                if (paramNames.length > 0) {
                   const entries = await resolveDynamicEntries(
-                    { path: page.routePath, paramName },
+                    { path: page.routePath, paramNames },
                     (filePath) => server.ssrLoadModule(filePath),
                     pages.map(p => ({ path: p.routePath, filePath: p.filePath, hasLoader: p.hasLoader })),
                   );

@@ -175,14 +175,16 @@ function flattenData(data: any, prefix = ''): string {
  * whose loader returns an array, then calling the dynamic page's loader for each item.
  */
 export async function resolveDynamicEntries(
-  dynamicPage: { path: string; paramName: string },
+  dynamicPage: { path: string; paramNames: string[] },
   loadModule: (filePath: string) => Promise<any>,
   pages: { path: string; filePath: string; hasLoader: boolean }[],
 ): Promise<{ path: string; loaderData: any }[] | null> {
-  // Extract the parent path from the dynamic route
-  // e.g., /blog/:slug -> /blog, /docs/:id -> /docs
+  // Extract the parent path by removing all trailing dynamic segments
+  // e.g., /blog/:slug -> /blog, /blog/:year/:slug -> /blog
   const segments = dynamicPage.path.split('/');
-  segments.pop(); // remove the dynamic segment
+  while (segments.length > 0 && segments[segments.length - 1].startsWith(':')) {
+    segments.pop();
+  }
   const parentPath = segments.join('/') || '/';
 
   // Find parent or sibling index page with a loader
@@ -222,19 +224,37 @@ export async function resolveDynamicEntries(
 
     const entries: { path: string; loaderData: any }[] = [];
     for (const item of items) {
-      // Try to extract the param value from the item
-      const paramValue = item[dynamicPage.paramName] || item.slug || item.id || item.name;
-      if (!paramValue) continue;
+      // Build params object from all param names
+      const params: Record<string, string> = {};
+      for (const name of dynamicPage.paramNames) {
+        const value = item[name];
+        if (value != null) {
+          params[name] = String(value);
+        }
+      }
+      // Fallback for single-param routes: try common field names
+      if (Object.keys(params).length === 0 && dynamicPage.paramNames.length === 1) {
+        const fallback = item.slug || item.id || item.name;
+        if (fallback != null) {
+          params[dynamicPage.paramNames[0]] = String(fallback);
+        }
+      }
+      // Skip if we couldn't resolve all params
+      if (Object.keys(params).length !== dynamicPage.paramNames.length) continue;
 
       try {
+        let resolvedPath = dynamicPage.path;
+        for (const [name, value] of Object.entries(params)) {
+          resolvedPath = resolvedPath.replace(`:${name}`, value);
+        }
+
         const loaderData = await dynamicMod.loader({
-          params: { [dynamicPage.paramName]: String(paramValue) },
+          params,
           query: {},
-          url: dynamicPage.path.replace(`:${dynamicPage.paramName}`, String(paramValue)),
+          url: resolvedPath,
           headers: {},
         });
         if (loaderData) {
-          const resolvedPath = dynamicPage.path.replace(`:${dynamicPage.paramName}`, String(paramValue));
           entries.push({ path: resolvedPath, loaderData });
         }
       } catch {
