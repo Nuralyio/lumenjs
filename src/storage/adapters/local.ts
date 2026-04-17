@@ -100,7 +100,8 @@ export class LocalStorageAdapter implements StorageAdapter {
   }
 
   publicUrl(key: string): string {
-    return `${this.publicPath}/${key}`;
+    const encoded = key.split('/').map(s => encodeURIComponent(s)).join('/');
+    return `${this.publicPath}/${encoded}`;
   }
 
   /**

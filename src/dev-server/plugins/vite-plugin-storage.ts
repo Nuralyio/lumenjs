@@ -105,7 +105,7 @@ export function lumenStoragePlugin(projectDir: string): Plugin {
       server.middlewares.use('/uploads', (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next();
 
-        const filePath = path.resolve(uploadDir, (req.url?.split('?')[0] ?? '/').replace(/^\/+/, ''));
+        const filePath = path.resolve(uploadDir, decodeURIComponent((req.url?.split('?')[0] ?? '/').replace(/^\/+/, '')));
         if (!filePath.startsWith(uploadDir + path.sep) && filePath !== uploadDir) {
           return next();
         }
