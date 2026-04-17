@@ -420,6 +420,14 @@ describe('filePathToRoute', () => {
   it('handles .js extension', () => {
     expect(filePathToRoute('about.js')).toBe('/about');
   });
+
+  it('converts prefixed dynamic segment @[username].ts', () => {
+    expect(filePathToRoute('@[username].ts')).toBe('/@:username');
+  });
+
+  it('converts nested prefixed dynamic route', () => {
+    expect(filePathToRoute('@[username]/followers.ts')).toBe('/@:username/followers');
+  });
 });
 
 describe('unwrapResponse', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchRoute } from './route-matching.js';
+import { matchRoute, routeSpecificity } from './route-matching.js';
 import type { ManifestRoute } from './types.js';
 
 function route(path: string, module = ''): ManifestRoute {
@@ -85,5 +85,63 @@ describe('matchRoute', () => {
     const routes = [route('/')];
     const result = matchRoute(routes, '/about');
     expect(result).toBeNull();
+  });
+
+  describe('prefixed dynamic segments', () => {
+    it('matches /@:username against /@aymen', () => {
+      const routes = [route('/@:username')];
+      const result = matchRoute(routes, '/@aymen');
+      expect(result).not.toBeNull();
+      expect(result!.params).toEqual({ username: 'aymen' });
+    });
+
+    it('captures param value including underscores and digits', () => {
+      const routes = [route('/@:username')];
+      const result = matchRoute(routes, '/@user_42');
+      expect(result!.params).toEqual({ username: 'user_42' });
+    });
+
+    it('rejects prefixed route when prefix is missing', () => {
+      const routes = [route('/@:username')];
+      const result = matchRoute(routes, '/aymen');
+      expect(result).toBeNull();
+    });
+
+    it('rejects prefixed route when param value is empty', () => {
+      const routes = [route('/@:username')];
+      const result = matchRoute(routes, '/@');
+      expect(result).toBeNull();
+    });
+
+    it('matches nested prefixed route /@:username/followers', () => {
+      const routes = [route('/@:username/followers')];
+      const result = matchRoute(routes, '/@aymen/followers');
+      expect(result).not.toBeNull();
+      expect(result!.params).toEqual({ username: 'aymen' });
+    });
+
+    it('supports non-@ literal prefixes like user-:id', () => {
+      const routes = [route('/user-:id')];
+      const result = matchRoute(routes, '/user-42');
+      expect(result!.params).toEqual({ id: '42' });
+    });
+
+    it('prefixed route beats pure dynamic at the same segment', () => {
+      const routes = [route('/:slug'), route('/@:username')];
+      const result = matchRoute(routes, '/@aymen');
+      expect(result!.route.path).toBe('/@:username');
+      expect(result!.params).toEqual({ username: 'aymen' });
+    });
+
+    it('pure dynamic still matches non-prefixed URLs when both routes exist', () => {
+      const routes = [route('/:slug'), route('/@:username')];
+      const result = matchRoute(routes, '/about');
+      expect(result!.route.path).toBe('/:slug');
+      expect(result!.params).toEqual({ slug: 'about' });
+    });
+
+    it('routeSpecificity scores prefixed dynamic higher than pure dynamic', () => {
+      expect(routeSpecificity('/@:username')).toBeGreaterThan(routeSpecificity('/:slug'));
+    });
   });
 });

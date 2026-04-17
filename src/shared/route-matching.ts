@@ -7,7 +7,7 @@ export interface MatchResult {
 
 /**
  * Per-segment route specificity score. Higher = more specific = checked first.
- * Each static segment adds 2, each dynamic segment adds 1, catch-all adds 0.
+ * Static segment: 2, prefixed-dynamic (e.g. `@:name`): 2, pure dynamic (`:name`): 1, catch-all: 0.
  *
  * Exported so build-time route generation (vite-plugin-routes) and client-side
  * router can use the exact same ordering as the server-side matcher, preventing
@@ -19,6 +19,17 @@ export function routeSpecificity(path: string): number {
     if (seg.startsWith(':')) return score + 1;
     return score + 2;
   }, 0);
+}
+
+// Parse a segment like "@:username" or "user-:id" into its literal prefix and param name.
+// Returns null if the segment is a pure literal or malformed.
+function parsePrefixedParam(seg: string): { prefix: string; name: string } | null {
+  const idx = seg.indexOf(':');
+  if (idx <= 0) return null;
+  const prefix = seg.slice(0, idx);
+  const name = seg.slice(idx + 1);
+  if (!name || name.includes(':')) return null;
+  return { prefix, name };
 }
 
 export function matchRoute(routes: ManifestRoute[], pathname: string): MatchResult | null {
@@ -52,6 +63,15 @@ export function matchRoute(routes: ManifestRoute[], pathname: string): MatchResu
       } else if (seg.startsWith(':')) {
         if (i >= urlSegments.length) { match = false; break; }
         params[seg.slice(1)] = urlSegments[i];
+      } else if (i < urlSegments.length && seg.includes(':')) {
+        const prefixed = parsePrefixedParam(seg);
+        if (!prefixed) { match = false; break; }
+        const urlSeg = urlSegments[i];
+        if (!urlSeg.startsWith(prefixed.prefix) || urlSeg.length === prefixed.prefix.length) {
+          match = false;
+          break;
+        }
+        params[prefixed.name] = urlSeg.slice(prefixed.prefix.length);
       } else if (i >= urlSegments.length || seg !== urlSegments[i]) {
         match = false;
         break;
