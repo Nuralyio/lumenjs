@@ -14,20 +14,34 @@ export function stripOuterLitMarkers(html: string): string {
 }
 
 /**
+ * Sanitize a path-derived tag name segment so the result is a valid custom
+ * element name (letters, digits, hyphens). URL-special characters like `@`
+ * are replaced with `-`, runs of dashes are collapsed, and leading/trailing
+ * dashes are trimmed.
+ */
+function sanitizeTagName(name: string): string {
+  return name
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
  * Convert a relative directory path within pages/ to a layout tag name.
  *   ''          → 'layout-root'
  *   'dashboard' → 'layout-dashboard'
  *   'app/[id]'  → 'layout-app-id'
+ *   '@[user]'   → 'layout-user'
  */
 export function dirToLayoutTagName(dir: string): string {
   if (!dir) return 'layout-root';
-  const name = dir
+  const name = sanitizeTagName(dir
     .replace(/\\/g, '-')
     .replace(/\//g, '-')
     .replace(/\[\.\.\.([^\]]+)\]/g, '$1')
     .replace(/\[([^\]]+)\]/g, '$1')
-    .toLowerCase();
-  return `layout-${name}`;
+    .toLowerCase());
+  return `layout-${name || 'root'}`;
 }
 
 /**
@@ -57,16 +71,17 @@ export function findTagName(mod: Record<string, any>): string | null {
  *   'index.ts'           → 'page-index'
  *   'docs/api-routes.ts' → 'page-docs-api-routes'
  *   'blog/[slug].ts'     → 'page-blog-slug'
+ *   '@[username].ts'     → 'page-username'
  */
 export function filePathToTagName(filePath: string): string {
-  const name = filePath
+  const name = sanitizeTagName(filePath
     .replace(/\.(ts|js)$/, '')
     .replace(/\\/g, '-')
     .replace(/\//g, '-')
     .replace(/\[\.\.\.([^\]]+)\]/g, '$1')
     .replace(/\[([^\]]+)\]/g, '$1')
-    .toLowerCase();
-  return `page-${name}`;
+    .toLowerCase());
+  return `page-${name || 'index'}`;
 }
 
 /**

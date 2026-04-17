@@ -63,6 +63,14 @@ describe('dirToLayoutTagName', () => {
   it('converts backslashes to dashes', () => {
     expect(dirToLayoutTagName('app\\settings')).toBe('layout-app-settings');
   });
+
+  it('sanitizes @ prefix from dynamic segment directories', () => {
+    expect(dirToLayoutTagName('@[username]')).toBe('layout-username');
+  });
+
+  it('sanitizes @ in nested directory paths', () => {
+    expect(dirToLayoutTagName('@[username]/settings')).toBe('layout-username-settings');
+  });
 });
 
 describe('findTagName', () => {
@@ -116,6 +124,14 @@ describe('filePathToTagName', () => {
 
   it('handles .js extension', () => {
     expect(filePathToTagName('about.js')).toBe('page-about');
+  });
+
+  it('strips @ prefix from dynamic segment files', () => {
+    expect(filePathToTagName('@[username].ts')).toBe('page-username');
+  });
+
+  it('sanitizes nested path containing @ segment', () => {
+    expect(filePathToTagName('@[username]/followers.ts')).toBe('page-username-followers');
   });
 });
 
