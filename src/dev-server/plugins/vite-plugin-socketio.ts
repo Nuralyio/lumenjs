@@ -10,13 +10,26 @@ export function lumenSocketIOPlugin(pagesDir: string): Plugin {
     configureServer(server: ViteDevServer) {
       if (!server.httpServer) return;
 
-      import('../../shared/socket-io-setup.js').then(({ setupSocketIO }) => {
+      import('../../shared/socket-io-setup.js').then(async ({ setupSocketIO }) => {
         const routes = scanSocketRoutes(pagesDir);
+        const projectDir = path.dirname(pagesDir);
+
+        // Load auth config so socket handlers receive user context
+        let authConfig = null;
+        try {
+          const authConfigPath = path.join(projectDir, 'lumenjs.auth.ts');
+          if (fs.existsSync(authConfigPath)) {
+            const { loadAuthConfig } = await import('../../auth/config.js');
+            authConfig = await loadAuthConfig(projectDir, server.ssrLoadModule.bind(server));
+          }
+        } catch {}
+
         setupSocketIO({
           httpServer: server.httpServer!,
           loadModule: (fp) => server.ssrLoadModule(fp),
           routes,
-          projectDir: path.dirname(pagesDir),
+          projectDir,
+          authConfig,
         }).catch((err: any) => {
           console.warn('[LumenJS] Socket.IO setup failed:', err.message);
           console.warn('[LumenJS] Make sure socket.io is installed: lumenjs add socketio');

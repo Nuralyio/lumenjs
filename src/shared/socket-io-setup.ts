@@ -14,6 +14,7 @@ export async function setupSocketIO(options: {
   loadModule: (filePath: string) => Promise<any>;
   routes: SocketRoute[];
   projectDir?: string;
+  authConfig?: { session: { secret: string; cookieName: string } } | null;
 }): Promise<any> {
   // Resolve socket.io from the project's node_modules (not from lumenjs's own node_modules)
   let SocketIOServer: any;
@@ -69,7 +70,31 @@ export async function setupSocketIO(options: {
           ? JSON.parse(socket.handshake.query.__params as string) : {};
         const locale = socket.handshake.query.__locale as string | undefined;
 
-        const cleanup = socketFn({ on, push, room, params, headers: socket.handshake.headers, locale, socket });
+        // Parse user from handshake headers (same logic as loaders/subscribe)
+        let user = null;
+        if (options.authConfig) {
+          try {
+            const headers = socket.handshake.headers;
+            // Try bearer token first
+            const authHeader = headers.authorization;
+            if (authHeader?.startsWith('Bearer ')) {
+              const { verifyAccessToken } = await import('../auth/token.js');
+              const tokenUser = verifyAccessToken(authHeader.slice(7), options.authConfig.session.secret);
+              if (tokenUser) user = tokenUser;
+            }
+            // Fall back to session cookie
+            if (!user && headers.cookie) {
+              const { parseSessionCookie, decryptSession } = await import('../auth/session.js');
+              const cookieVal = parseSessionCookie(headers.cookie, options.authConfig.session.cookieName);
+              if (cookieVal) {
+                const session = await decryptSession(cookieVal, options.authConfig.session.secret);
+                if (session?.user) user = session.user;
+              }
+            }
+          } catch {}
+        }
+
+        const cleanup = socketFn({ on, push, room, params, headers: socket.handshake.headers, locale, socket, user });
         socket.on('disconnect', () => { if (typeof cleanup === 'function') cleanup(); });
       } catch (err) {
         console.error(`[LumenJS] Socket handler error for ${route.path}:`, err);

@@ -502,6 +502,7 @@ export async function serveProject(options: ServeOptions): Promise<void> {
       loadModule: (fp) => import(fp),
       routes: socketRoutes,
       projectDir,
+      authConfig,
     }).catch((err: any) => {
       logger.warn('Socket.IO setup failed', { error: err?.message });
     });
