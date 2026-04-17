@@ -168,9 +168,10 @@ export async function buildProject(options: BuildOptions): Promise<void> {
           const isDynamic = e.routePath.includes(':');
 
           if (isDynamic) {
-            const paramMatch = e.routePath.match(/:([^/]+)/);
-            const paramName = paramMatch ? paramMatch[1] : '';
-            if (paramName) {
+            const paramNames = [...e.routePath.matchAll(/:([^/]+)/g)]
+              .map(m => m[1])
+              .filter(name => !name.startsWith('...'));
+            if (paramNames.length > 0) {
               try {
                 const loadModule = (filePath: string) => {
                   const entryForFile = pageEntries.find(p => p.filePath === filePath);
@@ -183,7 +184,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
                   return import(pathToFileURL(modPath).href);
                 };
                 const entries = await resolveDynamicEntries(
-                  { path: e.routePath, paramName },
+                  { path: e.routePath, paramNames },
                   loadModule,
                   pagesForResolver,
                 );
