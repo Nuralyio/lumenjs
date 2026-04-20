@@ -263,10 +263,12 @@ export class WebRTCManager {
 
 const MAX_GROUP_PARTICIPANTS = 8;
 
+export type RemoteStreamKind = 'camera' | 'screen';
+
 export interface GroupWebRTCCallbacks {
   onLocalStream: (stream: MediaStream) => void;
-  onRemoteStream: (userId: string, stream: MediaStream) => void;
-  onRemoteStreamRemoved: (userId: string) => void;
+  onRemoteStream: (userId: string, kind: RemoteStreamKind, stream: MediaStream) => void;
+  onRemoteStreamRemoved: (userId: string, kind?: RemoteStreamKind) => void;
   onConnectionStateChange: (userId: string, state: RTCPeerConnectionState) => void;
   onIceCandidate: (toUserId: string, candidate: RTCIceCandidate) => void;
   onError: (error: Error) => void;
@@ -274,7 +276,9 @@ export interface GroupWebRTCCallbacks {
 
 interface PeerEntry {
   pc: RTCPeerConnection;
-  remoteStream: MediaStream | null;
+  cameraStream: MediaStream | null;
+  screenStream: MediaStream | null;
+  screenSenders: RTCRtpSender[];
   pendingCandidates: RTCIceCandidateInit[];
 }
 
@@ -291,16 +295,21 @@ export class GroupWebRTCManager {
   }
 
   get localStream(): MediaStream | null { return this._localStream; }
+  get screenStream(): MediaStream | null { return this._screenStream; }
   get peerCount(): number { return this._peers.size; }
 
   getRemoteStream(userId: string): MediaStream | null {
-    return this._peers.get(userId)?.remoteStream ?? null;
+    return this._peers.get(userId)?.cameraStream ?? null;
+  }
+
+  getRemoteScreenStream(userId: string): MediaStream | null {
+    return this._peers.get(userId)?.screenStream ?? null;
   }
 
   getRemoteStreams(): Map<string, MediaStream> {
     const result = new Map<string, MediaStream>();
     for (const [uid, entry] of this._peers) {
-      if (entry.remoteStream) result.set(uid, entry.remoteStream);
+      if (entry.cameraStream) result.set(uid, entry.cameraStream);
     }
     return result;
   }
@@ -358,7 +367,10 @@ export class GroupWebRTCManager {
       this._localStream.addTrack(newTrack);
     }
     for (const [, entry] of this._peers) {
-      const sender = entry.pc.getSenders().find(s => s.track?.kind === 'video');
+      // Skip the screen-share sender(s) — we only want to swap the camera.
+      const sender = entry.pc.getSenders().find(
+        s => s.track?.kind === 'video' && !entry.screenSenders.includes(s),
+      );
       if (sender) await sender.replaceTrack(newTrack);
     }
   }
@@ -372,7 +384,7 @@ export class GroupWebRTCManager {
     }
 
     const pc = new RTCPeerConnection({ iceServers: this._iceServers });
-    const entry: PeerEntry = { pc, remoteStream: null, pendingCandidates: [] };
+    const entry: PeerEntry = { pc, cameraStream: null, screenStream: null, screenSenders: [], pendingCandidates: [] };
     this._peers.set(userId, entry);
 
     pc.onicecandidate = (event) => {
@@ -382,11 +394,22 @@ export class GroupWebRTCManager {
     };
 
     pc.ontrack = (event) => {
-      if (!entry.remoteStream) {
-        entry.remoteStream = new MediaStream();
-        this._callbacks.onRemoteStream(userId, entry.remoteStream);
+      const stream = event.streams[0];
+      if (!stream) return;
+      // The first MediaStream we see from this peer is their camera; any
+      // subsequent stream with a different id is the screen share. Tracks
+      // attached to an already-known stream don't need a new callback —
+      // MediaStream auto-aggregates them.
+      if (!entry.cameraStream) {
+        entry.cameraStream = stream;
+        this._callbacks.onRemoteStream(userId, 'camera', stream);
+        return;
       }
-      entry.remoteStream.addTrack(event.track);
+      if (stream.id === entry.cameraStream.id) return;
+      if (!entry.screenStream || entry.screenStream.id !== stream.id) {
+        entry.screenStream = stream;
+        this._callbacks.onRemoteStream(userId, 'screen', stream);
+      }
     };
 
     pc.onconnectionstatechange = () => {
@@ -396,10 +419,18 @@ export class GroupWebRTCManager {
       }
     };
 
-    // Add local tracks
+    // Add local camera/mic tracks
     if (this._localStream) {
       for (const track of this._localStream.getTracks()) {
         pc.addTrack(track, this._localStream);
+      }
+    }
+
+    // Late-joiner: if we're already screen-sharing, add screen tracks too so
+    // the new peer immediately receives the shared screen on the initial offer.
+    if (this._screenStream) {
+      for (const track of this._screenStream.getTracks()) {
+        entry.screenSenders.push(pc.addTrack(track, this._screenStream));
       }
     }
 
@@ -415,8 +446,11 @@ export class GroupWebRTCManager {
     const entry = this._peers.get(userId);
     if (!entry) return;
     entry.pc.close();
-    if (entry.remoteStream) {
-      for (const track of entry.remoteStream.getTracks()) track.stop();
+    if (entry.cameraStream) {
+      for (const track of entry.cameraStream.getTracks()) track.stop();
+    }
+    if (entry.screenStream) {
+      for (const track of entry.screenStream.getTracks()) track.stop();
     }
     this._peers.delete(userId);
     this._callbacks.onRemoteStreamRemoved(userId);
@@ -489,36 +523,62 @@ export class GroupWebRTCManager {
     }
   }
 
-  /** Replace camera track with screen share on all peers */
-  async startScreenShare(): Promise<MediaStream> {
+  /**
+   * Add a separate screen-share transceiver to every peer, alongside the
+   * existing camera/mic tracks. Returns the display stream plus the list of
+   * renegotiation offers the caller must signal to each peer.
+   */
+  async startScreenShare(): Promise<{ stream: MediaStream; offers: Array<{ userId: string; sdp: string }> }> {
     if (!navigator.mediaDevices?.getDisplayMedia) {
       throw new Error('Screen sharing unavailable — HTTPS is required');
     }
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-    const screenTrack = stream.getVideoTracks()[0];
+    this._screenStream = stream;
 
-    for (const [, entry] of this._peers) {
-      const sender = entry.pc.getSenders().find(s => s.track?.kind === 'video');
-      if (sender) await sender.replaceTrack(screenTrack);
+    const offers: Array<{ userId: string; sdp: string }> = [];
+    for (const [userId, entry] of this._peers) {
+      for (const track of stream.getTracks()) {
+        entry.screenSenders.push(entry.pc.addTrack(track, stream));
+      }
+      const offer = await entry.pc.createOffer();
+      await entry.pc.setLocalDescription(offer);
+      offers.push({ userId, sdp: offer.sdp! });
     }
 
-    this._screenStream = stream;
-    screenTrack.onended = () => { this.stopScreenShare(); };
-    return stream;
+    return { stream, offers };
   }
 
-  /** Revert from screen share back to camera on all peers */
-  async stopScreenShare(): Promise<void> {
+  /**
+   * Remove the screen tracks from every peer and renegotiate. Returns the
+   * per-peer offers that must be signaled.
+   */
+  async stopScreenShare(): Promise<{ offers: Array<{ userId: string; sdp: string }> }> {
     if (this._screenStream) {
       for (const track of this._screenStream.getTracks()) track.stop();
       this._screenStream = null;
     }
-    if (!this._localStream) return;
-    const cameraTrack = this._localStream.getVideoTracks()[0] || null;
-    for (const [, entry] of this._peers) {
-      const sender = entry.pc.getSenders().find(s => s.track?.kind === 'video');
-      if (sender) await sender.replaceTrack(cameraTrack);
+
+    const offers: Array<{ userId: string; sdp: string }> = [];
+    for (const [userId, entry] of this._peers) {
+      if (entry.screenSenders.length === 0) continue;
+      for (const sender of entry.screenSenders) {
+        try { entry.pc.removeTrack(sender); } catch {}
+      }
+      entry.screenSenders = [];
+      const offer = await entry.pc.createOffer();
+      await entry.pc.setLocalDescription(offer);
+      offers.push({ userId, sdp: offer.sdp! });
     }
+
+    return { offers };
+  }
+
+  /** Drop a remote peer's screen stream reference (called when a remote peer stops sharing) */
+  clearRemoteScreen(userId: string): void {
+    const entry = this._peers.get(userId);
+    if (!entry || !entry.screenStream) return;
+    entry.screenStream = null;
+    this._callbacks.onRemoteStreamRemoved(userId, 'screen');
   }
 
   /** Clean up everything */
