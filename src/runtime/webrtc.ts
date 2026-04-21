@@ -524,6 +524,38 @@ export class GroupWebRTCManager {
   }
 
   /**
+   * Start sending a camera track on a call that was negotiated without
+   * video (audio-only). Adds the track to the local stream and to every
+   * peer connection, then produces a renegotiation offer per peer. The
+   * caller is responsible for signalling those offers and relaying the
+   * answers back via `handleAnswer`. No-op if a camera track is already
+   * being sent.
+   */
+  async enableCamera(track: MediaStreamTrack): Promise<{ offers: Array<{ userId: string; sdp: string }> }> {
+    const firstPeer = this._peers.values().next().value;
+    if (firstPeer) {
+      const alreadySending = firstPeer.pc.getSenders().some(
+        s => s.track?.kind === 'video' && !firstPeer.screenSenders.includes(s),
+      );
+      if (alreadySending) return { offers: [] };
+    }
+    if (!this._localStream) {
+      this._localStream = new MediaStream();
+    }
+    if (!this._localStream.getTracks().includes(track)) {
+      this._localStream.addTrack(track);
+    }
+    const offers: Array<{ userId: string; sdp: string }> = [];
+    for (const [userId, entry] of this._peers) {
+      entry.pc.addTrack(track, this._localStream);
+      const offer = await entry.pc.createOffer();
+      await entry.pc.setLocalDescription(offer);
+      offers.push({ userId, sdp: offer.sdp! });
+    }
+    return { offers };
+  }
+
+  /**
    * Add a separate screen-share transceiver to every peer, alongside the
    * existing camera/mic tracks. Returns the display stream plus the list of
    * renegotiation offers the caller must signal to each peer.
