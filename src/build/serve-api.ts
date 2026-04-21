@@ -76,7 +76,18 @@ export async function handleApiRoute(
     // Unwrap Response objects (e.g. Response.json()) — JSON.stringify gives '{}'
     result = await unwrapResponse(result);
 
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    // Honor `__status` on plain-object results: treat it as the HTTP status
+    // and strip it from the JSON body. Without this, handlers that return
+    // `{ __status: 400, error: '...' }` would be delivered as HTTP 200 and
+    // clients checking `res.ok` would misread the response as success.
+    let status = 200;
+    if (result && typeof result === 'object' && typeof result.__status === 'number') {
+      status = result.__status;
+      const { __status, ...rest } = result;
+      result = rest;
+    }
+
+    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
     // HEAD responses must omit the body but keep headers identical to GET.
     res.end(method === 'HEAD' ? undefined : JSON.stringify(result));
   } catch (err: any) {

@@ -115,7 +115,18 @@ export function lumenApiRoutesPlugin(apiDir: string, projectDir?: string): Plugi
             for (const [k, v] of Object.entries(result.headers || {})) res.setHeader(k, v as string);
             res.end(isHead ? undefined : result.body);
           } else {
-            res.statusCode = 200;
+            // Honor `__status` on plain-object results: treat it as the HTTP
+            // status and strip it from the JSON body. Without this, handlers
+            // that return `{ __status: 400, error: '...' }` would be delivered
+            // as HTTP 200 and clients checking `res.ok` would misread the
+            // response as success.
+            let status = 200;
+            if (result && typeof result === 'object' && typeof result.__status === 'number') {
+              status = result.__status;
+              const { __status, ...rest } = result;
+              result = rest;
+            }
+            res.statusCode = status;
             res.setHeader('Content-Type', 'application/json');
             res.end(isHead ? undefined : JSON.stringify(result));
           }
