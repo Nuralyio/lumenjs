@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { ResolvedAuthConfig } from '../types.js';
-import { sendJson, readBody } from './utils.js';
+import { sendJson, readBody, isTokenMode } from './utils.js';
 import { encryptSession, createSessionCookie, decryptSession } from '../session.js';
 import {
   encryptTotpSecret, decryptTotpSecret,
@@ -187,6 +187,18 @@ export async function handleTotpChallenge(
 
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const returnTo = url.searchParams.get('returnTo') || config.routes.postLogin;
+
+    // Token mode (mobile): issue bearer tokens like the initial login does
+    if (isTokenMode(url, req) && config.token.enabled) {
+      const { issueAccessToken, generateRefreshToken, storeRefreshToken, ensureRefreshTokenTable } = await import('../token.js');
+      await ensureRefreshTokenTable(db);
+      const accessToken = issueAccessToken(user, config.session.secret, config.token.accessTokenTTL);
+      const refreshToken = generateRefreshToken();
+      await storeRefreshToken(db, refreshToken, user.sub, config.token.refreshTokenTTL);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': clearPending });
+      res.end(JSON.stringify({ accessToken, refreshToken, expiresIn: config.token.accessTokenTTL, tokenType: 'Bearer', user }));
+      return true;
+    }
 
     if (req.headers.accept?.includes('application/json')) {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': [sessionCookie, clearPending] });
