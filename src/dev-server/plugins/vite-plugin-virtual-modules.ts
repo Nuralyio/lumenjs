@@ -94,18 +94,33 @@ export function virtualModulesPlugin(runtimeDir: string, editorDir: string): Plu
     configResolved(config) {
       viteBase = config.base || '/';
     },
-    resolveId(id) {
+    async resolveId(id, importer) {
       // Strip Vite base prefix if present (e.g. /__app_dev/{id}/@lumenjs/foo → /@lumenjs/foo)
       if (viteBase !== '/' && id.startsWith(viteBase)) {
         id = '/' + id.slice(viteBase.length);
       }
       const match = id.match(/^\/@lumenjs\/(.+)$/);
-      if (!match) return;
-      const name = match[1];
-      // Skip aliased modules — they're resolved via resolve.alias
-      if (aliasedModules.has(name)) return;
-      if (runtimeModules[name] || editorModules[name]) {
-        return `\0lumenjs:${name}`;
+      if (match) {
+        const name = match[1];
+        // Skip aliased modules — they're resolved via resolve.alias
+        if (aliasedModules.has(name)) return;
+        if (runtimeModules[name] || editorModules[name]) {
+          return `\0lumenjs:${name}`;
+        }
+        return;
+      }
+      // Bare specifiers imported from a virtual lumenjs module (e.g. the
+      // `import('socket.io-client')` in runtime/router.ts) have no filesystem
+      // importer for node-resolution. Forward them to the default resolver so
+      // the project's node_modules can be found.
+      if (
+        importer?.startsWith('\0lumenjs:') &&
+        !id.startsWith('.') &&
+        !id.startsWith('/') &&
+        !id.startsWith('\0')
+      ) {
+        const resolved = await this.resolve(id, undefined, { skipSelf: true });
+        if (resolved) return resolved;
       }
     },
     load(id) {
