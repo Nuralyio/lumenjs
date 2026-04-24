@@ -97,6 +97,7 @@ export function sendMessage(conversationId: string, content: string, opts?: {
   attachment?: any;
   replyTo?: any;
   encrypted?: boolean;
+  linkPreview?: any;
 }): void {
   emit('message:send', {
     conversationId,
@@ -105,6 +106,7 @@ export function sendMessage(conversationId: string, content: string, opts?: {
     ...(opts?.attachment ? { attachment: opts.attachment } : {}),
     ...(opts?.replyTo ? { replyTo: opts.replyTo } : {}),
     ...(opts?.encrypted ? { encrypted: true } : {}),
+    ...(opts?.linkPreview ? { linkPreview: opts.linkPreview } : {}),
   });
 }
 
