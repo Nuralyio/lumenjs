@@ -260,7 +260,7 @@ function runSqliteMigrations(db: Database.Database, projectDir: string): void {
 
   const files = fs.readdirSync(migrationsDir)
     .filter(f => f.endsWith('.sql'))
-    .sort();
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
   for (const file of files) {
     if (applied.has(file)) continue;
@@ -290,9 +290,11 @@ async function runPgMigrations(db: LumenDbPg, projectDir: string): Promise<void>
     (await db.all<{ name: string }>('SELECT name FROM _lumen_migrations')).map(r => r.name),
   );
 
+  // Natural sort so V2 runs before V10. Default lex sort puts V10 before V1
+  // because '0' (0x30) < '_' (0x5F) in unpadded `V<n>__name.sql` filenames.
   const files = fs.readdirSync(migrationsDir)
     .filter(f => f.endsWith('.sql'))
-    .sort();
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
   for (const file of files) {
     if (applied.has(file)) continue;
