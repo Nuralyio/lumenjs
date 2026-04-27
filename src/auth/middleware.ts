@@ -28,8 +28,12 @@ export function createAuthMiddleware(config: ResolvedAuthConfig, db?: any): Conn
   return async (req: IncomingMessage, res: ServerResponse, next: NextFn): Promise<void> => {
     const url = req.url || '';
 
-    // Skip non-page requests
-    if (url.startsWith('/@') || url.startsWith('/node_modules') || url.includes('.')) {
+    // Skip non-page requests. The earlier blanket `/@` skip excluded social
+    // profile URLs (/@username) from auth, so server-side renders saw
+    // user=null and conditional UI (follow button, etc.) was hidden.
+    // Static-asset requests (`.js`, `.css`, etc.) are still skipped via
+    // the `includes('.')` check.
+    if (url.startsWith('/node_modules') || url.includes('.')) {
       return next();
     }
 

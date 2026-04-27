@@ -263,7 +263,13 @@ export async function serveProject(options: ServeOptions): Promise<void> {
       // --- Original request handling ---
 
       // -2. Auth session middleware (attach req.nkAuth — must run before auth routes and user middleware)
-      if (authMiddleware && !pathname.includes('.') && !pathname.startsWith('/@')) {
+      // Skip only for static-looking paths (anything with a file extension).
+      // The earlier `!pathname.startsWith('/@')` guard was meant for
+      // /@scoped/package/... vite asset URLs, but those already include
+      // `.` (`.js`, `.css`) and the guard was breaking social-style
+      // /@username SSR — auth never ran, so loaders saw user=null and
+      // followed-state UI was hidden post-hydration.
+      if (authMiddleware && !pathname.includes('.')) {
         await new Promise<void>(resolve => authMiddleware(req, res, resolve));
         if (res.writableEnded) return;
       }
