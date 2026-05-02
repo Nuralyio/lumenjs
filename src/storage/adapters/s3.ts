@@ -101,6 +101,11 @@ export class S3StorageAdapter implements StorageAdapter {
       Key: key,
       Body: data,
       ContentType: mimeType,
+      // Public assets are content-addressed (random UUID keys) and never
+      // mutated, so 1-year immutable caching is safe. Without this, R2's
+      // public.r2.dev domain serves with no Cache-Control header and browsers
+      // revalidate on every navigation.
+      CacheControl: options?.cacheControl ?? 'public, max-age=31536000, immutable',
       ...(options?.fileName
         ? { ContentDisposition: `inline; filename="${options.fileName.replace(/[\r\n"\\]/g, '_')}"` }
         : {}),

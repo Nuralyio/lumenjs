@@ -15,6 +15,8 @@ export interface PutOptions {
   fileName?: string;
   /** Access control. Default: 'public-read' */
   acl?: 'public-read' | 'private';
+  /** HTTP Cache-Control header. Default: 'public, max-age=31536000, immutable' (content-addressed assets). */
+  cacheControl?: string;
 }
 
 export interface PresignPutOptions {
