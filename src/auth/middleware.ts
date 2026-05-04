@@ -52,9 +52,31 @@ export function createAuthMiddleware(config: ResolvedAuthConfig, db?: any): Conn
       } catch { /* Invalid token — fall through to cookie auth */ }
     }
 
-    // 2. Fall back to cookie-based session (browsers)
     const cookieHeader = req.headers.cookie;
     if (!cookieHeader) return next();
+
+    // 2. Raw access-token cookie path (mobile WebView). WKWebView only
+    // attaches the Authorization header to the FIRST request; subsequent
+    // SPA navigations and loader fetches drop it. Native plants the same
+    // JWT as a `nk-access-token` cookie so every in-frame request stays
+    // authenticated. Same JWT contract as the Bearer header — only the
+    // transport differs.
+    {
+      const match = cookieHeader.match(/(?:^|;\s*)nk-access-token=([^;]+)/);
+      if (match && match[1]) {
+        try {
+          const { verifyAccessToken } = await import('./token.js');
+          const accessToken = decodeURIComponent(match[1]);
+          const user = verifyAccessToken(accessToken, config.session.secret);
+          if (user) {
+            req.nkAuth = { user, session: { accessToken, expiresAt: 0, user } };
+            return next();
+          }
+        } catch { /* invalid — fall through to encrypted session cookie */ }
+      }
+    }
+
+    // 3. Fall back to encrypted-session cookie (browser logins).
 
     const sessionCookie = parseSessionCookie(cookieHeader, config.session.cookieName);
     if (!sessionCookie) return next();
