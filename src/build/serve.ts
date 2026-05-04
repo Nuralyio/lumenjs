@@ -328,13 +328,33 @@ export async function serveProject(options: ServeOptions): Promise<void> {
       if (pathname === '/__nk_comm/upload' && method === 'POST') {
         const userId = (req as any).nkAuth?.user?.sub;
         if (!userId) { res.statusCode = 401; res.end(JSON.stringify({ error: 'Unauthorized' })); return; }
-        const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+        // Configurable via LUMENJS_MAX_UPLOAD_BYTES (default: 100 MB).
+        // Default raised from 10 MB so chat video attachments aren't silently
+        // rejected; gateways translate the resulting connection reset into a
+        // misleading 404, see fix/lumenjs-upload-413-and-bigger-limit.
+        const envMax = parseInt(process.env.LUMENJS_MAX_UPLOAD_BYTES || '', 10);
+        const MAX_UPLOAD_SIZE = Number.isFinite(envMax) && envMax > 0 ? envMax : 100 * 1024 * 1024;
         const chunks: Buffer[] = [];
         let uploadSize = 0;
         let aborted = false;
         req.on('data', (c: Buffer) => {
+          if (aborted) return;
           uploadSize += c.length;
-          if (uploadSize > MAX_UPLOAD_SIZE) { aborted = true; req.destroy(); res.statusCode = 413; res.end(JSON.stringify({ error: 'File too large' })); return; }
+          if (uploadSize > MAX_UPLOAD_SIZE) {
+            aborted = true;
+            // Send the 413 response BEFORE killing the socket so the client
+            // actually sees "File too large" instead of a connection reset
+            // (which gateways turn into 502 → often translated to 404).
+            try {
+              if (!res.headersSent) {
+                res.statusCode = 413;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'File too large', maxBytes: MAX_UPLOAD_SIZE }));
+              }
+            } catch { /* response already failed — fall through to destroy */ }
+            req.destroy();
+            return;
+          }
           chunks.push(c);
         });
         req.on('end', async () => {
