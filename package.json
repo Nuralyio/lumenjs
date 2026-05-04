@@ -1,6 +1,6 @@
 {
   "name": "@nuraly/lumenjs",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "description": "Full-stack Lit web component framework with file-based routing, server loaders, SSR, and API routes",
   "type": "module",
   "main": "dist/cli.js",
