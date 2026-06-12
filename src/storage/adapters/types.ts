@@ -57,4 +57,10 @@ export interface StorageAdapter {
   presignGet(key: string, options?: PresignGetOptions): Promise<string>;
   /** Return the permanent public URL for a public-read file. */
   publicUrl(key: string): string;
+  /**
+   * Whether this adapter has a public base URL configured, i.e. whether
+   * `publicUrl(key)` yields a URL reachable without signing. Used to gate
+   * serving assets as public, immutable, cacheable URLs.
+   */
+  hasPublicUrl(): boolean;
 }

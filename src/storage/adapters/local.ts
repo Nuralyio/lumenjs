@@ -104,6 +104,11 @@ export class LocalStorageAdapter implements StorageAdapter {
     return `${this.publicPath}/${encoded}`;
   }
 
+  hasPublicUrl(): boolean {
+    // Local-dev files are always served publicly at the static path.
+    return true;
+  }
+
   /**
    * Consume a presigned upload token.
    * Returns the pending upload metadata if the token is valid and unexpired, else undefined.

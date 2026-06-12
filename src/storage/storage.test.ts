@@ -133,6 +133,12 @@ describe('LocalStorageAdapter', () => {
       expect(a.publicUrl('x.bin')).toBe('/uploads/x.bin');
     });
   });
+
+  describe('hasPublicUrl', () => {
+    it('is always true for local (served at static path)', () => {
+      expect(adapter.hasPublicUrl()).toBe(true);
+    });
+  });
 });
 
 // ── S3StorageAdapter ──────────────────────────────────────────────
@@ -161,6 +167,20 @@ describe('S3StorageAdapter', () => {
     it('uses endpoint + bucket path for MinIO / R2', () => {
       const adapter = new S3StorageAdapter({ ...opts, endpoint: 'https://minio.internal' });
       expect(adapter.publicUrl('file.bin')).toBe('https://minio.internal/test-bucket/file.bin');
+    });
+  });
+
+  describe('hasPublicUrl', () => {
+    it('is false without a publicBaseUrl', () => {
+      expect(new S3StorageAdapter(opts).hasPublicUrl()).toBe(false);
+    });
+
+    it('is false when only an endpoint is set', () => {
+      expect(new S3StorageAdapter({ ...opts, endpoint: 'https://minio.internal' }).hasPublicUrl()).toBe(false);
+    });
+
+    it('is true when publicBaseUrl is configured', () => {
+      expect(new S3StorageAdapter({ ...opts, publicBaseUrl: 'https://cdn.example.com' }).hasPublicUrl()).toBe(true);
     });
   });
 

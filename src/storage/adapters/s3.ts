@@ -162,4 +162,11 @@ export class S3StorageAdapter implements StorageAdapter {
     }
     return `https://${this.options.bucket}.s3.${this.options.region}.amazonaws.com/${key}`;
   }
+
+  hasPublicUrl(): boolean {
+    // Only an explicitly configured public base URL (e.g. an R2 public/custom
+    // domain) is treated as publicly reachable. The raw R2/MinIO endpoint and
+    // the default S3 host are not assumed to allow unauthenticated GETs.
+    return !!this.options.publicBaseUrl;
+  }
 }
