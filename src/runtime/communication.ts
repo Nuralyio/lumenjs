@@ -169,6 +169,40 @@ export function requestPresenceSync(userIds: string[]): void {
   emit('presence:sync', { userIds });
 }
 
+let _presenceLifecycleTeardown: (() => void) | null = null;
+
+/**
+ * Opt-in: register browser lifecycle listeners that proactively report presence.
+ * No-op until called, so apps that never invoke it are unaffected. Emits via
+ * presence:set-status (the status channel the messages server handles). Tab-hidden
+ * maps to 'away' (not 'offline') so a multi-tab user doesn't flip dark when one tab
+ * hides; true offline is driven server-side by last-socket-disconnect. The unload
+ * emit is best-effort. Returns a teardown; calling enable twice returns the same one.
+ */
+export function enablePresenceLifecycle(): () => void {
+  if (_presenceLifecycleTeardown) return _presenceLifecycleTeardown;
+  if (typeof document === 'undefined' || typeof window === 'undefined') return () => {};
+
+  const setStatus = (status: string) => emit('presence:set-status', { status });
+  const onVisibility = () => setStatus(document.visibilityState === 'hidden' ? 'away' : 'online');
+  const onFocus = () => setStatus('online');
+  const onLeave = () => setStatus('offline');
+
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('focus', onFocus);
+  window.addEventListener('pagehide', onLeave);
+  window.addEventListener('beforeunload', onLeave);
+
+  _presenceLifecycleTeardown = () => {
+    document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('focus', onFocus);
+    window.removeEventListener('pagehide', onLeave);
+    window.removeEventListener('beforeunload', onLeave);
+    _presenceLifecycleTeardown = null;
+  };
+  return _presenceLifecycleTeardown;
+}
+
 /** Refresh notification/message badge counts */
 export function refreshBadge(): void {
   emit('badge:refresh', {});
