@@ -30,6 +30,8 @@ export async function setupSocketIO(options: {
   const io = new SocketIOServer(options.httpServer, {
     path: '/__nk_socketio/',
     cors: { origin: process.env.NODE_ENV === 'production' ? false : '*' },
+    pingInterval: Number(process.env.SOCKETIO_PING_INTERVAL) || 15000,
+    pingTimeout: Number(process.env.SOCKETIO_PING_TIMEOUT) || 10000,
   });
 
   for (const route of options.routes) {

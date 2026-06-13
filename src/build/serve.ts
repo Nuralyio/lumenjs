@@ -362,7 +362,11 @@ export async function serveProject(options: ServeOptions): Promise<void> {
           try {
             const body = Buffer.concat(chunks);
             const id = crypto.randomUUID();
-            const fileName = (req.headers['x-filename'] as string) || `file-${id}`;
+            const rawFileName = (req.headers['x-filename'] as string) || '';
+            let fileName = `file-${id}`;
+            if (rawFileName) {
+              try { fileName = decodeURIComponent(rawFileName); } catch { fileName = rawFileName; }
+            }
             const mimeType = (req.headers['content-type'] as string) || 'application/octet-stream';
             const ext = fileName.includes('.') ? `.${fileName.split('.').pop()}` : '';
             const key = `chat-uploads/${id}${ext}`;
