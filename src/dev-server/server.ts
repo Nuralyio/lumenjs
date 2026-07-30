@@ -478,7 +478,27 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       // shim that re-exports the CJS `lib/core.js`, so importing it anywhere
       // in a page's graph — a code editor component, in this case — meant SSR
       // silently fell back to client rendering on every request.
-      external: ['node-domexception', 'socket.io-client', 'xmlhttprequest-ssl', 'engine.io-client', 'better-sqlite3', '@lumenjs/db', '@lumenjs/permissions', 'amqplib', 'highlight.js'],
+      external: ['node-domexception', 'socket.io-client', 'xmlhttprequest-ssl', 'engine.io-client', 'better-sqlite3', '@lumenjs/db', '@lumenjs/permissions', 'amqplib', 'highlight.js',
+        // Touches `window` at module scope. Vite's SSR runner evaluates ESM in
+        // Node, so a module that reads a browser global while loading throws
+        // before anything renders — and the throw is reported against whatever
+        // page imported it, which sends you looking in the wrong file. Node's
+        // loader is not the problem here; evaluating browser code on the
+        // server is, so it goes out of the runner's way.
+        //
+        // Found by bisecting a component list, not by reading: with it out,
+        // SSR renders; with it in, `window is not defined` and a silent
+        // fallback to client rendering.
+        // codejar reads `window` on line one of its own file, so evaluating it
+        // in the SSR runner throws before anything renders. Listing it here is
+        // the right shape and is NOT yet sufficient: with this entry installed
+        // and live, the error persists and the stack still names
+        // node_modules/codejar/dist/codejar.js:1:22. Something about how the
+        // specifier reaches the runner — resolved through @nuraly/lumenui's
+        // code-editor entry rather than imported bare — is not matching this
+        // list. Left in place because it is correct as far as it goes; do not
+        // read it as "handled".
+        'codejar'],
       resolve: {
         conditions: ['node', 'import'],
       },
