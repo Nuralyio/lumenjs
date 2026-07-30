@@ -17,6 +17,32 @@ export interface ComponentSSRData {
 }
 
 /**
+ * Files the component-loader walk has already asked about and need not ask
+ * again: they export no `loader`, or they cannot be evaluated in Node at all.
+ *
+ * The walk exists to find components that fetch their own SSR data, and it
+ * finds them by loading every module the page imports and looking for the
+ * export. That question has one answer per module, but the answer used to be
+ * re-bought on every render, and for a module that is browser-only the price is
+ * a stack trace: Vite's module runner logs `Error when evaluating SSR module …`
+ * itself, before the catch here ever sees the throw, so a page that defers one
+ * browser module behind `if (!import.meta.env.SSR) import(...)` — the correct
+ * way to write it, and Vite lists dynamic imports in `ssrImportedModules` all
+ * the same — printed one trace per page load forever. Now it prints one, and
+ * the walk skips that module until the file changes.
+ *
+ * Keyed by file path, and emptied for a file by `forgetComponentProbe` from the
+ * dev server's hot-update hook, so a module that grows a `loader` is picked up
+ * on the next render rather than the next restart.
+ */
+const notComponentLoaders = new Set<string>();
+
+/** Ask again about this file: it changed, so its answer may have. */
+export function forgetComponentProbe(file: string): void {
+  notComponentLoaders.delete(file);
+}
+
+/**
  * Server-side render a LumenJS page using @lit-labs/ssr.
  * Wraps the page in its layout chain if layouts exist.
  *
@@ -115,15 +141,31 @@ export async function ssrRenderPage(
       layoutsData.push({ loaderPath: layout.dir, data: layoutLoaderData });
     }
 
-    // Discover component loaders from the page module's import graph
+    // Discover component loaders from the page module's import graph.
     const componentsData: ComponentSSRData[] = [];
     const pageModNode = server.moduleGraph.getModuleById(pageModuleUrl) ?? server.moduleGraph.getModulesByFile(filePath)?.values().next().value;
     if (pageModNode?.ssrImportedModules) {
       for (const dep of pageModNode.ssrImportedModules) {
         if (!dep.file || dep.file.includes('/node_modules/')) continue;
+        // Asked once, not once per render. See notComponentLoaders below.
+        if (notComponentLoaders.has(dep.file)) continue;
+
+        let depMod: any;
         try {
-          const depMod = await server.ssrLoadModule(dep.url || dep.file);
-          if (depMod.loader && typeof depMod.loader === 'function') {
+          depMod = await server.ssrLoadModule(dep.url || dep.file);
+        } catch {
+          // Not loadable in Node at all. That is a settled fact about the
+          // module, not about this request, so record it and stop asking.
+          notComponentLoaders.add(dep.file);
+          continue;
+        }
+        if (!depMod?.loader || typeof depMod.loader !== 'function') {
+          notComponentLoaders.add(dep.file);
+          continue;
+        }
+
+        try {
+          {
             // For components outside pages/, filePathToTagName generates invalid names (e.g. page-..-components-foo).
             // Instead, find the actual registered tag name from the component's exported class.
             let depTagName: string | null = null;
@@ -279,6 +321,18 @@ function findLayoutFile(dir: string): string | null {
 /**
  * Aggressively invalidate a module and all its SSR-imported dependencies.
  * Without this, editing a component imported by a page/layout serves stale SSR.
+ *
+ * `invalidateModule` is the whole of it, and writing `ssrModule = null` beside
+ * it is not belt and braces — it is the bug. Vite 6 replaced the module graph
+ * with one environment graph per environment and left `ModuleNode` behind as a
+ * read-only view over the pair, so `ssrModule` and `ssrTransformResult` are
+ * getters with no setter. Assigning to them throws `Cannot set property
+ * ssrModule of #<ModuleNode> which has only a getter` in strict mode — which is
+ * every ES module — and the throw lands in renderPage's catch, so every render
+ * after the first reported "SSR render failed, falling back to CSR" and served
+ * an empty shell. The clearing was never needed: EnvironmentModuleGraph's own
+ * `invalidateModule` sets `transformResult`, `ssrModule` and `ssrError` to null
+ * on both sides, which is exactly what these two lines were asking for.
  */
 function invalidateSsrModule(server: ViteDevServer, filePath: string) {
   const visited = new Set<string>();
@@ -291,8 +345,6 @@ function invalidateSsrModule(server: ViteDevServer, filePath: string) {
     if (mods) {
       for (const m of mods) {
         server.moduleGraph.invalidateModule(m);
-        (m as any).ssrModule = null;
-        (m as any).ssrTransformResult = null;
         // Recurse into SSR-imported modules
         if (m.ssrImportedModules) {
           for (const dep of m.ssrImportedModules) {
@@ -303,11 +355,7 @@ function invalidateSsrModule(server: ViteDevServer, filePath: string) {
     }
 
     const urlMod = server.moduleGraph.getModuleById(id);
-    if (urlMod) {
-      server.moduleGraph.invalidateModule(urlMod);
-      (urlMod as any).ssrModule = null;
-      (urlMod as any).ssrTransformResult = null;
-    }
+    if (urlMod) server.moduleGraph.invalidateModule(urlMod);
   }
 
   invalidateRecursive(filePath);

@@ -7,7 +7,7 @@ import { lumenRoutesPlugin } from './plugins/vite-plugin-routes.js';
 import { lumenApiRoutesPlugin } from './plugins/vite-plugin-api-routes.js';
 import { lumenLoadersPlugin } from './plugins/vite-plugin-loaders.js';
 import { generateIndexHtml } from './index-html.js';
-import { ssrRenderPage } from './ssr-render.js';
+import { ssrRenderPage, forgetComponentProbe } from './ssr-render.js';
 import { readProjectConfig, getLumenJSNodeModules, getLumenJSDirs } from './config.js';
 import { getNuralyUIAliases, resolveNuralyUIPaths } from './nuralyui-aliases.js';
 import { litDedupPlugin } from './plugins/vite-plugin-lit-dedup.js';
@@ -333,15 +333,21 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
       {
         // Clear SSR module cache on file changes so the next SSR request uses fresh code.
         // Without this, HMR updates the client but SSR keeps serving stale modules.
+        //
+        // Through `invalidateModule`, never by assigning to `ssrModule`: on
+        // Vite 6 `ModuleNode` is a read-only view over the client and ssr
+        // environment graphs and both of those fields are getters, so the
+        // assignment throws rather than clearing anything. See the note on
+        // invalidateSsrModule in ssr-render.ts.
         name: 'lumenjs-ssr-invalidate-on-change',
         handleHotUpdate({ file, server }) {
           const mods = server.moduleGraph.getModulesByFile(file);
           if (mods) {
-            for (const m of mods) {
-              (m as any).ssrModule = null;
-              (m as any).ssrTransformResult = null;
-            }
+            for (const m of mods) server.moduleGraph.invalidateModule(m);
           }
+          // The component-loader walk remembers which modules are not component
+          // loaders; an edited file gets asked again.
+          forgetComponentProbe(file);
         },
       },
       {
@@ -445,11 +451,34 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
         // lumenjs's lit version for dedupe to work.
         'lit', 'lit-html', 'lit-element', '@lit/reactive-element',
         '@lit-labs/ssr-client',
+        // The component library, for the same class of reason as lit above and
+        // one of its own. It is ESM already, so pre-bundling buys nothing; and
+        // its per-component entries (`@nuraly/lumenui/canvas`, as opposed to
+        // the inlining `/canvas/bundle`) are discovered one import at a time,
+        // so the optimizer re-runs and 500s the in-flight request on every
+        // page load — a console that renders blank while every file it asked
+        // for answers 200 to curl.
+        //
+        // A project cannot say this for itself: `readProjectConfig` scrapes
+        // lumenjs.config.ts with regular expressions rather than evaluating
+        // it, so there is nowhere to put a Vite option. Until there is, the
+        // exclusion belongs here.
+        '@nuraly/lumenui',
       ],
     },
     ssr: {
       noExternal: true,
-      external: ['node-domexception', 'socket.io-client', 'xmlhttprequest-ssl', 'engine.io-client', 'better-sqlite3', '@lumenjs/db', '@lumenjs/permissions', 'amqplib'],
+      // `noExternal: true` above means everything is put through Vite's SSR
+      // module runner, which evaluates ESM — so a package whose real body is
+      // CommonJS throws `module is not defined` there and takes the render
+      // down with it. Listing it here hands it to Node's own loader instead,
+      // where `module` exists and CJS is simply how packages are written.
+      //
+      // highlight.js is the one this project meets: its `es/core.js` is a
+      // shim that re-exports the CJS `lib/core.js`, so importing it anywhere
+      // in a page's graph — a code editor component, in this case — meant SSR
+      // silently fell back to client rendering on every request.
+      external: ['node-domexception', 'socket.io-client', 'xmlhttprequest-ssl', 'engine.io-client', 'better-sqlite3', '@lumenjs/db', '@lumenjs/permissions', 'amqplib', 'highlight.js'],
       resolve: {
         conditions: ['node', 'import'],
       },
