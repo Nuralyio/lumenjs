@@ -489,15 +489,16 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
         // Found by bisecting a component list, not by reading: with it out,
         // SSR renders; with it in, `window is not defined` and a silent
         // fallback to client rendering.
-        // codejar reads `window` on line one of its own file, so evaluating it
-        // in the SSR runner throws before anything renders. Listing it here is
-        // the right shape and is NOT yet sufficient: with this entry installed
-        // and live, the error persists and the stack still names
-        // node_modules/codejar/dist/codejar.js:1:22. Something about how the
-        // specifier reaches the runner — resolved through @nuraly/lumenui's
-        // code-editor entry rather than imported bare — is not matching this
-        // list. Left in place because it is correct as far as it goes; do not
-        // read it as "handled".
+        // codejar is listed for completeness, but externalising it does NOT
+        // fix it and this is the wrong lever for the problem it looks like.
+        // Its first line is `const globalWindow = window`, evaluated on
+        // import — and `external` only decides WHO loads a module, so Node
+        // then evaluates the same line and throws the same ReferenceError.
+        // External fixes CommonJS-in-an-ESM-runner (highlight.js above); it
+        // cannot fix a browser global. The only fix is not loading the module
+        // on the server at all, which is a consumer's decision — the agents
+        // console guards its canvas and code-editor imports behind
+        // `import.meta.env.SSR` for exactly this.
         'codejar'],
       resolve: {
         conditions: ['node', 'import'],
