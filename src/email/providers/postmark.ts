@@ -1,11 +1,9 @@
 import type { EmailProvider, EmailMessage } from '../types.js';
 
 /**
- * Postmark, over its email API.
- *
- * JSON, authenticated with the server token in `X-Postmark-Server-Token`.
- * `MessageStream` defaults to Postmark's transactional stream, which is the
- * right one for verification and reset mail.
+ * Postmark, over its email API. JSON, authenticated with the server token in
+ * `X-Postmark-Server-Token`. MessageStream defaults to the transactional
+ * ('outbound') stream — the right one for verification and reset mail.
  */
 export function createPostmarkProvider(opts: {
   serverToken: string;

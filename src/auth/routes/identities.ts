@@ -6,11 +6,9 @@ import { encryptSession, createSessionCookie } from '../session.js';
 import { sendJson, readBody, safeReturnTo } from './utils.js';
 
 /**
- * A person's sign-in methods, and adding or removing one.
- *
- * These are the routes a profile screen talks to. All three require a session:
- * an identity belongs to whoever is signed in, and linking a provider attaches
- * it to that account rather than matching by email.
+ * A person's sign-in methods, and adding or removing one. All three require a
+ * session; linking attaches a provider to the signed-in account rather than
+ * matching by email.
  */
 
 /** GET /__nk_auth/identities — the signed-in user's methods. */
@@ -36,11 +34,10 @@ export async function handleListIdentities(
 
 /**
  * GET /__nk_auth/link/<provider> — start attaching a provider to THIS account.
- *
- * The same redirect the login uses, but the state cookie carries mode:'link'
- * and the signed-in user's id, so the callback records an identity against the
- * existing account instead of resolving a user by email. An old in-flight
- * cookie lacks `mode` and is treated as a login — backward compatible.
+ * Same redirect as login, but the state cookie carries mode:'link' and the
+ * signed-in user's id, so the callback records an identity against the existing
+ * account instead of resolving by email. An old cookie lacking `mode` is
+ * treated as a login — backward compatible.
  */
 export async function handleStartLink(
   config: ResolvedAuthConfig, req: IncomingMessage, res: ServerResponse, url: URL, providerName: string,

@@ -2,12 +2,8 @@ import { createHmac, createHash } from 'crypto';
 import type { EmailProvider, EmailMessage } from '../types.js';
 
 /**
- * Amazon SES v2, signed with SigV4 by hand.
- *
- * No AWS SDK: the SDK is tens of megabytes and this is one signed POST. The
- * signature is the boilerplate every SigV4 client repeats — canonical request,
- * string to sign, a four-step derived key, one header — kept here so an app on
- * SES needs no dependency the other providers do not.
+ * Amazon SES v2, signed with SigV4 by hand (no AWS SDK) so an app on SES needs
+ * no dependency the other providers do not — one signed POST.
  */
 export function createSesProvider(opts: {
   region: string;

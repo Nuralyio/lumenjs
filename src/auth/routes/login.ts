@@ -14,10 +14,7 @@ import {
 } from '../session.js';
 import { sendJson, readBody, isTokenMode, safeReturnTo } from './utils.js';
 
-/**
- * Handle OIDC login — redirect to provider's authorization endpoint.
- * Returns true if handled, false if no OIDC provider found (caller should fall through).
- */
+/** Handle OIDC login — redirect to the provider's authorization endpoint. */
 export async function handleOidcLogin(
   config: ResolvedAuthConfig,
   res: ServerResponse,
@@ -29,7 +26,6 @@ export async function handleOidcLogin(
     : getRedirectProvider(config);
 
   if (!provider) {
-    // No redirect provider — return available methods as JSON
     sendJson(res, 200, {
       providers: config.providers.map(p => ({ type: p.type, name: p.name })),
       nativeLogin: `${config.routes.login} (POST)`,
@@ -43,8 +39,7 @@ export async function handleOidcLogin(
   const returnTo = safeReturnTo(url.searchParams.get('returnTo'), config.routes.postLogin);
   const redirectUri = `${url.origin}${config.routes.callback}`;
 
-  // The PKCE/state cookie shape is identical for both flows — the callback
-  // disambiguates the provider by the `provider` field, not by the flow.
+  // Callback disambiguates the provider by the `provider` field, not the flow.
   const stateData = JSON.stringify({ state, codeVerifier, returnTo, provider: provider.name });
   const encrypted = await encryptSession(
     { accessToken: stateData, expiresAt: Math.floor(Date.now() / 1000) + 600, user: { sub: '', roles: [] } },
@@ -98,13 +93,12 @@ export async function handleNativeLogin(
     return true;
   }
 
-  // Check email verification if required
   if (nativeProvider.requireEmailVerification && !await isEmailVerified(db, user.sub)) {
     sendJson(res, 403, { error: 'Please verify your email before signing in', code: 'EMAIL_NOT_VERIFIED' });
     return true;
   }
 
-  // Check TOTP — if enabled, issue a short-lived pending cookie instead of a full session
+  // TOTP enabled: issue a short-lived pending cookie, not a full session.
   const totpState = await getTotpState(db, user.sub);
   if (totpState.totpEnabled) {
     const pendingData = {
@@ -128,7 +122,6 @@ export async function handleNativeLogin(
     return true;
   }
 
-  // Create session — same as OIDC callback
   const sessionData = {
     accessToken: `native:${user.sub}`,
     expiresAt: Math.floor(Date.now() / 1000) + config.session.maxAge,
@@ -145,7 +138,6 @@ export async function handleNativeLogin(
 
   const returnTo = safeReturnTo(url.searchParams.get('returnTo'), config.routes.postLogin);
 
-  // Token mode: return bearer tokens instead of cookie
   if (isTokenMode(url, req) && config.token.enabled) {
     const { issueAccessToken, generateRefreshToken, storeRefreshToken, ensureRefreshTokenTable } = await import('../token.js');
     await ensureRefreshTokenTable(db);
@@ -156,7 +148,6 @@ export async function handleNativeLogin(
     return true;
   }
 
-  // Cookie mode: set session cookie
   if (req.headers.accept?.includes('application/json')) {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': [cookie, edgeCookie] });
     res.end(JSON.stringify({ user, returnTo }));

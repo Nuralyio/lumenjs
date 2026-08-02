@@ -4,13 +4,10 @@ import { encryptSession, createSessionCookie, clearSessionCookie } from '../sess
 import { safeReturnTo } from './utils.js';
 
 /**
- * Seal a successful redirect login and 302 the browser home.
- *
- * Extracted verbatim from the tail of oidc-callback so the OIDC and OAuth2
- * callbacks issue their session through ONE piece of code — the cookie
- * semantics (the encrypted session, the edge access token the gateway
- * verifies, clearing the PKCE state) are exactly the thing that must not drift
- * between two copies.
+ * Seal a successful redirect login and 302 the browser home. The single path
+ * both the OIDC and OAuth2 callbacks issue their session through, so the cookie
+ * semantics (encrypted session, edge access token, clearing the PKCE state)
+ * cannot drift between two copies.
  */
 export async function issueLoginSession(
   config: ResolvedAuthConfig,

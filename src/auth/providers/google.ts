@@ -8,11 +8,7 @@ export interface GoogleProviderOptions {
 }
 
 /**
- * Pre-configured Google OIDC provider.
- *
- * Google publishes a standard OIDC discovery document at
- * https://accounts.google.com/.well-known/openid-configuration
- * so no manual endpoint config is needed.
+ * Pre-configured Google OIDC provider (endpoints via standard discovery).
  *
  * @example
  * // lumenjs.auth.ts

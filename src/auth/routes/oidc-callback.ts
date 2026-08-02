@@ -51,7 +51,6 @@ export async function handleOidcCallback(
     return true;
   }
 
-  // The provider that started this flow — oidc or oauth2, by the name in state.
   const provider = providerName
     ? getRedirectProviderByName(config, providerName)
     : getRedirectProvider(config);
@@ -91,13 +90,11 @@ export async function handleOidcCallback(
     expiresAt = Math.floor(Date.now() / 1000) + tokens.expires_in;
   }
 
-  // ── Link mode: attach this provider to the already-signed-in account ──
-  //
-  // The browser must still BE the user who started the link — checked against
-  // the live session, not against anything in the state cookie. An identity
-  // that already belongs to someone else is refused, never moved. No session
-  // is re-issued: the person is already themselves, and swapping their session
-  // to the newly-linked provider's derived user is the exact bug this avoids.
+  // Link mode: attach this provider to the already-signed-in account. The
+  // browser must still BE the user who started the link — checked against the
+  // live session, not the state cookie. An identity owned by someone else is
+  // refused, never moved. No session is re-issued (swapping to the linked
+  // provider's derived user is the bug this avoids).
   if (mode === 'link') {
     const sessionUser = (req as any).nkAuth?.user;
     if (!db || !sessionUser?.sub || sessionUser.sub !== linkUserId) {
@@ -121,9 +118,8 @@ export async function handleOidcCallback(
     return true;
   }
 
-  // ── Login mode: link by verified email, then issue a session ──
-  // No longer gated on user.email — a GitHub user whose email is private still
-  // resolves through their recorded identity.
+  // Login mode: link by verified email, then issue a session. Not gated on
+  // user.email — a GitHub user with a private email resolves via their recorded identity.
   if (db && hasNativeAuth(config)) {
     try {
       const { linkOidcUser, ensureUsersTable } = await import('../native-auth.js');

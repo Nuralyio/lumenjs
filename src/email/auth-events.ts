@@ -1,13 +1,6 @@
 /**
- * Wiring the auth module's events to the email module.
- *
- * Auth generates the tokens and emits events; email sends them. The two have
- * always been able to meet — but only the dev server ever introduced them
- * (vite-plugin-auth.ts). A built app emitted `verification-email` and
- * `password-reset` into an `onEvent` that was never set, so `handleForgotPassword`
- * generated no token at all and answered 200: a silent dead end. This is the
- * mapping, extracted so the dev server and the production server share one copy
- * rather than drifting.
+ * Wiring the auth module's events to the email module: auth emits events, email
+ * sends them. Extracted so the dev and production servers share one copy.
  */
 import type { AuthEvent } from '../auth/types.js';
 import type { EmailConfig, EmailMessage } from './types.js';
@@ -16,17 +9,11 @@ import { getTemplate, renderEmailTemplate, sendEmail } from './index.js';
 export type SendFn = (config: EmailConfig, message: EmailMessage) => Promise<void>;
 
 /**
- * An `onEvent` handler that sends the mail each auth event calls for.
- *
- * `send` is injected so a test can assert what would be sent without a network
- * or a mock framework. Failures are caught and logged, never thrown: every one
- * of auth's four emission sites already swallows exceptions, so a throw here
- * would be invisible anyway — better to log it.
- *
- * `password-changed` sends only when a template named `password-changed`
- * resolves (a file in emails/ or a config.templates entry). There is no
- * built-in, so existing apps get no new mail; an app that wants the "your
- * password was changed" notice drops in a template and it appears.
+ * An `onEvent` handler that sends the mail each auth event calls for. `send` is
+ * injected so a test can assert what would be sent without a network. Failures
+ * are caught and logged, never thrown (auth's emission sites swallow exceptions
+ * anyway). `password-changed` sends only when a `password-changed` template
+ * resolves — there is no built-in, so existing apps get no new mail.
  */
 export function createAuthEventMailer(
   emailConfig: EmailConfig,
@@ -54,11 +41,10 @@ export function createAuthEventMailer(
 }
 
 /**
- * Attach the mailer to an auth config — but only when the app has not set its
- * own `onEvent` and an email config exists. Returns whether it wired anything.
- *
- * The "not set" guard is the whole backward-compatibility contract: an app
- * with a hand-written `onEvent` (apps/social) is left exactly as it was.
+ * Attach the mailer to an auth config, but only when the app has not set its
+ * own `onEvent` and an email config exists; returns whether it wired anything.
+ * The "not set" guard is the backward-compat contract — a hand-written
+ * `onEvent` is left exactly as it was.
  */
 export function autoWireAuthEmail(
   authConfig: { onEvent?: (e: AuthEvent) => void | Promise<void> },

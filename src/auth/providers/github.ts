@@ -11,12 +11,9 @@ export interface GitHubProviderOptions {
 }
 
 /**
- * Pre-configured GitHub OAuth2 provider.
- *
- * GitHub is not OIDC: no discovery document, no id_token, an opaque access
- * token, and identity behind two API calls. So it is an OAuth2Provider, and
- * the GitHub-specific work — resolving a VERIFIED email from /user/emails —
- * lives in mapUser, not in the framework's flow.
+ * Pre-configured GitHub OAuth2 provider. GitHub is not OIDC (no discovery, no
+ * id_token, opaque token, identity behind two API calls), so it is an
+ * OAuth2Provider and its verified-email resolution lives in mapUser.
  *
  * @example
  * // lumenjs.auth.ts
@@ -46,14 +43,10 @@ export function githubProvider(opts: GitHubProviderOptions): OAuth2Provider {
 }
 
 /**
- * GitHub's /user JSON to an AuthUser.
- *
- * The email is the load-bearing part. `profile.email` is the PUBLIC profile
- * email and is not proof of control, so email_verified is set true only from a
- * `primary && verified` entry in /user/emails. If that call fails — a token
- * without the user:email scope 403s it — the email stays unverified, and
- * linkOidcUser will refuse to attach it to an existing account. An optimistic
- * verified:true here would be an account-takeover vector.
+ * GitHub's /user JSON to an AuthUser. `profile.email` is the PUBLIC email and
+ * is not proof of control, so email_verified is true only from a
+ * `primary && verified` entry in /user/emails — an optimistic verified:true
+ * would be an account-takeover vector.
  */
 export async function githubMapUser(profile: Record<string, any>, ctx: OAuth2UserContext): Promise<AuthUser> {
   let email: string | undefined = profile.email ?? undefined;
@@ -70,8 +63,7 @@ export async function githubMapUser(profile: Record<string, any>, ctx: OAuth2Use
       }
     }
   } catch {
-    // No user:email scope, or the call failed. Leave the profile email
-    // unverified rather than trusting it.
+    // No user:email scope or the call failed — leave the email unverified, not trusted.
   }
 
   return {

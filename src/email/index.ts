@@ -26,10 +26,7 @@ export function setEmailProjectDir(dir: string): void {
   _projectDir = dir;
 }
 
-/**
- * Load an HTML template file from the project's `emails/` directory.
- * Returns the raw HTML string or null if not found.
- */
+/** Load an HTML template file from the project's `emails/` directory, or null. */
 function loadHtmlTemplate(name: string): string | null {
   if (!_projectDir) return null;
   const emailsDir = path.resolve(_projectDir, 'emails');
@@ -43,27 +40,17 @@ function loadHtmlTemplate(name: string): string | null {
   }
 }
 
-/**
- * Get a template renderer. Resolution order:
- * 1. HTML file in emails/ directory (compiled with {{variable}} engine)
- * 2. Custom function in config.templates
- * 3. Built-in template
- */
+/** Get a template renderer. Resolution order: emails/ HTML file, config.templates function, built-in. */
 export function getTemplate(config: EmailConfig, name: string): TemplateRenderer | undefined {
-  // 1. File-based HTML template
   const htmlFile = loadHtmlTemplate(name);
   if (htmlFile) {
     return (data: TemplateData) => compileTemplate(htmlFile, data);
   }
-  // 2. Custom function
   if (config.templates?.[name]) return config.templates[name];
-  // 3. Built-in
   return BUILT_IN_TEMPLATES[name];
 }
 
-/**
- * Render a named template with data. Returns HTML string or null if template not found.
- */
+/** Render a named template with data; HTML string or null if not found. */
 export function renderEmailTemplate(config: EmailConfig, name: string, data: TemplateData): string | null {
   const renderer = getTemplate(config, name);
   return renderer ? renderer(data) : null;
@@ -121,9 +108,7 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-/**
- * Send an email using the configured provider.
- */
+/** Send an email using the configured provider. */
 export async function sendEmail(config: EmailConfig, message: EmailMessage): Promise<void> {
   const provider = await createProvider(config);
   await provider.send({
@@ -135,9 +120,7 @@ export async function sendEmail(config: EmailConfig, message: EmailMessage): Pro
   });
 }
 
-/**
- * Create a reusable email sender function.
- */
+/** Create a reusable email sender function. */
 export function createEmailSender(config: EmailConfig): (message: EmailMessage) => Promise<void> {
   let provider: EmailProvider | null = null;
   return async (message: EmailMessage) => {
@@ -153,12 +136,8 @@ export function createEmailSender(config: EmailConfig): (message: EmailMessage) 
 }
 
 /**
- * Load email config from lumenjs.email.ts.
- */
-/**
  * Load the email config in production, from the bundled server output.
- * Mirrors loadAuthConfigProd — the built module is a plain .js, so a plain
- * dynamic import works where loadEmailConfig's projectDir .ts import cannot.
+ * A plain .js dynamic import works where loadEmailConfig's projectDir .ts import cannot.
  */
 export async function loadEmailConfigProd(
   serverDir: string,

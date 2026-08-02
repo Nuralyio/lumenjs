@@ -1,20 +1,5 @@
-/**
- * Which sign-in methods an account has — the records that make a profile
- * possible and account-linking safe.
- *
- * Before this, linkOidcUser matched by email and wrote nothing: no table knew
- * that an account had ever used Google, nothing could unlink it, and a user
- * whose provider changed their email silently became a second account. This is
- * that missing record.
- *
- * The invariant that makes it safe lives in the schema: PRIMARY KEY
- * (provider, subject). One Google account can never be attached to two local
- * users. Everything else is bookkeeping around that constraint.
- *
- * `linked_at` carries no SQL DEFAULT on purpose — the value is passed from JS
- * as an ISO string, so this table's DDL is byte-identical on SQLite and
- * Postgres and needs no dialect translation at all.
- */
+// The sign-in methods on an account. Safety rests on PRIMARY KEY
+// (provider, subject): one provider account can never attach to two users.
 import type { AuthDb } from './db.js';
 import { randomUUID } from 'crypto';
 
@@ -28,9 +13,8 @@ export interface AuthIdentity {
   lastLoginAt?: string;
 }
 
-/** Raised when a (provider, subject) already belongs to a different user.
- *  `ownerUserId` is for server-side logging only — it must never be echoed to
- *  the caller, or one user learns another's id. */
+/** (provider, subject) already belongs to another user. `ownerUserId` is for
+ *  server-side logging only — never echo it, or one user learns another's id. */
 export class IdentityConflictError extends Error {
   constructor(public readonly ownerUserId: string) {
     super('identity already linked to another account');
@@ -39,6 +23,8 @@ export class IdentityConflictError extends Error {
 }
 
 export async function ensureIdentitiesTable(db: AuthDb): Promise<void> {
+  // linked_at has no SQL DEFAULT deliberately: JS passes an ISO string, so this
+  // DDL is byte-identical on SQLite and Postgres.
   await db.exec(`CREATE TABLE IF NOT EXISTS _nk_auth_identities (
     user_id TEXT NOT NULL,
     provider TEXT NOT NULL,
@@ -60,16 +46,9 @@ export async function findUserIdByIdentity(db: AuthDb, provider: string, subject
   return row?.user_id ?? null;
 }
 
-/**
- * Idempotent upsert of an identity, refreshing email/verified/last_login on a
- * repeat sign-in. Throws IdentityConflictError if the (provider, subject)
- * already belongs to a different user.
- *
- * INSERT OR IGNORE then a scoped UPDATE: the PG translator turns the former
- * into ON CONFLICT DO NOTHING, so this is race-safe in both dialects without
- * needing dialect-specific upsert syntax. If the UPDATE changed nothing, the
- * row exists under another owner — read it back and refuse.
- */
+/** Idempotent upsert, refreshing email/verified/last_login on repeat sign-in.
+ *  INSERT OR IGNORE + scoped UPDATE (race-safe in both dialects); a no-op UPDATE
+ *  means the row is owned by someone else — refuse with IdentityConflictError. */
 export async function recordIdentity(db: AuthDb, params: {
   userId: string; provider: string; subject: string; email?: string; emailVerified?: boolean;
 }): Promise<void> {
@@ -92,14 +71,9 @@ export async function recordIdentity(db: AuthDb, params: {
   }
 }
 
-/**
- * Every sign-in method on an account.
- *
- * The native (password) method is SYNTHESIZED from the user row's
- * password_hash rather than stored — which is what lets accounts predating
- * this table appear correct with no backfill: a password user shows a native
- * method, a social-only user (empty hash) does not.
- */
+/** Every sign-in method on an account. The native (password) method is
+ *  synthesized from password_hash, not stored — so accounts predating this
+ *  table need no backfill. */
 export async function listIdentities(db: AuthDb, userId: string): Promise<AuthIdentity[]> {
   const rows = await db.all<any>(
     'SELECT * FROM _nk_auth_identities WHERE user_id = ? ORDER BY linked_at', userId);
@@ -120,11 +94,8 @@ export async function listIdentities(db: AuthDb, userId: string): Promise<AuthId
   return out;
 }
 
-/**
- * Remove a linked provider — but never the last way in. An account with no
- * password and one identity would become unreachable, so that refusal is the
- * feature. `native` clears the password_hash rather than deleting a row.
- */
+/** Remove a linked provider — but never the last way in, which would leave the
+ *  account unreachable. `native` clears password_hash rather than deleting a row. */
 export async function unlinkIdentity(db: AuthDb, userId: string, provider: string): Promise<
   { ok: true } | { ok: false; reason: 'not-found' | 'last-method' }
 > {

@@ -35,7 +35,6 @@ export function validate(config: any): ResolvedAuthConfig {
   if (config.providers && Array.isArray(config.providers)) {
     providers = config.providers;
   } else if (config.provider?.issuer) {
-    // Legacy single OIDC provider format
     providers = [{
       type: 'oidc',
       name: 'default',
@@ -48,7 +47,6 @@ export function validate(config: any): ResolvedAuthConfig {
     throw new Error('[LumenJS Auth] Either providers[] or provider.issuer is required');
   }
 
-  // Validate each provider
   for (const p of providers) {
     if (!p.name) throw new Error('[LumenJS Auth] Each provider must have a name');
     if (p.type === 'oidc') {
@@ -62,8 +60,7 @@ export function validate(config: any): ResolvedAuthConfig {
         throw new Error(`[LumenJS Auth] Provider "${p.name}": mapUser is required`);
       }
     } else if (p.type !== 'native') {
-      // Unknown types were silently accepted before; warn rather than throw so
-      // an app is not bricked by an upgrade, but no longer entirely silent.
+      // Warn rather than throw on unknown types, so an upgrade can't brick an app.
       console.warn(`[LumenJS Auth] Provider "${(p as any).name}": unknown type "${(p as any).type}"`);
     }
   }
@@ -121,9 +118,7 @@ export function getRedirectProviderByName(config: ResolvedAuthConfig, name: stri
     (import('./types.js').OIDCProvider | import('./types.js').OAuth2Provider) | undefined;
 }
 
-/**
- * Load auth config in dev mode (via Vite's ssrLoadModule).
- */
+/** Load auth config in dev mode (via Vite's ssrLoadModule). */
 export async function loadAuthConfig(
   projectDir: string,
   ssrLoadModule?: (id: string) => Promise<any>,
@@ -141,9 +136,7 @@ export async function loadAuthConfig(
   }
 }
 
-/**
- * Load auth config in production from bundled server output.
- */
+/** Load auth config in production from bundled server output. */
 export async function loadAuthConfigProd(serverDir: string, configModule: string): Promise<ResolvedAuthConfig> {
   const mod = await import(path.join(serverDir, configModule));
   return validate(mod.default || mod);

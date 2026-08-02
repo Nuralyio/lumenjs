@@ -5,9 +5,7 @@ const SALT_LENGTH = 16;
 const KEY_LENGTH = 64;
 const SCRYPT_COST = 16384;
 
-/**
- * Hash a password using scrypt (Node.js built-in, no dependencies).
- */
+/** Hash a password using scrypt. */
 export async function hashPassword(password: string): Promise<string> {
   const salt = crypto.randomBytes(SALT_LENGTH);
   return new Promise((resolve, reject) => {
@@ -18,9 +16,7 @@ export async function hashPassword(password: string): Promise<string> {
   });
 }
 
-/**
- * Verify a password against a stored hash.
- */
+/** Verify a password against a stored hash. */
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   const [saltHex, keyHex] = hash.split(':');
   if (!saltHex || !keyHex) return false;
@@ -35,9 +31,7 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 
 import { nowDefault, type AuthDb as Db } from './db.js';
 
-/**
- * Ensure the native auth users table exists.
- */
+/** Ensure the native auth users table exists. */
 export async function ensureUsersTable(db: Db): Promise<void> {
   await db.exec(`CREATE TABLE IF NOT EXISTS _nk_auth_users (
     id TEXT PRIMARY KEY,
@@ -49,18 +43,14 @@ export async function ensureUsersTable(db: Db): Promise<void> {
     created_at TEXT NOT NULL DEFAULT ${nowDefault(db)},
     updated_at TEXT NOT NULL DEFAULT ${nowDefault(db)}
   )`);
-  // Add email_verified column if table already exists without it
+  // Migrations for tables created before these columns existed.
   try { await db.exec('ALTER TABLE _nk_auth_users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0'); } catch {};
-  // Add sessions_revoked_at column for logout-all support
   try { await db.exec('ALTER TABLE _nk_auth_users ADD COLUMN sessions_revoked_at TEXT'); } catch {};
-  // Add TOTP columns
   try { await db.exec('ALTER TABLE _nk_auth_users ADD COLUMN totp_secret TEXT'); } catch {};
   try { await db.exec('ALTER TABLE _nk_auth_users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0'); } catch {};
 }
 
-/**
- * Register a new user with email/password.
- */
+/** Register a new user with email/password. */
 export async function registerUser(
   db: Db,
   email: string,
@@ -68,7 +58,6 @@ export async function registerUser(
   name?: string,
   provider?: NativeProvider,
 ): Promise<AuthUser> {
-  // Basic email format validation
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error('Invalid email address');
   }
@@ -104,9 +93,7 @@ export async function registerUser(
   };
 }
 
-/**
- * Authenticate a user with email/password.
- */
+/** Authenticate a user with email/password. */
 export async function authenticateUser(
   db: Db,
   email: string,
@@ -130,9 +117,7 @@ export async function authenticateUser(
   };
 }
 
-/**
- * Find a user by email (for account linking with OIDC).
- */
+/** Find a user by email. */
 export async function findUserByEmail(db: Db, email: string): Promise<AuthUser | null> {
   const row = await db.get<any>('SELECT * FROM _nk_auth_users WHERE email = ?', email);
   if (!row) return null;
@@ -149,10 +134,7 @@ export async function findUserByEmail(db: Db, email: string): Promise<AuthUser |
   };
 }
 
-/**
- * Create or link a native user from OIDC claims (account linking by email).
- * Only links to existing native accounts if the OIDC provider has verified the email.
- */
+/** Create or link a native user from OIDC claims; links to an existing account only on a provider-verified email. */
 export async function linkOidcUser(db: Db, oidcUser: AuthUser): Promise<AuthUser> {
   const provider = (oidcUser as any).provider as string | undefined;
   const subject = oidcUser.sub;
@@ -179,9 +161,8 @@ export async function linkOidcUser(db: Db, oidcUser: AuthUser): Promise<AuthUser
     return [...new Set([...nativeRoles, ...(oidcUser.roles || [])])];
   };
 
-  // 1. Known identity — the stable path, and the one that survives an email
-  //    change at the provider. No verification needed: possession of the
-  //    provider account was already proven the first time it was recorded.
+  // 1. Known identity: the stable path; survives a provider email change, no
+  //    re-verification (possession was proven when first recorded).
   if (provider && subject) {
     const linkedUserId = await findUserIdByIdentity(db, provider, subject);
     if (linkedUserId) {
@@ -190,8 +171,7 @@ export async function linkOidcUser(db: Db, oidcUser: AuthUser): Promise<AuthUser
     }
   }
 
-  // 2/3. Email match. Only when the provider VERIFIED it — the anti-takeover
-  //      rule, unmoved.
+  // 2/3. Email match, but only when the provider VERIFIED it — the anti-takeover rule.
   if (oidcUser.email) {
     const existing = await db.get<any>('SELECT * FROM _nk_auth_users WHERE email = ?', oidcUser.email);
     if (existing) {
@@ -200,8 +180,7 @@ export async function linkOidcUser(db: Db, oidcUser: AuthUser): Promise<AuthUser
     }
   }
 
-  // 4. New user. Social accounts with no email get a synthetic one keyed on
-  //    the identity, so the UNIQUE(email) column is satisfiable.
+  // 4. New user. Emailless social accounts get a synthetic identity-keyed email so UNIQUE(email) is satisfiable.
   const id = crypto.randomUUID();
   const email = oidcUser.email || `${provider}:${subject}@users.noreply.local`;
   const roles = JSON.stringify(oidcUser.roles || []);
@@ -212,12 +191,7 @@ export async function linkOidcUser(db: Db, oidcUser: AuthUser): Promise<AuthUser
   return record(id, oidcUser.roles || []);
 }
 
-// ── Email Verification ──────────────────────────────────────────
-
-/**
- * Generate an HMAC-signed email verification token.
- * Format: userId.expiry.signature (base64url)
- */
+/** HMAC-signed email verification token, format base64url(userId.expiry).sig. */
 export function generateVerificationToken(userId: string, secret: string, ttlSeconds: number = 86400): string {
   const expiry = Math.floor(Date.now() / 1000) + ttlSeconds;
   const payload = `${userId}.${expiry}`;
@@ -225,10 +199,7 @@ export function generateVerificationToken(userId: string, secret: string, ttlSec
   return `${Buffer.from(payload).toString('base64url')}.${sig}`;
 }
 
-/**
- * Verify and decode an email verification token.
- * Returns userId or null if invalid/expired.
- */
+/** Verify an email verification token; returns userId or null if invalid/expired. */
 export function verifyVerificationToken(token: string, secret: string): string | null {
   try {
     const parts = token.split('.');
@@ -254,16 +225,13 @@ export async function isEmailVerified(db: Db, userId: string): Promise<boolean> 
   return row?.email_verified === 1;
 }
 
-// ── Password Reset ──────────────────────────────────────────────
-
 /**
- * Generate an HMAC-signed password reset token.
- * Includes a hash of the current password hash so the token auto-invalidates
- * after the password is changed (single-use without server state).
+ * HMAC-signed password reset token. Embeds a fingerprint of the current
+ * password hash so it auto-invalidates when the password changes (single-use,
+ * no server state).
  */
 export function generateResetToken(userId: string, secret: string, ttlSeconds: number = 3600, currentPasswordHash?: string): string {
   const expiry = Math.floor(Date.now() / 1000) + ttlSeconds;
-  // Include a fingerprint of the current password hash to invalidate on change
   const pwFingerprint = currentPasswordHash
     ? crypto.createHash('sha256').update(currentPasswordHash).digest('hex').slice(0, 8)
     : '';
@@ -284,7 +252,6 @@ export function verifyResetToken(token: string, secret: string, currentPasswordH
     const [userId, expiryStr] = segments;
     const pwFingerprint = segments[2] || '';
     if (parseInt(expiryStr) < Math.floor(Date.now() / 1000)) return null;
-    // Verify password hasn't changed since token was issued
     if (pwFingerprint && currentPasswordHash) {
       const currentFingerprint = crypto.createHash('sha256').update(currentPasswordHash).digest('hex').slice(0, 8);
       if (pwFingerprint !== currentFingerprint) return null;
@@ -311,13 +278,11 @@ export async function updatePassword(db: Db, userId: string, newPassword: string
   await db.run("UPDATE _nk_auth_users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?", hash, userId);
 }
 
-/** Find a user by email. Returns { id, email, name } or null. */
+/** Find a user's id by email, or null. */
 export async function findUserIdByEmail(db: Db, email: string): Promise<string | null> {
   const row = await db.get<any>('SELECT id FROM _nk_auth_users WHERE email = ?', email);
   return row?.id || null;
 }
-
-// ── TOTP helpers ─────────────────────────────────────────────────
 
 const TOTP_IV_LEN = 12;
 const TOTP_ALGO = 'aes-256-gcm' as const;
@@ -360,8 +325,6 @@ export async function getTotpState(db: Db, userId: string): Promise<{ totpEnable
   const row = await db.get<any>('SELECT totp_enabled, totp_secret FROM _nk_auth_users WHERE id = ?', userId);
   return { totpEnabled: !!row?.totp_enabled, encryptedSecret: row?.totp_secret || null };
 }
-
-// ── Session Revocation (Logout All) ─────────────────────────────
 
 /** Set sessions_revoked_at to now, invalidating all sessions created before this moment. */
 export async function revokeAllSessions(db: Db, userId: string): Promise<void> {

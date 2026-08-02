@@ -1,10 +1,7 @@
 import crypto from 'node:crypto';
 import type { AuthUser } from './types.js';
 
-/**
- * Issue a short-lived access token (HMAC-SHA256 signed, stateless).
- * Format: base64url(payload).base64url(signature)
- */
+/** Issue a stateless HMAC-SHA256 access token, format base64url(payload).base64url(sig). */
 export function issueAccessToken(user: AuthUser, secret: string, ttlSeconds: number): string {
   const payload = {
     sub: user.sub,
@@ -20,9 +17,7 @@ export function issueAccessToken(user: AuthUser, secret: string, ttlSeconds: num
   return `${payloadB64}.${signature}`;
 }
 
-/**
- * Verify and decode an access token. Returns the user or null if invalid/expired.
- */
+/** Verify and decode an access token; returns the user or null if invalid/expired. */
 export function verifyAccessToken(token: string, secret: string): AuthUser | null {
   try {
     const parts = token.split('.');
@@ -47,24 +42,18 @@ export function verifyAccessToken(token: string, secret: string): AuthUser | nul
   }
 }
 
-/** The cookie the edge reads. Named once, so nothing sets a name nothing reads. */
+/** The access-token cookie name the edge gateway reads. */
 export const ACCESS_TOKEN_COOKIE = 'nk-access-token';
 
 /**
- * Set the access token as a cookie beside the encrypted session cookie.
- *
- * A browser login only ever got `nk-session`, which holds an AES-GCM blob only
- * this process can open. The OpenResty gateway in front of the agents console
- * verifies an HMAC JWT and reads exactly this cookie, so without it every
- * request from a logged-in browser was a 401 at the edge. Same credential,
- * second transport — the mobile WebView path in middleware.ts already reads it.
+ * Set the access token as a cookie beside the encrypted session cookie, so the
+ * stateless edge gateway (which verifies an HMAC JWT from this cookie) accepts
+ * requests from a logged-in browser.
  *
  * Lifetime is the session's, not `token.accessTokenTTL`: nothing re-issues this
- * cookie on a request that never reaches this process (the console talks to the
- * gateway and the engine only), so a 15-minute token would log the console out
- * 15 minutes after login. The cost is that `logout-all` cannot revoke it at the
- * edge — the gateway is stateless by design — so it is cleared on logout here
- * and expires with the session at the latest.
+ * cookie on requests that never reach this process, so a 15-minute token would
+ * log the console out 15 minutes after login. Cost: `logout-all` cannot revoke
+ * it at the stateless edge, so it is cleared on logout here.
  */
 export function createAccessTokenCookie(
   user: AuthUser,
@@ -83,21 +72,15 @@ export function clearAccessTokenCookie(): string {
   return `${ACCESS_TOKEN_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
 }
 
-/**
- * Generate an opaque refresh token (random bytes, stored hashed in DB).
- */
+/** Generate an opaque refresh token (random bytes, stored hashed in DB). */
 export function generateRefreshToken(): string {
   return crypto.randomBytes(32).toString('base64url');
 }
 
-/**
- * Hash a refresh token for DB storage (SHA-256).
- */
+/** Hash a refresh token for DB storage (SHA-256). */
 export function hashRefreshToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
-
-// ── DB helpers for refresh tokens ────────────────────────────────
 
 import { nowDefault, autoIncrementPk, type AuthDb as Db } from './db.js';
 

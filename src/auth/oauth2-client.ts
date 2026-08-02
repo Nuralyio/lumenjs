@@ -1,12 +1,7 @@
 /**
- * The OAuth2 half of the redirect flow, for providers with no OIDC discovery.
- *
- * Deliberately separate from oidc-client.ts: the OIDC path decodes a signed
- * id_token and validates its claims; this one has no id_token at all and asks
- * the provider's userinfo endpoint instead. Keeping them apart means adding
- * GitHub changed no line an OIDC login runs.
- *
- * PKCE helpers are reused from oidc-client — the mechanism is identical.
+ * The OAuth2 half of the redirect flow, for providers with no OIDC discovery:
+ * no id_token, identity comes from the userinfo endpoint. PKCE helpers are
+ * reused from oidc-client.
  */
 import { generateCodeChallenge } from './oidc-client.js';
 import type { AuthUser, OAuth2Provider, OAuth2TokenSet } from './types.js';
@@ -33,12 +28,8 @@ export function buildOAuth2AuthorizationUrl(
 }
 
 /**
- * The code-for-token exchange.
- *
- * `Accept: application/json` is the one header the OIDC version omits and this
- * one must send: without it GitHub replies `application/x-www-form-urlencoded`,
- * and a bare `res.json()` throws. We sniff the response content type and parse
- * either form, so a provider that ignores the Accept header still works.
+ * The code-for-token exchange. Sends `Accept: application/json` — without it
+ * GitHub replies form-urlencoded — and parses either form as a fallback.
  */
 export async function exchangeOAuth2Code(
   p: OAuth2Provider,
@@ -80,8 +71,7 @@ export async function exchangeOAuth2Code(
   return parsed as unknown as OAuth2TokenSet;
 }
 
-/** A JSON-fetcher bound to this provider's token and headers — the thing a
- *  mapUser calls for its follow-up requests. */
+/** A JSON-fetcher bound to this provider's token and headers, for mapUser's follow-up requests. */
 export function createFetchJson(p: OAuth2Provider, accessToken: string): (url: string) => Promise<any> {
   return async (url: string) => {
     const res = await fetch(url, {
@@ -99,8 +89,7 @@ export function createFetchJson(p: OAuth2Provider, accessToken: string): (url: s
   };
 }
 
-/** Fetch the profile and run the provider's mapUser, then force provider name
- *  and default roles — the two things a mapper should not have to remember. */
+/** Run the provider's mapUser on its profile, then force provider name and default roles. */
 export async function resolveOAuth2User(p: OAuth2Provider, tokens: OAuth2TokenSet): Promise<AuthUser> {
   const fetchJson = createFetchJson(p, tokens.access_token);
   const profile = await fetchJson(p.userInfoUrl);

@@ -1,11 +1,8 @@
 import type { EmailProvider, EmailMessage } from '../types.js';
 
 /**
- * Mailgun, over its HTTP send API.
- *
- * Form-encoded, not JSON — Mailgun's messages endpoint takes multipart/form
- * fields — with basic auth `api:<key>`. `region` picks the EU host, which is a
- * separate data residency and a common reason to choose Mailgun at all.
+ * Mailgun, over its HTTP send API. Form-encoded (not JSON) with basic auth
+ * `api:<key>`. `region: 'eu'` picks the EU host — a separate data residency.
  */
 export function createMailgunProvider(opts: {
   apiKey: string;
