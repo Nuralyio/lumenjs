@@ -18,7 +18,7 @@ export interface EmailTemplates {
 }
 
 export interface EmailConfig {
-  provider: 'smtp' | 'resend' | 'sendgrid';
+  provider: 'smtp' | 'resend' | 'sendgrid' | 'mailgun' | 'postmark' | 'ses';
   from: string;
   smtp?: {
     host: string;
@@ -32,6 +32,21 @@ export interface EmailConfig {
   };
   sendgrid?: {
     apiKey: string;
+  };
+  mailgun?: {
+    apiKey: string;
+    domain: string;
+    region?: 'us' | 'eu';
+  };
+  postmark?: {
+    serverToken: string;
+    messageStream?: string;
+  };
+  ses?: {
+    region: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    sessionToken?: string;
   };
   /** Custom email templates. Override built-in templates or add new ones. */
   templates?: EmailTemplates;

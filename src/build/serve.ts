@@ -148,6 +148,24 @@ export async function serveProject(options: ServeOptions): Promise<void> {
     try {
       authConfig = await loadAuthConfigProd(serverDir, manifest.auth.configModule);
 
+      // Auth events → email. The dev server does this too (vite-plugin-auth);
+      // production never did, so a built app's password-reset generated no
+      // token and answered 200 — a silent dead end. Only when the app set no
+      // onEvent of its own, so a hand-written handler is left untouched.
+      try {
+        const { setEmailProjectDir, loadEmailConfigProd, loadEmailConfig } = await import('../email/index.js');
+        const { autoWireAuthEmail } = await import('../email/auth-events.js');
+        setEmailProjectDir(projectDir);
+        const emailConfig = manifest.email
+          ? await loadEmailConfigProd(serverDir, manifest.email.configModule)
+          : await loadEmailConfig(projectDir);
+        if (autoWireAuthEmail(authConfig, emailConfig, title)) {
+          logger.info('Email auto-wired with auth module');
+        }
+      } catch (emailErr) {
+        logger.warn('Email auto-wire skipped', { error: (emailErr as any)?.message });
+      }
+
       // Initialize DB for native auth
       const { hasNativeAuth } = await import('../auth/config.js');
       if (hasNativeAuth(authConfig)) {

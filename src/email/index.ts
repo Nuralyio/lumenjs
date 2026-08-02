@@ -86,6 +86,21 @@ async function createProvider(config: EmailConfig): Promise<EmailProvider> {
       const { createSendGridProvider } = await import('./providers/sendgrid.js');
       return createSendGridProvider(config.sendgrid.apiKey);
     }
+    case 'mailgun': {
+      if (!config.mailgun?.apiKey || !config.mailgun?.domain) throw new Error('[LumenJS Email] mailgun.apiKey and mailgun.domain required for Mailgun provider');
+      const { createMailgunProvider } = await import('./providers/mailgun.js');
+      return createMailgunProvider(config.mailgun);
+    }
+    case 'postmark': {
+      if (!config.postmark?.serverToken) throw new Error('[LumenJS Email] postmark.serverToken required for Postmark provider');
+      const { createPostmarkProvider } = await import('./providers/postmark.js');
+      return createPostmarkProvider(config.postmark);
+    }
+    case 'ses': {
+      if (!config.ses?.region || !config.ses?.accessKeyId || !config.ses?.secretAccessKey) throw new Error('[LumenJS Email] ses.region, ses.accessKeyId and ses.secretAccessKey required for SES provider');
+      const { createSesProvider } = await import('./providers/ses.js');
+      return createSesProvider(config.ses);
+    }
     default:
       throw new Error(`[LumenJS Email] Unknown provider: ${config.provider}`);
   }
@@ -140,6 +155,25 @@ export function createEmailSender(config: EmailConfig): (message: EmailMessage) 
 /**
  * Load email config from lumenjs.email.ts.
  */
+/**
+ * Load the email config in production, from the bundled server output.
+ * Mirrors loadAuthConfigProd — the built module is a plain .js, so a plain
+ * dynamic import works where loadEmailConfig's projectDir .ts import cannot.
+ */
+export async function loadEmailConfigProd(
+  serverDir: string,
+  configModule: string,
+): Promise<EmailConfig | null> {
+  try {
+    const mod: any = await import(path.join(serverDir, configModule));
+    const config = mod.default || mod;
+    if (!config?.provider || !config?.from) return null;
+    return config as EmailConfig;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadEmailConfig(
   projectDir: string,
   ssrLoadModule?: (id: string) => Promise<any>,

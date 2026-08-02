@@ -45,5 +45,6 @@ export interface BuildManifest {
   middlewares?: ManifestMiddleware[];
   i18n?: I18nManifest;
   auth?: { configModule: string };
+  email?: { configModule: string };
   prefetch: 'hover' | 'viewport' | 'none';
 }

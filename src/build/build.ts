@@ -45,6 +45,8 @@ export async function buildProject(options: BuildOptions): Promise<void> {
   // Check for auth config
   const authConfigPath = path.join(projectDir, 'lumenjs.auth.ts');
   const hasAuthConfig = fs.existsSync(authConfigPath);
+  const emailConfigPath = path.join(projectDir, 'lumenjs.email.ts');
+  const hasEmailConfig = fs.existsSync(emailConfigPath);
 
   // Apply global prerender flag from config
   if (globalPrerender) {
@@ -74,6 +76,8 @@ export async function buildProject(options: BuildOptions): Promise<void> {
     middlewareEntries,
     hasAuthConfig,
     authConfigPath,
+    hasEmailConfig,
+    emailConfigPath,
     shared,
   });
 
@@ -131,6 +135,7 @@ export async function buildProject(options: BuildOptions): Promise<void> {
     } : {}),
     ...(i18nConfig ? { i18n: i18nConfig } : {}),
     ...(hasAuthConfig ? { auth: { configModule: 'auth-config.js' } } : {}),
+    ...(hasEmailConfig ? { email: { configModule: 'email-config.js' } } : {}),
     prefetch: prefetchStrategy,
   };
 

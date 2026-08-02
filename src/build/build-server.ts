@@ -12,6 +12,8 @@ export interface BuildServerOptions {
   middlewareEntries: MiddlewareEntry[];
   hasAuthConfig: boolean;
   authConfigPath: string;
+  hasEmailConfig: boolean;
+  emailConfigPath: string;
   shared: {
     resolve: UserConfig['resolve'];
     esbuild: UserConfig['esbuild'];
@@ -20,7 +22,7 @@ export interface BuildServerOptions {
 }
 
 export async function buildServer(opts: BuildServerOptions): Promise<void> {
-  const { projectDir, serverDir, pageEntries, layoutEntries, apiEntries, middlewareEntries, hasAuthConfig, authConfigPath, shared } = opts;
+  const { projectDir, serverDir, pageEntries, layoutEntries, apiEntries, middlewareEntries, hasAuthConfig, authConfigPath, hasEmailConfig, emailConfigPath, shared } = opts;
 
   console.log('[LumenJS] Building server bundle...');
 
@@ -74,6 +76,10 @@ export async function buildServer(opts: BuildServerOptions): Promise<void> {
 
   if (hasAuthConfig) {
     serverEntries['auth-config'] = authConfigPath;
+  }
+
+  if (hasEmailConfig) {
+    serverEntries['email-config'] = emailConfigPath;
   }
 
   // If data/seed.ts exists, include it in the server bundle for prod seed support
