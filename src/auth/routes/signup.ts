@@ -82,12 +82,15 @@ export async function handleNativeSignup(
     // Cookie mode
     const encrypted = await encryptSession(sessionData, config.session.secret);
     const cookie = createSessionCookie(config.session.cookieName, encrypted, config.session.maxAge, config.session.secure);
+    // The same login, in the form the gateway can verify. See token.ts.
+    const { createAccessTokenCookie } = await import('../token.js');
+    const edgeCookie = createAccessTokenCookie(user, config.session.secret, config.session.maxAge, config.session.secure);
 
     if (req.headers.accept?.includes('application/json')) {
-      res.writeHead(201, { 'Content-Type': 'application/json', 'Set-Cookie': cookie });
+      res.writeHead(201, { 'Content-Type': 'application/json', 'Set-Cookie': [cookie, edgeCookie] });
       res.end(JSON.stringify({ user }));
     } else {
-      res.writeHead(302, { Location: config.routes.postLogin, 'Set-Cookie': cookie });
+      res.writeHead(302, { Location: config.routes.postLogin, 'Set-Cookie': [cookie, edgeCookie] });
       res.end();
     }
   } catch (err: any) {

@@ -15,7 +15,11 @@ export async function handleLogout(
   url: URL,
   db?: any,
 ): Promise<boolean> {
-  const clearCookie = clearSessionCookie(config.session.cookieName);
+  const { clearAccessTokenCookie } = await import('../token.js');
+  // Both halves of the login go: the encrypted session this process reads, and
+  // the access-token cookie the gateway reads. Leaving the second behind means
+  // a logged-out browser still authenticates at the edge.
+  const clearCookie = [clearSessionCookie(config.session.cookieName), clearAccessTokenCookie()];
 
   // Check if this was an OIDC session — redirect to provider's end_session_endpoint
   let idToken: string | undefined;
@@ -90,8 +94,9 @@ export async function handleLogoutAll(
     deleteAllRefreshTokens(db, user.sub);
   } catch {}
 
-  // Clear current session cookie
-  const clearCookie = clearSessionCookie(config.session.cookieName);
+  // Clear current session cookie, and the edge's copy of it (see handleLogout)
+  const { clearAccessTokenCookie } = await import('../token.js');
+  const clearCookie = [clearSessionCookie(config.session.cookieName), clearAccessTokenCookie()];
 
   if (req.headers.accept?.includes('application/json')) {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': clearCookie });

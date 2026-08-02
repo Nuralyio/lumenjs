@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { ResolvedAuthConfig } from '../types.js';
-import { sendJson, readBody, isTokenMode } from './utils.js';
+import { sendJson, readBody, isTokenMode, safeReturnTo } from './utils.js';
 import { encryptSession, createSessionCookie, decryptSession } from '../session.js';
 import {
   encryptTotpSecret, decryptTotpSecret,
@@ -186,7 +186,11 @@ export async function handleTotpChallenge(
     const clearPending = `nk-totp-pending=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${config.session.secure ? '; Secure' : ''}`;
 
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-    const returnTo = url.searchParams.get('returnTo') || config.routes.postLogin;
+    // Through safeReturnTo, as login.ts and oidc-callback.ts do: this value is
+    // the 302 Location below and the client does window.location.replace() with
+    // it, so an absolute one is an open redirect at the moment the session
+    // cookie is issued.
+    const returnTo = safeReturnTo(url.searchParams.get('returnTo'), config.routes.postLogin);
 
     // Token mode (mobile): issue bearer tokens like the initial login does
     if (isTokenMode(url, req) && config.token.enabled) {
@@ -200,11 +204,15 @@ export async function handleTotpChallenge(
       return true;
     }
 
+    // The same login, in the form the gateway can verify. See token.ts.
+    const { createAccessTokenCookie } = await import('../token.js');
+    const edgeCookie = createAccessTokenCookie(user, config.session.secret, config.session.maxAge, config.session.secure);
+
     if (req.headers.accept?.includes('application/json')) {
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': [sessionCookie, clearPending] });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': [sessionCookie, edgeCookie, clearPending] });
       res.end(JSON.stringify({ user, returnTo }));
     } else {
-      res.writeHead(302, { Location: returnTo, 'Set-Cookie': [sessionCookie, clearPending] });
+      res.writeHead(302, { Location: returnTo, 'Set-Cookie': [sessionCookie, edgeCookie, clearPending] });
       res.end();
     }
   } catch (err: any) {
