@@ -47,6 +47,42 @@ export function verifyAccessToken(token: string, secret: string): AuthUser | nul
   }
 }
 
+/** The cookie the edge reads. Named once, so nothing sets a name nothing reads. */
+export const ACCESS_TOKEN_COOKIE = 'nk-access-token';
+
+/**
+ * Set the access token as a cookie beside the encrypted session cookie.
+ *
+ * A browser login only ever got `nk-session`, which holds an AES-GCM blob only
+ * this process can open. The OpenResty gateway in front of the agents console
+ * verifies an HMAC JWT and reads exactly this cookie, so without it every
+ * request from a logged-in browser was a 401 at the edge. Same credential,
+ * second transport — the mobile WebView path in middleware.ts already reads it.
+ *
+ * Lifetime is the session's, not `token.accessTokenTTL`: nothing re-issues this
+ * cookie on a request that never reaches this process (the console talks to the
+ * gateway and the engine only), so a 15-minute token would log the console out
+ * 15 minutes after login. The cost is that `logout-all` cannot revoke it at the
+ * edge — the gateway is stateless by design — so it is cleared on logout here
+ * and expires with the session at the latest.
+ */
+export function createAccessTokenCookie(
+  user: AuthUser,
+  secret: string,
+  maxAge: number,
+  secure: boolean,
+): string {
+  const token = issueAccessToken(user, secret, maxAge);
+  let cookie = `${ACCESS_TOKEN_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
+  if (secure) cookie += '; Secure';
+  return cookie;
+}
+
+/** Expire the access-token cookie. Sent with every cookie-clearing response. */
+export function clearAccessTokenCookie(): string {
+  return `${ACCESS_TOKEN_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+}
+
 /**
  * Generate an opaque refresh token (random bytes, stored hashed in DB).
  */
@@ -63,20 +99,15 @@ export function hashRefreshToken(token: string): string {
 
 // ── DB helpers for refresh tokens ────────────────────────────────
 
-interface Db {
-  all<T = any>(sql: string, ...params: any[]): Promise<T[]>;
-  get<T = any>(sql: string, ...params: any[]): Promise<T | undefined>;
-  run(sql: string, ...params: any[]): Promise<{ changes: number; lastInsertRowid: number | bigint }>;
-  exec(sql: string): Promise<void>;
-}
+import { nowDefault, autoIncrementPk, type AuthDb as Db } from './db.js';
 
 export async function ensureRefreshTokenTable(db: Db): Promise<void> {
   await db.exec(`CREATE TABLE IF NOT EXISTS _nk_auth_refresh_tokens (
-    id SERIAL PRIMARY KEY,
+    id ${autoIncrementPk(db)},
     token_hash TEXT NOT NULL UNIQUE,
     user_id TEXT NOT NULL,
     expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT NOW()
+    created_at TEXT NOT NULL DEFAULT ${nowDefault(db)}
   )`);
 }
 

@@ -33,13 +33,7 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   });
 }
 
-/** DB interface — subset of LumenDb */
-interface Db {
-  all<T = any>(sql: string, ...params: any[]): Promise<T[]>;
-  get<T = any>(sql: string, ...params: any[]): Promise<T | undefined>;
-  run(sql: string, ...params: any[]): Promise<{ changes: number; lastInsertRowid: number | bigint }>;
-  exec(sql: string): Promise<void>;
-}
+import { nowDefault, type AuthDb as Db } from './db.js';
 
 /**
  * Ensure the native auth users table exists.
@@ -52,8 +46,8 @@ export async function ensureUsersTable(db: Db): Promise<void> {
     password_hash TEXT NOT NULL,
     email_verified INTEGER NOT NULL DEFAULT 0,
     roles TEXT NOT NULL DEFAULT '[]',
-    created_at TEXT NOT NULL DEFAULT NOW(),
-    updated_at TEXT NOT NULL DEFAULT NOW()
+    created_at TEXT NOT NULL DEFAULT ${nowDefault(db)},
+    updated_at TEXT NOT NULL DEFAULT ${nowDefault(db)}
   )`);
   // Add email_verified column if table already exists without it
   try { await db.exec('ALTER TABLE _nk_auth_users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0'); } catch {};
@@ -224,7 +218,7 @@ export function verifyVerificationToken(token: string, secret: string): string |
 
 /** Mark a user's email as verified. */
 export async function verifyUserEmail(db: Db, userId: string): Promise<boolean> {
-  const result = await db.run('UPDATE _nk_auth_users SET email_verified = 1, updated_at = datetime("now") WHERE id = ?', userId);
+  const result = await db.run("UPDATE _nk_auth_users SET email_verified = 1, updated_at = datetime('now') WHERE id = ?", userId);
   return result.changes > 0;
 }
 
@@ -288,7 +282,7 @@ export async function updatePassword(db: Db, userId: string, newPassword: string
   if (newPassword.length < minLength) throw new Error(`Password must be at least ${minLength} characters`);
   if (newPassword.length > 128) throw new Error('Password must be at most 128 characters');
   const hash = await hashPassword(newPassword);
-  await db.run('UPDATE _nk_auth_users SET password_hash = ?, updated_at = datetime("now") WHERE id = ?', hash, userId);
+  await db.run("UPDATE _nk_auth_users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?", hash, userId);
 }
 
 /** Find a user by email. Returns { id, email, name } or null. */
@@ -345,7 +339,7 @@ export async function getTotpState(db: Db, userId: string): Promise<{ totpEnable
 
 /** Set sessions_revoked_at to now, invalidating all sessions created before this moment. */
 export async function revokeAllSessions(db: Db, userId: string): Promise<void> {
-  await db.run('UPDATE _nk_auth_users SET sessions_revoked_at = datetime("now") WHERE id = ?', userId);
+  await db.run("UPDATE _nk_auth_users SET sessions_revoked_at = datetime('now') WHERE id = ?", userId);
 }
 
 /** Get the epoch-seconds timestamp of the last logout-all, or null if never revoked. */
