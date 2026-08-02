@@ -4,6 +4,7 @@ import { sendJson } from './routes/utils.js';
 import { handleNativeLogin, handleOidcLogin } from './routes/login.js';
 import { handleNativeSignup } from './routes/signup.js';
 import { handleOidcCallback } from './routes/oidc-callback.js';
+import { handleListIdentities, handleStartLink, handleUnlinkIdentity } from './routes/identities.js';
 import { handleLogout, handleLogoutAll } from './routes/logout.js';
 import { handleVerifyEmail } from './routes/verify.js';
 import { handleForgotPassword, handleResetPassword, handleChangePassword } from './routes/password.js';
@@ -87,6 +88,17 @@ export async function handleAuthRoutes(
   // ── Logout All — invalidate all sessions across devices ──────
   if (pathname === '/__nk_auth/logout-all' && req.method === 'POST') {
     return handleLogoutAll(config, req, res, db);
+  }
+
+  // ── Identities — a person's sign-in methods ──────────────────
+  if (pathname === '/__nk_auth/identities' && req.method === 'GET') {
+    return handleListIdentities(config, req, res, db);
+  }
+  if (pathname === '/__nk_auth/identities/unlink' && req.method === 'POST') {
+    return handleUnlinkIdentity(config, req, res, db);
+  }
+  if (pathname.startsWith('/__nk_auth/link/') && req.method === 'GET') {
+    return handleStartLink(config, req, res, url, pathname.slice('/__nk_auth/link/'.length));
   }
 
   // ── Me — return current user ──────────────────────────────────

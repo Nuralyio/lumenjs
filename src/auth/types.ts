@@ -24,7 +24,9 @@ export interface NativeProvider {
 export type AuthEvent =
   | { type: 'verification-email'; email: string; token: string; url: string }
   | { type: 'password-reset'; email: string; token: string; url: string }
-  | { type: 'password-changed'; email: string; userId: string };
+  | { type: 'password-changed'; email: string; userId: string }
+  | { type: 'identity-linked'; email: string; userId: string; provider: string }
+  | { type: 'identity-unlinked'; email: string; userId: string; provider: string };
 
 /** Context handed to an OAuth2 provider's mapUser, so the mapper can make the
  *  provider-specific follow-up calls a plain OAuth2 flow needs (GitHub's

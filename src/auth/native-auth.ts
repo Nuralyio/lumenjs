@@ -154,36 +154,62 @@ export async function findUserByEmail(db: Db, email: string): Promise<AuthUser |
  * Only links to existing native accounts if the OIDC provider has verified the email.
  */
 export async function linkOidcUser(db: Db, oidcUser: AuthUser): Promise<AuthUser> {
-  if (!oidcUser.email) return oidcUser;
+  const provider = (oidcUser as any).provider as string | undefined;
+  const subject = oidcUser.sub;
+  const verified = !!(oidcUser as any).email_verified;
 
-  const existing = await db.get<any>('SELECT * FROM _nk_auth_users WHERE email = ?', oidcUser.email);
-  if (existing) {
-    // Only link if the OIDC provider has verified the email — prevents account takeover
-    if (!(oidcUser as any).email_verified) {
-      return oidcUser;
+  const { ensureIdentitiesTable, findUserIdByIdentity, recordIdentity } = await import('./identities.js');
+  await ensureIdentitiesTable(db);
+
+  const record = async (userId: string, mergedRoles: string[]): Promise<AuthUser> => {
+    if (provider && subject) {
+      // Bookkeeping — a failure here must never cost the user their login.
+      try {
+        await recordIdentity(db, { userId, provider, subject, email: oidcUser.email, emailVerified: verified });
+      } catch (e) {
+        console.warn('[LumenJS Auth] recordIdentity failed:', (e as any)?.message ?? e);
+      }
     }
+    return { ...oidcUser, sub: userId, roles: mergedRoles };
+  };
 
-    // Merge roles from both sources
+  const rolesOf = (row: any): string[] => {
     let nativeRoles: string[] = [];
-    try { nativeRoles = JSON.parse(existing.roles); } catch {}
-    const mergedRoles = [...new Set([...nativeRoles, ...(oidcUser.roles || [])])];
+    try { nativeRoles = JSON.parse(row.roles); } catch {}
+    return [...new Set([...nativeRoles, ...(oidcUser.roles || [])])];
+  };
 
-    return {
-      ...oidcUser,
-      sub: existing.id,
-      roles: mergedRoles,
-    };
+  // 1. Known identity — the stable path, and the one that survives an email
+  //    change at the provider. No verification needed: possession of the
+  //    provider account was already proven the first time it was recorded.
+  if (provider && subject) {
+    const linkedUserId = await findUserIdByIdentity(db, provider, subject);
+    if (linkedUserId) {
+      const row = await db.get<any>('SELECT * FROM _nk_auth_users WHERE id = ?', linkedUserId);
+      if (row) return record(linkedUserId, rolesOf(row));
+    }
   }
 
-  // Auto-create native user record from OIDC
+  // 2/3. Email match. Only when the provider VERIFIED it — the anti-takeover
+  //      rule, unmoved.
+  if (oidcUser.email) {
+    const existing = await db.get<any>('SELECT * FROM _nk_auth_users WHERE email = ?', oidcUser.email);
+    if (existing) {
+      if (!verified) return oidcUser;              // unverified: no link, no row
+      return record(existing.id, rolesOf(existing));
+    }
+  }
+
+  // 4. New user. Social accounts with no email get a synthetic one keyed on
+  //    the identity, so the UNIQUE(email) column is satisfiable.
   const id = crypto.randomUUID();
+  const email = oidcUser.email || `${provider}:${subject}@users.noreply.local`;
   const roles = JSON.stringify(oidcUser.roles || []);
   await db.run(
     `INSERT INTO _nk_auth_users (id, email, name, password_hash, roles) VALUES (?, ?, ?, '', ?)`,
-    id, oidcUser.email, oidcUser.name || null, roles,
+    id, email, oidcUser.name || null, roles,
   );
-
-  return { ...oidcUser, sub: id };
+  return record(id, oidcUser.roles || []);
 }
 
 // ── Email Verification ──────────────────────────────────────────

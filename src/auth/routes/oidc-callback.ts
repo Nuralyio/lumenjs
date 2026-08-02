@@ -45,7 +45,7 @@ export async function handleOidcCallback(
     return true;
   }
 
-  const { state, codeVerifier, returnTo, provider: providerName } = JSON.parse(stateSession.accessToken);
+  const { state, codeVerifier, returnTo, provider: providerName, mode, linkUserId } = JSON.parse(stateSession.accessToken);
   if (state !== stateParam) {
     sendJson(res, 400, { error: 'State mismatch' });
     return true;
@@ -91,9 +91,39 @@ export async function handleOidcCallback(
     expiresAt = Math.floor(Date.now() / 1000) + tokens.expires_in;
   }
 
-  // Account linking: if native auth is also configured, link by verified email.
+  // ── Link mode: attach this provider to the already-signed-in account ──
+  //
+  // The browser must still BE the user who started the link — checked against
+  // the live session, not against anything in the state cookie. An identity
+  // that already belongs to someone else is refused, never moved. No session
+  // is re-issued: the person is already themselves, and swapping their session
+  // to the newly-linked provider's derived user is the exact bug this avoids.
+  if (mode === 'link') {
+    const sessionUser = (req as any).nkAuth?.user;
+    if (!db || !sessionUser?.sub || sessionUser.sub !== linkUserId) {
+      res.writeHead(302, { Location: safeReturnTo(returnTo, '/') + '?link_error=session' });
+      res.end();
+      return true;
+    }
+    try {
+      const { ensureIdentitiesTable, recordIdentity, IdentityConflictError } = await import('../identities.js');
+      await ensureIdentitiesTable(db);
+      await recordIdentity(db, {
+        userId: linkUserId, provider: provider.name, subject: user.sub,
+        email: user.email, emailVerified: !!(user as any).email_verified,
+      });
+      res.writeHead(302, { Location: safeReturnTo(returnTo, '/') + `?linked=${provider.name}` });
+    } catch (e: any) {
+      const already = e?.name === 'IdentityConflictError';
+      res.writeHead(302, { Location: safeReturnTo(returnTo, '/') + (already ? '?link_error=already_linked' : '?link_error=failed') });
+    }
+    res.end();
+    return true;
+  }
+
+  // ── Login mode: link by verified email, then issue a session ──
   // No longer gated on user.email — a GitHub user whose email is private still
-  // resolves through their recorded identity (feature 1).
+  // resolves through their recorded identity.
   if (db && hasNativeAuth(config)) {
     try {
       const { linkOidcUser, ensureUsersTable } = await import('../native-auth.js');
