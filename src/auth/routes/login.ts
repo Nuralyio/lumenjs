@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { ResolvedAuthConfig, OIDCProvider } from '../types.js';
-import { getOidcProvider, hasNativeAuth, getNativeProvider } from '../config.js';
+import type { ResolvedAuthConfig, OIDCProvider, OAuth2Provider } from '../types.js';
+import { getRedirectProvider, getRedirectProviderByName, hasNativeAuth, getNativeProvider } from '../config.js';
+import { buildOAuth2AuthorizationUrl } from '../oauth2-client.js';
 import {
   discoverProvider,
   buildAuthorizationUrl,
@@ -23,12 +24,12 @@ export async function handleOidcLogin(
   url: URL,
   providerName: string | undefined,
 ): Promise<boolean> {
-  const oidc = providerName
-    ? config.providers.find(p => p.type === 'oidc' && p.name === providerName) as OIDCProvider | undefined
-    : getOidcProvider(config) as OIDCProvider | undefined;
+  const provider = providerName
+    ? getRedirectProviderByName(config, providerName)
+    : getRedirectProvider(config);
 
-  if (!oidc) {
-    // No OIDC provider — return available methods as JSON
+  if (!provider) {
+    // No redirect provider — return available methods as JSON
     sendJson(res, 200, {
       providers: config.providers.map(p => ({ type: p.type, name: p.name })),
       nativeLogin: `${config.routes.login} (POST)`,
@@ -37,28 +38,26 @@ export async function handleOidcLogin(
     return true;
   }
 
-  const metadata = await discoverProvider(oidc.issuer);
   const state = crypto.randomBytes(16).toString('hex');
   const codeVerifier = generateCodeVerifier();
   const returnTo = safeReturnTo(url.searchParams.get('returnTo'), config.routes.postLogin);
   const redirectUri = `${url.origin}${config.routes.callback}`;
 
-  // Store PKCE state in short-lived encrypted cookie
-  const stateData = JSON.stringify({ state, codeVerifier, returnTo, provider: oidc.name });
+  // The PKCE/state cookie shape is identical for both flows — the callback
+  // disambiguates the provider by the `provider` field, not by the flow.
+  const stateData = JSON.stringify({ state, codeVerifier, returnTo, provider: provider.name });
   const encrypted = await encryptSession(
     { accessToken: stateData, expiresAt: Math.floor(Date.now() / 1000) + 600, user: { sub: '', roles: [] } },
     config.session.secret,
   );
   const stateCookie = createSessionCookie('nk-auth-state', encrypted, 600, config.session.secure);
 
-  const authUrl = buildAuthorizationUrl(
-    metadata,
-    oidc.clientId,
-    redirectUri,
-    oidc.scopes || ['openid', 'profile', 'email'],
-    state,
-    codeVerifier,
-  );
+  const authUrl = provider.type === 'oauth2'
+    ? buildOAuth2AuthorizationUrl(provider, redirectUri, state, codeVerifier)
+    : buildAuthorizationUrl(
+        await discoverProvider(provider.issuer),
+        provider.clientId, redirectUri,
+        provider.scopes || ['openid', 'profile', 'email'], state, codeVerifier);
 
   res.writeHead(302, { Location: authUrl, 'Set-Cookie': stateCookie });
   res.end();
@@ -140,6 +139,9 @@ export async function handleNativeLogin(
 
   const encrypted = await encryptSession(sessionData, config.session.secret);
   const cookie = createSessionCookie(config.session.cookieName, encrypted, config.session.maxAge, config.session.secure);
+  // The same login, in the form the gateway can verify. See token.ts.
+  const { createAccessTokenCookie } = await import('../token.js');
+  const edgeCookie = createAccessTokenCookie(user, config.session.secret, config.session.maxAge, config.session.secure);
 
   const returnTo = safeReturnTo(url.searchParams.get('returnTo'), config.routes.postLogin);
 
@@ -156,10 +158,10 @@ export async function handleNativeLogin(
 
   // Cookie mode: set session cookie
   if (req.headers.accept?.includes('application/json')) {
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': cookie });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': [cookie, edgeCookie] });
     res.end(JSON.stringify({ user, returnTo }));
   } else {
-    res.writeHead(302, { Location: returnTo, 'Set-Cookie': cookie });
+    res.writeHead(302, { Location: returnTo, 'Set-Cookie': [cookie, edgeCookie] });
     res.end();
   }
   return true;

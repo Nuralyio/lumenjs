@@ -49,3 +49,31 @@ describe('config helpers', () => {
     expect(hasOidcAuth(oidcOnlyConfig)).toBe(true);
   });
 });
+
+import { validate } from './config.js';
+
+describe('validate', () => {
+  const session = { secret: 's'.repeat(32) };
+
+  it('accepts a well-formed oauth2 provider', () => {
+    const cfg = validate({ session, providers: [{
+      type: 'oauth2', name: 'github', authorizeUrl: 'https://a', tokenUrl: 'https://t',
+      userInfoUrl: 'https://u', clientId: 'c', mapUser: () => ({ sub: '1', roles: [] }),
+    }] });
+    expect(cfg.providers[0].type).toBe('oauth2');
+  });
+
+  it('rejects an oauth2 provider missing mapUser', () => {
+    expect(() => validate({ session, providers: [{
+      type: 'oauth2', name: 'x', authorizeUrl: 'https://a', tokenUrl: 'https://t',
+      userInfoUrl: 'https://u', clientId: 'c',
+    }] })).toThrow(/mapUser/);
+  });
+
+  it('rejects an oauth2 provider missing an endpoint', () => {
+    expect(() => validate({ session, providers: [{
+      type: 'oauth2', name: 'x', authorizeUrl: 'https://a', clientId: 'c',
+      mapUser: () => ({ sub: '1', roles: [] }),
+    }] as any })).toThrow(/tokenUrl|userInfoUrl/);
+  });
+});

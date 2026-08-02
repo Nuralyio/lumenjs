@@ -26,7 +26,48 @@ export type AuthEvent =
   | { type: 'password-reset'; email: string; token: string; url: string }
   | { type: 'password-changed'; email: string; userId: string };
 
-export type AuthProvider = OIDCProvider | NativeProvider;
+/** Context handed to an OAuth2 provider's mapUser, so the mapper can make the
+ *  provider-specific follow-up calls a plain OAuth2 flow needs (GitHub's
+ *  /user/emails, for one) without the framework knowing about any of them. */
+export interface OAuth2UserContext {
+  accessToken: string;
+  /** GET a JSON resource from the provider, token and provider headers attached. */
+  fetchJson: (url: string) => Promise<any>;
+}
+
+/** A provider whose endpoints are DECLARED, not discovered — for OAuth2
+ *  services with no OIDC discovery document and no id_token. GitHub is the
+ *  reason this exists. */
+export interface OAuth2Provider {
+  type: 'oauth2';
+  name: string;
+  authorizeUrl: string;
+  tokenUrl: string;
+  userInfoUrl: string;
+  clientId: string;
+  clientSecret?: string;
+  scopes?: string[];
+  /** Send PKCE. Default true; a provider that rejects code_challenge sets false. */
+  pkce?: boolean;
+  /** Extra static query params on the authorize URL. */
+  authorizeParams?: Record<string, string>;
+  /** Extra headers on the token and userinfo requests (GitHub needs User-Agent). */
+  apiHeaders?: Record<string, string>;
+  /** Map the provider's user JSON to an AuthUser. MUST set email_verified
+   *  honestly — the account-linking anti-takeover rule depends on it. */
+  mapUser: (profile: Record<string, any>, ctx: OAuth2UserContext) => AuthUser | Promise<AuthUser>;
+}
+
+export type AuthProvider = OIDCProvider | NativeProvider | OAuth2Provider;
+
+/** Like TokenSet, but expires_in is optional — a GitHub OAuth app omits it. */
+export interface OAuth2TokenSet {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+  token_type?: string;
+  scope?: string;
+}
 
 // ── Auth Config ──────────────────────────────────────────────────
 

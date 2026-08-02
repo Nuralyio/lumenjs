@@ -26,7 +26,7 @@ const TOKEN_DEFAULTS = {
   refreshTokenTTL: 604800,
 };
 
-function validate(config: any): ResolvedAuthConfig {
+export function validate(config: any): ResolvedAuthConfig {
   if (!config?.session?.secret) throw new Error('[LumenJS Auth] session.secret is required');
 
   // Normalize providers: support both legacy single-provider and multi-provider
@@ -50,11 +50,22 @@ function validate(config: any): ResolvedAuthConfig {
 
   // Validate each provider
   for (const p of providers) {
+    if (!p.name) throw new Error('[LumenJS Auth] Each provider must have a name');
     if (p.type === 'oidc') {
       if (!p.issuer) throw new Error(`[LumenJS Auth] Provider "${p.name}": issuer is required`);
       if (!p.clientId) throw new Error(`[LumenJS Auth] Provider "${p.name}": clientId is required`);
+    } else if (p.type === 'oauth2') {
+      for (const k of ['authorizeUrl', 'tokenUrl', 'userInfoUrl', 'clientId'] as const) {
+        if (!(p as any)[k]) throw new Error(`[LumenJS Auth] Provider "${p.name}": ${k} is required`);
+      }
+      if (typeof (p as any).mapUser !== 'function') {
+        throw new Error(`[LumenJS Auth] Provider "${p.name}": mapUser is required`);
+      }
+    } else if (p.type !== 'native') {
+      // Unknown types were silently accepted before; warn rather than throw so
+      // an app is not bricked by an upgrade, but no longer entirely silent.
+      console.warn(`[LumenJS Auth] Provider "${(p as any).name}": unknown type "${(p as any).type}"`);
     }
-    if (!p.name) throw new Error('[LumenJS Auth] Each provider must have a name');
   }
 
   return {
@@ -96,6 +107,18 @@ export function hasNativeAuth(config: ResolvedAuthConfig): boolean {
 /** Check if config has any OIDC provider */
 export function hasOidcAuth(config: ResolvedAuthConfig): boolean {
   return config.providers.some(p => p.type === 'oidc');
+}
+
+/** The first provider that uses a browser redirect flow — oidc or oauth2. */
+export function getRedirectProvider(config: ResolvedAuthConfig) {
+  return config.providers.find(p => p.type === 'oidc' || p.type === 'oauth2') as
+    (import('./types.js').OIDCProvider | import('./types.js').OAuth2Provider) | undefined;
+}
+
+/** A redirect provider by name. */
+export function getRedirectProviderByName(config: ResolvedAuthConfig, name: string) {
+  return config.providers.find(p => (p.type === 'oidc' || p.type === 'oauth2') && p.name === name) as
+    (import('./types.js').OIDCProvider | import('./types.js').OAuth2Provider) | undefined;
 }
 
 /**
