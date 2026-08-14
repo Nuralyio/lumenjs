@@ -210,13 +210,32 @@ export async function handlePageRoute(
     }
   }
 
+  // A page that describes itself but loads nothing. It never reaches the
+  // branch above, which is gated on a loader, so its meta is resolved here
+  // rather than by widening that gate and putting every static page through
+  // SSR for the sake of a title.
+  let fallbackMeta: PageMeta | null = null;
+  if (matched && matched.route.hasMeta && !matched.route.hasLoader && matched.route.module) {
+    let modulePath = path.join(serverDir, matched.route.module);
+    if (!fs.existsSync(modulePath)) {
+      modulePath = path.join(serverDir, matched.route.module.replace(/\[/g, '_').replace(/\]/g, '_'));
+    }
+    if (fs.existsSync(modulePath)) {
+      try {
+        fallbackMeta = await resolvePageMeta(await import(modulePath), { params: matched.params });
+      } catch { /* the shell's own head still applies */ }
+    }
+  }
+  const withMeta = (html: string): string =>
+    applyMetaToDocument(html, fallbackMeta, { siteTitle: title, url: pathname });
+
   // SPA fallback — serve the built index.html with auth data injected
   const fallbackUser = (req as any).nkAuth?.user ?? null;
   if (fallbackUser) {
     const authTag = `<script type="application/json" id="__nk_auth__">${JSON.stringify(fallbackUser).replace(/</g, '\\u003c')}</script>`;
     const html = indexHtmlShell.replace('<nk-app>', `${authTag}<nk-app>`);
-    sendCompressed(req, res, 200, 'text/html; charset=utf-8', html);
+    sendCompressed(req, res, 200, 'text/html; charset=utf-8', withMeta(html));
   } else {
-    sendCompressed(req, res, 200, 'text/html; charset=utf-8', indexHtmlShell);
+    sendCompressed(req, res, 200, 'text/html; charset=utf-8', withMeta(indexHtmlShell));
   }
 }
