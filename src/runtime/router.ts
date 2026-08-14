@@ -43,7 +43,15 @@ export class NkRouter {
 
   constructor(routes: Route[], outlet: HTMLElement, hydrate = false) {
     this.outlet = outlet;
-    this.siteTitle = document.title || 'LumenJS App';
+    // The stamped site title first, and document.title only as a fallback.
+    // The server now writes a page's own `meta.title` into the document, so
+    // reading the tab here would take "Story headline | Site" as the site's
+    // name and compose "Story headline | Story headline | Site" on the next
+    // navigation. The stamp is the one value that stays the site's.
+    const stamped = document.querySelector('meta[name="nk-site-title"]');
+    this.siteTitle = stamped?.getAttribute('content')?.trim()
+      || document.title
+      || 'LumenJS App';
     this.routes = routes.map(r => ({
       ...r,
       ...this.compilePattern(r.path),

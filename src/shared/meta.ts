@@ -183,6 +183,14 @@ export function applyMetaToDocument(
     const title = escapeHtml(computeTitle(meta, options?.siteTitle ?? ''));
     const replaced = out.replace(/<title>[\s\S]*?<\/title>/i, `<title>${title}</title>`);
     out = replaced !== out ? replaced : out.replace(/<\/head>/i, `  <title>${title}</title>\n</head>`);
+    // The site's own name, stamped so the client router does not read the
+    // tab and take this page's title for it.
+    if (options?.siteTitle) {
+      const stamp = `<meta name="nk-site-title" content="${escapeHtml(options.siteTitle)}">`;
+      out = /<meta\s+name=["']nk-site-title["'][^>]*>/i.test(out)
+        ? out.replace(/<meta\s+name=["']nk-site-title["'][^>]*>/i, stamp)
+        : out.replace(/<\/head>/i, `  ${stamp}\n</head>`);
+    }
   }
   out = withoutConflicts(out, meta, Boolean(options?.url));
   const tags = generateMetaTags(meta, options);

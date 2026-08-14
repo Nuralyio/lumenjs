@@ -97,3 +97,24 @@ describe('applyMetaToDocument', () => {
     expect((out.match(/<\/head>/g) ?? []).length).toBe(1);
   });
 });
+
+describe('the site title stamp', () => {
+  it('is written whenever a page title replaces the document’s', () => {
+    const out = applyMetaToDocument(DOC, { title: 'A page' }, { siteTitle: 'Site' });
+    expect(out).toContain('<meta name="nk-site-title" content="Site">');
+    expect(out).toContain('<title>A page | Site</title>');
+  });
+
+  it('is not written when the page states no title', () => {
+    const out = applyMetaToDocument(DOC, { description: 'only a description' },
+      { siteTitle: 'Site' });
+    expect(out).not.toContain('nk-site-title');
+  });
+
+  it('is never duplicated across two passes', () => {
+    const once = applyMetaToDocument(DOC, { title: 'A' }, { siteTitle: 'Site' });
+    const twice = applyMetaToDocument(once, { title: 'B' }, { siteTitle: 'Site' });
+    expect((twice.match(/nk-site-title/g) ?? []).length).toBe(1);
+    expect(twice).toContain('<title>B | Site</title>');
+  });
+});
