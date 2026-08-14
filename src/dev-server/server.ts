@@ -26,6 +26,7 @@ import { resolveLocale } from './middleware/locale.js';
 import { setProjectDir } from '../db/context.js';
 import { scanMiddleware, getMiddlewareDirsForPathname } from '../build/scan.js';
 import { runMiddlewareChain, extractMiddleware, ConnectMiddleware } from '../shared/middleware-runner.js';
+import { applyMetaToDocument } from '../shared/meta.js';
 
 // Re-export for backwards compatibility
 export { readProjectConfig, readProjectTitle, getLumenJSNodeModules, getLumenJSDirs } from './config.js';
@@ -416,9 +417,13 @@ export async function createDevServer(options: DevServerOptions): Promise<ViteDe
                   base,
                 });
                 const transformed = await server.transformIndexHtml(req.url!, shellHtml);
-                const finalHtml = ssrResult
+                const withSsr = ssrResult
                   ? transformed.replace(SSR_PLACEHOLDER, ssrResult.html)
                   : transformed;
+                // The page's own meta, written in the same way the built
+                // server writes it, so dev and prod agree on the head.
+                const finalHtml = applyMetaToDocument(withSsr, ssrResult?.meta,
+                  { siteTitle: title, url: pathname });
                 res.setHeader('Content-Type', 'text/html');
                 res.setHeader('Cache-Control', 'no-store');
                 res.end(finalHtml);

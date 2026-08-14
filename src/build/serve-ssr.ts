@@ -6,6 +6,7 @@ import { stripOuterLitMarkers, dirToLayoutTagName, isRedirectResponse, patchLoad
 import { matchRoute } from '../shared/route-matching.js';
 import { sendCompressed } from './serve-static.js';
 import { logger } from '../shared/logger.js';
+import { applyMetaToDocument, resolvePageMeta, type PageMeta } from '../shared/meta.js';
 
 export async function handlePageRoute(
   manifest: BuildManifest,
@@ -50,6 +51,15 @@ export async function handlePageRoute(
             return;
           }
         }
+
+        // What this page says about itself. After the loader, because a page's
+        // meta is usually written out of what the loader fetched, and with the
+        // same context the client router passes so one export serves both.
+        const pageMeta: PageMeta | null = await resolvePageMeta(mod, {
+          data: loaderData,
+          params: matched.params,
+        });
+        const metaOptions = { siteTitle: title, url: pathname };
 
         // Use tag name from route manifest (matches client router)
         const tagName = matched.route.tagName;
@@ -172,7 +182,7 @@ export async function handlePageRoute(
               `${authScript}${loaderDataScript}<nk-app data-nk-ssr><div id="nk-router-outlet">${ssrHtml}</div></nk-app>`
             );
 
-            sendCompressed(req, res, 200, 'text/html; charset=utf-8', html_out);
+            sendCompressed(req, res, 200, 'text/html; charset=utf-8', applyMetaToDocument(html_out, pageMeta, metaOptions));
             return;
           } catch (ssrErr) {
             logger.warn('SSR render failed, falling back to CSR', { error: (ssrErr as any)?.message });
@@ -191,7 +201,7 @@ export async function handlePageRoute(
             ? `<script type="application/json" id="__nk_auth__">${JSON.stringify(authUserFb).replace(/</g, '\\u003c')}</script>`
             : '';
           let html_out = indexHtmlShell.replace('<nk-app>', `${authScriptFb}${loaderDataScript}<nk-app>`);
-          sendCompressed(req, res, 200, 'text/html; charset=utf-8', html_out);
+          sendCompressed(req, res, 200, 'text/html; charset=utf-8', applyMetaToDocument(html_out, pageMeta, metaOptions));
           return;
         }
       } catch (err) {

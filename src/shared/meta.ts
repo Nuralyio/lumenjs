@@ -99,3 +99,92 @@ export function computeTitle(meta: PageMeta | undefined, siteTitle: string): str
   }
   return siteTitle;
 }
+
+/** The context a `meta` function is called with, on both sides. */
+export interface MetaContext {
+  data?: unknown;
+  params?: Record<string, string>;
+}
+
+type MetaExport = PageMeta | ((ctx: MetaContext) => PageMeta | Promise<PageMeta>);
+
+/**
+ * A page module's `meta`, resolved on the server.
+ *
+ * The client router already reads this export to set document.title after a
+ * navigation. Doing it there and only there means the first response carries
+ * the project's one configured title, which is what a crawler, a link
+ * unfurler and a shared URL all see. Same export, same call signature; this
+ * is the half that runs before the page does.
+ *
+ * Never throws. A page that cannot describe itself still has to be served.
+ */
+export async function resolvePageMeta(
+  mod: { meta?: MetaExport } | null | undefined,
+  ctx: MetaContext
+): Promise<PageMeta | null> {
+  const said = mod?.meta;
+  if (!said) return null;
+  try {
+    const meta = typeof said === 'function' ? await said(ctx) : said;
+    return meta && typeof meta === 'object' ? meta : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Tags this meta is about to write, removed from what the document already
+ * carries. A project's head.html usually states a description and an og:title
+ * for the site as a whole, and two of either is a tag a crawler chooses
+ * between — so the page's wins and the document's goes.
+ */
+function withoutConflicts(html: string, meta: PageMeta, hasUrl: boolean): string {
+  const drop = (attr: 'name' | 'property', value: string): void => {
+    html = html.replace(
+      new RegExp(`[ \\t]*<meta\\s+${attr}=["']${value}["'][^>]*>\\s*\\n?`, 'gi'), ''
+    );
+  };
+  // og:type is always emitted by generateMetaTags, so the document's own
+  // always conflicts.
+  drop('property', 'og:type');
+  if (meta.description) { drop('name', 'description'); drop('property', 'og:description'); }
+  if (meta.title) drop('property', 'og:title');
+  if (meta.image) {
+    drop('property', 'og:image');
+    drop('name', 'twitter:card');
+    drop('name', 'twitter:image');
+  }
+  if (meta.robots) drop('name', 'robots');
+  if (hasUrl) drop('property', 'og:url');
+  if (meta.canonical || hasUrl) {
+    html = html.replace(/[ \t]*<link\s+rel=["']canonical["'][^>]*>\s*\n?/gi, '');
+  }
+  return html;
+}
+
+/**
+ * A page's meta, written into a document that already exists.
+ *
+ * A whole string rather than a stream, deliberately: the title is replaced in
+ * place, conflicting tags are removed, and the rest goes in before `</head>`.
+ * A document with no `</head>` comes back untouched rather than guessed at.
+ */
+export function applyMetaToDocument(
+  html: string,
+  meta: PageMeta | null | undefined,
+  options?: MetaTagOptions
+): string {
+  if (!meta) return html;
+  if (!/<\/head>/i.test(html)) return html;
+
+  let out = html;
+  if (meta.title) {
+    const title = escapeHtml(computeTitle(meta, options?.siteTitle ?? ''));
+    const replaced = out.replace(/<title>[\s\S]*?<\/title>/i, `<title>${title}</title>`);
+    out = replaced !== out ? replaced : out.replace(/<\/head>/i, `  <title>${title}</title>\n</head>`);
+  }
+  out = withoutConflicts(out, meta, Boolean(options?.url));
+  const tags = generateMetaTags(meta, options);
+  return tags === '' ? out : out.replace(/<\/head>/i, `  ${tags}\n</head>`);
+}

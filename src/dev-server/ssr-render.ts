@@ -4,6 +4,7 @@ import fs from 'fs';
 import { resolvePageFile, extractRouteParams } from './plugins/vite-plugin-loaders.js';
 import { stripOuterLitMarkers, dirToLayoutTagName, filePathToTagName, patchLoaderDataSpread } from '../shared/utils.js';
 import { installDomShims } from '../shared/dom-shims.js';
+import { resolvePageMeta, type PageMeta } from '../shared/meta.js';
 import { loadTranslationsFromDisk } from './plugins/vite-plugin-i18n.js';
 
 export interface LayoutSSRData {
@@ -50,7 +51,7 @@ export function forgetComponentProbe(file: string): void {
  */
 export async function ssrRenderPage(
   server: ViteDevServer, pagesDir: string, pathname: string, headers?: Record<string, string | string[] | undefined>, locale?: string, user?: any
-): Promise<{ html: string; loaderData: any; layoutsData?: LayoutSSRData[]; componentsData?: ComponentSSRData[]; redirect?: { location: string; status: number }; authUser?: any } | null> {
+): Promise<{ html: string; loaderData: any; layoutsData?: LayoutSSRData[]; componentsData?: ComponentSSRData[]; redirect?: { location: string; status: number }; authUser?: any; meta?: PageMeta | null } | null> {
   try {
     const filePath = resolvePageFile(pagesDir, pathname);
     if (!filePath) return null;
@@ -107,6 +108,10 @@ export async function ssrRenderPage(
         return { html: '', loaderData: null, redirect: { location: loaderData.location, status: loaderData.status || 302 } };
       }
     }
+
+    // What this page says about itself, with the same context the client
+    // router passes so one `meta` export serves both sides.
+    const pageMeta = await resolvePageMeta(mod, { data: loaderData, params });
 
     // Determine the custom element tag name from file path (matches client router)
     const relPath = path.relative(pagesDir, filePath).replace(/\\/g, '/');
@@ -277,7 +282,7 @@ export async function ssrRenderPage(
       }
     }
 
-    return { html: htmlStr, loaderData, layoutsData: layoutsData.length > 0 ? layoutsData : undefined, componentsData: componentsData.length > 0 ? componentsData : undefined, authUser: user ?? undefined };
+    return { html: htmlStr, loaderData, layoutsData: layoutsData.length > 0 ? layoutsData : undefined, componentsData: componentsData.length > 0 ? componentsData : undefined, authUser: user ?? undefined, meta: pageMeta };
   } catch (err) {
     console.error('[LumenJS] SSR render failed, falling back to CSR:', err);
     return null;
